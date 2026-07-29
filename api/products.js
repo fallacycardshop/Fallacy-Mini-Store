@@ -1,3 +1,5 @@
+import fs from "fs";
+console.log("FILES IN DEPLOYMENT:", fs.readdirSync(process.cwd()));
 import XLSX from "xlsx";
 import path from "path";
 import { readFileSync } from "fs";
