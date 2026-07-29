@@ -417,6 +417,7 @@ footer .btn { width: auto; flex-shrink: 0; }
 
   <!-- CART SCREEN -->
   <section id="cartScreen">
+    <button class="btn btn-secondary" id="backToShopButton" style="margin-bottom:12px;">← Continue Shopping</button>
     <h2>Your Cart</h2>
     <div class="cart-list" id="cartList"></div>
 
@@ -446,6 +447,7 @@ footer .btn { width: auto; flex-shrink: 0; }
 
   <!-- PAYNOW SCREEN -->
   <section id="paynowScreen">
+    <button class="btn btn-secondary" id="backToCartButton" style="margin-bottom:12px;">← Back to Cart</button>
     <h2>PayNow Payment</h2>
     <div style="background:#fff;padding:16px;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,0.08);text-align:center;">
       <p style="font-size:15px;color:#d14f7b;font-weight:600;">
@@ -484,7 +486,18 @@ footer .btn { width: auto; flex-shrink: 0; }
 
 <script>
 let products = [];
-let cart = JSON.parse(localStorage.getItem("fallacyCart") || "{}");
+let currentScreen = "products";
+
+let cart;
+try {
+  cart = JSON.parse(localStorage.getItem("fallacyCart") || "{}");
+  if (typeof cart !== "object" || cart === null || Array.isArray(cart)) {
+    cart = {};
+  }
+} catch (e) {
+  console.error("Corrupted cart data found, resetting cart.", e);
+  cart = {};
+}
 
 const productListEl = document.getElementById("productList");
 const cartListEl = document.getElementById("cartList");
@@ -506,6 +519,8 @@ const paynowConfirmButtonEl = document.getElementById("paynowConfirmButton");
 const modalBackdropEl = document.getElementById("modalBackdrop");
 const modalCloseButtonEl = document.getElementById("modalCloseButton");
 const statusTextEl = document.getElementById("statusText");
+const backToShopButtonEl = document.getElementById("backToShopButton");
+const backToCartButtonEl = document.getElementById("backToCartButton");
 
 function saveCart() {
   localStorage.setItem("fallacyCart", JSON.stringify(cart));
@@ -662,7 +677,9 @@ function updateCartBadge() {
     (sum, item) => sum + item.quantity,
     0
   );
-  cartButtonEl.textContent = `Cart (${count})`;
+  if (currentScreen === "products") {
+    cartButtonEl.textContent = `Cart (${count})`;
+  }
 }
 
 function changeQuantity(id, delta) {
@@ -756,31 +773,51 @@ function renderCart() {
 }
 
 function showProducts() {
+  currentScreen = "products";
   productsScreenEl.style.display = "block";
   cartScreenEl.style.display = "none";
   paynowScreenEl.style.display = "none";
   footerTextEl.textContent = "Browsing products";
+  syncFooterButton();
   window.scrollTo(0, 0);
 }
 
 function showCart() {
+  currentScreen = "cart";
   productsScreenEl.style.display = "none";
   cartScreenEl.style.display = "block";
   paynowScreenEl.style.display = "none";
   footerTextEl.textContent = "Reviewing cart";
+  syncFooterButton();
   renderCart();
   window.scrollTo(0, 0);
 }
 
 function showPayNow() {
+  currentScreen = "paynow";
   productsScreenEl.style.display = "none";
   cartScreenEl.style.display = "none";
   paynowScreenEl.style.display = "block";
   footerTextEl.textContent = "PayNow payment";
+  syncFooterButton();
   window.scrollTo(0, 0);
 }
 
+function syncFooterButton() {
+  if (currentScreen === "products") {
+    cartButtonEl.style.display = "inline-block";
+    cartButtonEl.onclick = showCart;
+    updateCartBadge();
+  } else {
+    // On the cart / paynow screens the footer button isn't needed —
+    // dedicated "Continue Shopping" / "Back to Cart" buttons handle navigation.
+    cartButtonEl.style.display = "none";
+  }
+}
+
 cartButtonEl.onclick = showCart;
+backToShopButtonEl.onclick = showProducts;
+backToCartButtonEl.onclick = showCart;
 
 checkoutButtonEl.onclick = () => {
   const name = document.getElementById("nameInput").value.trim();
