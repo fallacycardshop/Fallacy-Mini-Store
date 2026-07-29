@@ -419,7 +419,6 @@ footer .btn { width: auto; flex-shrink: 0; }
   <section id="cartScreen">
     <button class="btn btn-secondary" id="backToShopButton" style="margin-bottom:12px;">← Continue Shopping</button>
     <h2>Your Cart</h2>
-    <p id="cartDebugText" style="font-size:11px;color:#aaa;"></p>
     <div class="cart-list" id="cartList"></div>
 
     <div class="total-box" id="totalBox" style="display:none;">
@@ -532,7 +531,6 @@ const modalCloseButtonEl = document.getElementById("modalCloseButton");
 const statusTextEl = document.getElementById("statusText");
 const backToShopButtonEl = document.getElementById("backToShopButton");
 const backToCartButtonEl = document.getElementById("backToCartButton");
-const cartDebugTextEl = document.getElementById("cartDebugText");
 
 function saveCart() {
   localStorage.setItem("fallacyCart", JSON.stringify(cart));
@@ -758,15 +756,16 @@ function renderCart() {
         </div>
         <div class="cart-actions">
           <div class="quantity-control">
-            <button aria-label="Decrease quantity">-</button>
+            <button class="qty-minus" aria-label="Decrease quantity">-</button>
             <span>${quantity}</span>
-            <button aria-label="Increase quantity">+</button>
+            <button class="qty-plus" aria-label="Increase quantity">+</button>
           </div>
           <button class="btn btn-secondary">Remove</button>
         </div>
       `;
 
-      const [minus, , plus] = item.querySelectorAll(".quantity-control button");
+      const minus = item.querySelector(".qty-minus");
+      const plus = item.querySelector(".qty-plus");
       minus.onclick = () => changeQuantity(product.id, -1);
       plus.onclick = () => changeQuantity(product.id, 1);
       item.querySelector(".btn-secondary").onclick = () => removeItem(product.id);
@@ -811,12 +810,6 @@ function showCart() {
   paynowScreenEl.style.display = "none";
   footerTextEl.textContent = "Reviewing cart";
   syncFooterButton();
-
-  const rawStored = localStorage.getItem("fallacyCart");
-  const itemCount = Object.keys(cart).length;
-  cartDebugTextEl.textContent =
-    `[debug] in-memory items: ${itemCount} | localStorage raw: ${rawStored ? rawStored.slice(0, 120) : "(none)"}`;
-
   renderCart();
   window.scrollTo(0, 0);
 }
