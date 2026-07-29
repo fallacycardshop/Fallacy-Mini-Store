@@ -2,9 +2,12 @@
   "version": 2,
   "builds": [
     { "src": "index.js", "use": "@vercel/node" },
-    { "src": "api/products.js", "use": "@vercel/node" },
-    { "src": "index.html", "use": "@vercel/static" },
-    { "src": "Ministore inventory.xlsx", "use": "@vercel/static" }
+    {
+      "src": "api/products.js",
+      "use": "@vercel/node",
+      "config": { "includeFiles": "Ministore inventory.xlsx" }
+    },
+    { "src": "index.html", "use": "@vercel/static" }
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1" },
