@@ -1,6 +1,4 @@
 {
   "type": "module",
-  "dependencies": {
-    "xlsx": "latest"
-  }
+  "dependencies": {}
 }
