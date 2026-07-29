@@ -1,44 +1,75 @@
 import path from "path";
 import { readFileSync } from "fs";
-import XLSX from "xlsx";
+
+// Minimal CSV parser (handles quoted fields with commas, if you ever need them)
+function parseCSV(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (inQuotes) {
+      if (char === '"' && next === '"') {
+        field += '"';
+        i++;
+      } else if (char === '"') {
+        inQuotes = false;
+      } else {
+        field += char;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+      } else if (char === ",") {
+        row.push(field);
+        field = "";
+      } else if (char === "\n" || char === "\r") {
+        if (field !== "" || row.length > 0) {
+          row.push(field);
+          rows.push(row);
+          row = [];
+          field = "";
+        }
+        if (char === "\r" && next === "\n") i++;
+      } else {
+        field += char;
+      }
+    }
+  }
+  if (field !== "" || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+}
 
 export default function handler(req, res) {
   try {
-    // Build absolute path to the Excel file in the repo
-    const filePath = path.join(process.cwd(), "ministore-inventory.xlsx");
+    const filePath = path.join(process.cwd(), "ministore-inventory.csv");
+    const fileText = readFileSync(filePath, "utf-8");
 
-    // Read file from disk
-    const fileBuffer = readFileSync(filePath);
+    const rows = parseCSV(fileText);
+    const headers = rows[0];
+    const dataRows = rows.slice(1).filter(r => r.some(cell => cell.trim() !== ""));
 
-    // Parse workbook
-    const workbook = XLSX.read(fileBuffer, { type: "buffer" });
+    const products = dataRows.map((rowArr, index) => {
+      const row = {};
+      headers.forEach((h, i) => (row[h] = rowArr[i]));
 
-    // Use the first sheet in the workbook, whatever it's named,
-    // instead of a hardcoded name that can silently break on renames/typos.
-    const firstSheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[firstSheetName];
-
-    if (!sheet) {
-      return res.status(400).json({
-        error: `No sheet found in Excel file.`,
-      });
-    }
-
-    const rows = XLSX.utils.sheet_to_json(sheet);
-
-    // Map rows to product objects.
-    // Your current spreadsheet columns are: Name, Rarity, Price, Condition, Stock, Photo
-    // (no "Description" or "Category" columns yet) — this maps those in,
-    // but still falls back to Description/Category if you add them later.
-    const products = rows.map((row, index) => ({
-      id: index + 1,
-      name: row.Name || "",
-      price: Number(row.Price || 0),
-      photo: row.Photo || "",
-      description: row.Description || row.Condition || "",
-      stock: Number(row.Stock || 0),
-      category: row.Category || row.Rarity || "Uncategorized",
-    }));
+      return {
+        id: index + 1,
+        name: row.Name || "",
+        price: Number(row.Price || 0),
+        photo: row.Photo || "",
+        description: row.Description || row.Condition || "",
+        stock: Number(row.Stock || 0),
+        category: row.Category || row.Rarity || "Uncategorized",
+      };
+    });
 
     res.status(200).json(products);
   } catch (err) {
