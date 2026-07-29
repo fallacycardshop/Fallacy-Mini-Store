@@ -187,6 +187,18 @@ h2 {
   box-shadow: none;
 }
 
+.btn:disabled {
+  background: #e0e0e0 !important;
+  color: #999 !important;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.btn:disabled:active {
+  transform: none;
+}
+
 .btn-primary {
   background: var(--pink-accent);
   color: #fff;
@@ -513,11 +525,48 @@ async function loadProducts() {
     products = await res.json();
     statusTextEl.textContent = `Loaded ${products.length} items from inventory.`;
     renderCategoryFilter();
+    reconcileCartWithStock();
     renderProducts();
+    updateCartBadge();
   } catch (e) {
     console.error(e);
     statusTextEl.textContent = "Failed to load inventory. Please try again later.";
   }
+}
+
+function reconcileCartWithStock() {
+  // Keeps a saved cart (from a previous visit) in sync with the current
+  // real inventory: trims quantities down to available stock, drops items
+  // that no longer exist, and refreshes each cart item's product snapshot
+  // (price/photo/stock) so the cart screen always shows current data.
+  let changed = false;
+
+  Object.keys(cart).forEach(id => {
+    const fresh = products.find(p => String(p.id) === String(id));
+
+    if (!fresh) {
+      delete cart[id];
+      changed = true;
+      return;
+    }
+
+    const stock = Number(fresh.stock || 0);
+
+    if (cart[id].quantity > stock) {
+      cart[id].quantity = stock;
+      changed = true;
+    }
+
+    if (cart[id].quantity <= 0) {
+      delete cart[id];
+      changed = true;
+      return;
+    }
+
+    cart[id].product = fresh;
+  });
+
+  if (changed) saveCart();
 }
 
 function renderCategoryFilter() {
@@ -547,6 +596,11 @@ function renderProducts() {
       return matchesSearch && matchesCategory;
     })
     .forEach(p => {
+      const stock = Number(p.stock || 0);
+      const inCart = getCartQuantity(p.id);
+      const remaining = stock - inCart;
+      const isMaxed = stock <= 0 || remaining <= 0;
+
       const card = document.createElement("div");
       card.className = "product-card";
       card.innerHTML = `
@@ -556,13 +610,17 @@ function renderProducts() {
           <div class="product-price">$${Number(p.price || 0).toFixed(2)}</div>
           <div class="product-desc">${p.description || ""}</div>
           <div class="product-meta">Category: ${p.category || "Uncategorized"}</div>
-          <div class="product-meta">Stock: ${p.stock || 0}</div>
+          <div class="product-meta">Stock: ${stock}${inCart > 0 ? ` (${inCart} in your cart)` : ""}</div>
         </div>
         <div class="product-actions">
-          <button class="btn btn-primary">Add to cart</button>
+          <button class="btn btn-primary" ${isMaxed ? "disabled" : ""}>
+            ${stock <= 0 ? "Sold out" : isMaxed ? "Max in cart" : "Add to cart"}
+          </button>
         </div>
       `;
-      card.querySelector("button").onclick = () => addToCart(p);
+      if (!isMaxed) {
+        card.querySelector("button").onclick = () => addToCart(p);
+      }
       productListEl.appendChild(card);
     });
 
@@ -596,6 +654,7 @@ function addToCart(product) {
   cart[id].quantity++;
   saveCart();
   updateCartBadge();
+  renderProducts();
 }
 
 function updateCartBadge() {
