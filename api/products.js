@@ -1,23 +1,17 @@
-import axios from "axios";
 import XLSX from "xlsx";
+import path from "path";
+import { readFileSync } from "fs";
 
-export default async function handler(req, res) {
+export default function handler(req, res) {
   try {
-    const ONEDRIVE_URL =
-      "https://1drv.ms/x/c/a0dcee2a1ab55924/IQDgKWisXa2hRK6XFzUX0bZiAVo_IdfUEpqFMcJ37kjZDtU?e=mpIe9W";
+    // Build absolute path to the Excel file in the repo
+    const filePath = path.join(process.cwd(), "Ministore inventory.xlsx");
 
-    // Convert OneDrive link → direct download link
-    const directLink = ONEDRIVE_URL
-      .replace("1drv.ms", "api.onedrive.com/v1.0/shares/u!")
-      .replace(/\/[^/]+$/, "/root/content");
-
-    // Download Excel file
-    const response = await axios.get(directLink, {
-      responseType: "arraybuffer",
-    });
+    // Read file from disk
+    const fileBuffer = readFileSync(filePath);
 
     // Parse workbook
-    const workbook = XLSX.read(response.data, { type: "buffer" });
+    const workbook = XLSX.read(fileBuffer, { type: "buffer" });
 
     const sheetName = "Ministore inventory";
     const sheet = workbook.Sheets[sheetName];
@@ -30,7 +24,7 @@ export default async function handler(req, res) {
 
     const rows = XLSX.utils.sheet_to_json(sheet);
 
-    // Convert rows → product objects
+    // Map rows to product objects
     const products = rows.map((row, index) => ({
       id: index + 1,
       name: row.Name || "",
