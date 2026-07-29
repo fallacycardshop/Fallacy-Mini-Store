@@ -419,6 +419,7 @@ footer .btn { width: auto; flex-shrink: 0; }
   <section id="cartScreen">
     <button class="btn btn-secondary" id="backToShopButton" style="margin-bottom:12px;">← Continue Shopping</button>
     <h2>Your Cart</h2>
+    <p id="cartDebugText" style="font-size:11px;color:#aaa;"></p>
     <div class="cart-list" id="cartList"></div>
 
     <div class="total-box" id="totalBox" style="display:none;">
@@ -485,6 +486,16 @@ footer .btn { width: auto; flex-shrink: 0; }
 </div>
 
 <script>
+window.onerror = function (message, source, lineno, colno, error) {
+  const banner = document.createElement("div");
+  banner.style.cssText =
+    "position:fixed;top:0;left:0;right:0;background:#c0392b;color:#fff;padding:10px;font-size:12px;z-index:9999;white-space:pre-wrap;";
+  banner.textContent = "Page error: " + message + " (line " + lineno + ")";
+  document.body.appendChild(banner);
+  console.error("Uncaught error:", message, source, lineno, colno, error);
+  return false;
+};
+
 let products = [];
 let currentScreen = "products";
 
@@ -521,6 +532,7 @@ const modalCloseButtonEl = document.getElementById("modalCloseButton");
 const statusTextEl = document.getElementById("statusText");
 const backToShopButtonEl = document.getElementById("backToShopButton");
 const backToCartButtonEl = document.getElementById("backToCartButton");
+const cartDebugTextEl = document.getElementById("cartDebugText");
 
 function saveCart() {
   localStorage.setItem("fallacyCart", JSON.stringify(cart));
@@ -709,67 +721,77 @@ function removeItem(id) {
 }
 
 function renderCart() {
-  cartListEl.innerHTML = "";
-  const items = Object.values(cart);
+  try {
+    cartListEl.innerHTML = "";
+    const items = Object.values(cart);
 
-  if (items.length === 0) {
+    if (items.length === 0) {
+      cartListEl.innerHTML =
+        '<p style="text-align:center;color:#777;">Your cart is empty.</p>';
+      totalBoxEl.style.display = "none";
+      checkoutSectionEl.style.display = "none";
+      return;
+    }
+
+    let subtotal = 0;
+
+    items.forEach(({ product, quantity }) => {
+      const price = Number(product.price || 0);
+      const stock = Number(product.stock || 0);
+      subtotal += price * quantity;
+
+      const item = document.createElement("div");
+      item.className = "cart-item";
+      const stockLeft = stock - quantity;
+
+      item.innerHTML = `
+        <img src="${product.photo || 'https://via.placeholder.com/100?text=Card'}" loading="lazy" alt="${product.name}">
+        <div class="cart-info">
+          <div class="product-name">${product.name}</div>
+          <div class="product-price">$${price.toFixed(2)} × ${quantity}</div>
+          <div class="product-meta">Stock left: ${stockLeft}</div>
+          ${
+            stockLeft <= 1
+              ? '<div class="stock-warning">Only ' + stockLeft + ' left!</div>'
+              : ""
+          }
+        </div>
+        <div class="cart-actions">
+          <div class="quantity-control">
+            <button aria-label="Decrease quantity">-</button>
+            <span>${quantity}</span>
+            <button aria-label="Increase quantity">+</button>
+          </div>
+          <button class="btn btn-secondary">Remove</button>
+        </div>
+      `;
+
+      const [minus, , plus] = item.querySelectorAll(".quantity-control button");
+      minus.onclick = () => changeQuantity(product.id, -1);
+      plus.onclick = () => changeQuantity(product.id, 1);
+      item.querySelector(".btn-secondary").onclick = () => removeItem(product.id);
+
+      cartListEl.appendChild(item);
+    });
+
+    const shipping = subtotal > 0 ? 5 : 0;
+    const total = subtotal + shipping;
+
+    subtotalTextEl.textContent = `$${subtotal.toFixed(2)}`;
+    shippingTextEl.textContent = `$${shipping.toFixed(2)}`;
+    totalTextEl.textContent = `$${total.toFixed(2)}`;
+
+    totalBoxEl.style.display = "block";
+    checkoutSectionEl.style.display = "block";
+  } catch (err) {
+    console.error("renderCart failed:", err);
     cartListEl.innerHTML =
-      '<p style="text-align:center;color:#777;">Your cart is empty.</p>';
+      '<p style="text-align:center;color:#c0392b;padding:12px;">' +
+      'Something went wrong showing your cart: ' + (err && err.message ? err.message : err) +
+      '<br><br>Please screenshot this message and send it over.</p>';
     totalBoxEl.style.display = "none";
     checkoutSectionEl.style.display = "none";
-    return;
   }
-
-  let subtotal = 0;
-
-  items.forEach(({ product, quantity }) => {
-    const price = Number(product.price || 0);
-    const stock = Number(product.stock || 0);
-    subtotal += price * quantity;
-
-    const item = document.createElement("div");
-    item.className = "cart-item";
-    const stockLeft = stock - quantity;
-
-    item.innerHTML = `
-      <img src="${product.photo || 'https://via.placeholder.com/100?text=Card'}" loading="lazy" alt="${product.name}">
-      <div class="cart-info">
-        <div class="product-name">${product.name}</div>
-        <div class="product-price">$${price.toFixed(2)} × ${quantity}</div>
-        <div class="product-meta">Stock left: ${stockLeft}</div>
-        ${
-          stockLeft <= 1
-            ? '<div class="stock-warning">Only ' + stockLeft + ' left!</div>'
-            : ""
-        }
-      </div>
-      <div class="cart-actions">
-        <div class="quantity-control">
-          <button aria-label="Decrease quantity">-</button>
-          <span>${quantity}</span>
-          <button aria-label="Increase quantity">+</button>
-        </div>
-        <button class="btn btn-secondary">Remove</button>
-      </div>
-    `;
-
-    const [minus, , plus] = item.querySelectorAll(".quantity-control button");
-    minus.onclick = () => changeQuantity(product.id, -1);
-    plus.onclick = () => changeQuantity(product.id, 1);
-    item.querySelector(".btn-secondary").onclick = () => removeItem(product.id);
-
-    cartListEl.appendChild(item);
-  });
-
-  const shipping = subtotal > 0 ? 5 : 0;
-  const total = subtotal + shipping;
-
-  subtotalTextEl.textContent = `$${subtotal.toFixed(2)}`;
-  shippingTextEl.textContent = `$${shipping.toFixed(2)}`;
-  totalTextEl.textContent = `$${total.toFixed(2)}`;
-
-  totalBoxEl.style.display = "block";
-  checkoutSectionEl.style.display = "block";
 }
 
 function showProducts() {
@@ -789,6 +811,12 @@ function showCart() {
   paynowScreenEl.style.display = "none";
   footerTextEl.textContent = "Reviewing cart";
   syncFooterButton();
+
+  const rawStored = localStorage.getItem("fallacyCart");
+  const itemCount = Object.keys(cart).length;
+  cartDebugTextEl.textContent =
+    `[debug] in-memory items: ${itemCount} | localStorage raw: ${rawStored ? rawStored.slice(0, 120) : "(none)"}`;
+
   renderCart();
   window.scrollTo(0, 0);
 }
