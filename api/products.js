@@ -1,4 +1,3 @@
-import fs from "fs";
 import path from "path";
 import { readFileSync } from "fs";
 import XLSX from "xlsx";
@@ -6,7 +5,7 @@ import XLSX from "xlsx";
 export default function handler(req, res) {
   try {
     // Build absolute path to the Excel file in the repo
-    const filePath = path.join(process.cwd(), "Ministore inventory.xlsx");
+    const filePath = path.join(process.cwd(), "ministore-inventory.xlsx");
 
     // Read file from disk
     const fileBuffer = readFileSync(filePath);
