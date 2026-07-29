@@ -5,7 +5,7 @@
     {
       "src": "api/products.js",
       "use": "@vercel/node",
-      "config": { "includeFiles": "Ministore inventory.xlsx" }
+      "config": { "includeFiles": "ministore-inventory.xlsx" }
     },
     { "src": "index.html", "use": "@vercel/static" }
   ],
