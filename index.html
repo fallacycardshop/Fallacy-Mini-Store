@@ -59,26 +59,22 @@ body {
   min-height: 100dvh; /* dynamic viewport height, accounts for mobile browser chrome */
 }
 
-header {
-  background: #fff;
-  padding: calc(10px + var(--safe-top)) 14px 10px;
-  padding-left: calc(14px + var(--safe-left));
-  padding-right: calc(14px + var(--safe-right));
-  text-align: center;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  box-shadow: 0 2px 8px rgba(180,120,140,0.1);
+.logo-img {
+  width: 64px;
+  height: auto;
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.1));
 }
 
-.logo-img {
-  max-width: 130px;
-  width: 100%;
-  height: auto;
-  display: block;
-  margin: 0 auto;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.12));
+.page-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: calc(12px + var(--safe-top));
 }
+
+.page-heading-row h2 { margin: 0; }
 
 main {
   padding: 16px;
@@ -100,7 +96,7 @@ h2 {
   gap: 8px;
   margin-bottom: 12px;
   position: sticky;
-  top: calc(148px + var(--safe-top)); /* sits right under the taller logo header when scrolling */
+  top: var(--safe-top); /* sticks to the very top of the viewport once scrolled past the heading */
   z-index: 9;
   background: #fff;
   padding-top: 4px;
@@ -403,8 +399,7 @@ footer .btn { width: auto; flex-shrink: 0; }
 
 /* Small phones (iPhone SE and similar, ~375px and under) */
 @media (max-width: 380px) {
-  header { padding-top: calc(8px + var(--safe-top)); padding-bottom: 8px; }
-  .logo-img { max-width: 105px; }
+  .logo-img { width: 52px; }
   .product-card, .cart-item { padding: 10px; gap: 10px; }
   .product-card img, .cart-item img { width: 76px; }
 }
@@ -427,15 +422,14 @@ footer .btn { width: auto; flex-shrink: 0; }
 </head>
 <body>
 
-<header>
-  <img class="logo-img" src="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/FallacyLogo.jpg" alt="Fallacy's Mini Store">
-</header>
-
 <main>
 
   <!-- PRODUCT SCREEN -->
   <section id="productsScreen">
-    <h2>Available items this week!</h2>
+    <div class="page-heading-row">
+      <h2>Available items this week!</h2>
+      <img class="logo-img" src="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/FallacyLogo.jpg" alt="Fallacy's Mini Store">
+    </div>
     <p class="stock-note">Stock will be refreshed weekly.</p>
     <p id="statusText" class="status-text">Loading inventory…</p>
 
@@ -1042,6 +1036,7 @@ paynowConfirmButtonEl.onclick = async () => {
 modalCloseButtonEl.onclick = () => {
   modalBackdropEl.style.display = "none";
   showProducts();
+  loadProducts(); // refresh stock counts now that this order was just recorded
 };
 
 loadProducts();
