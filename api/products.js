@@ -68,6 +68,7 @@ export default function handler(req, res) {
         description: row.Description || row.Condition || "",
         stock: Number(row.Stock || 0),
         category: row.Category || row.Rarity || "Uncategorized",
+        cardId: row.CardID || "",
       };
     });
 
