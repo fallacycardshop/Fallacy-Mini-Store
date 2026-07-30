@@ -59,10 +59,11 @@ export default async function handler(req, res) {
     const headers = rows[0];
     const dataRows = rows.slice(1).filter(r => r.some(cell => cell.trim() !== ""));
 
-    // Group rows by CardID (falling back to Name if a row has no CardID),
-    // summing their Stock values together. This means pasting an extra row
-    // with the same CardID to restock a card just adds to its total —
-    // it won't create a duplicate/second listing.
+    // Group rows by CardID + Condition together (falling back to Name if a
+    // row has no CardID). Condition is included because the same CardID can
+    // legitimately be listed at multiple conditions (e.g. NM and NM-) which
+    // are different, separately-priced items and must NOT be merged —
+    // only truly duplicate rows (same card, same condition) should combine.
     const groups = new Map();
 
     dataRows.forEach((rowArr, index) => {
@@ -70,13 +71,14 @@ export default async function handler(req, res) {
       headers.forEach((h, i) => (row[h] = rowArr[i]));
 
       const cardId = row.CardID || "";
-      const groupKey = cardId || row.Name || `row${index}`;
+      const condition = row.Condition || "";
+      const groupKey = `${cardId || row.Name || `row${index}`}::${condition}`;
       const stockValue = Number(row.Stock || 0);
 
       if (groups.has(groupKey)) {
         // Only the stock quantity is combined — other fields (price, photo,
         // condition, etc.) are taken from the first row seen for this
-        // CardID, so keep those consistent across duplicate rows.
+        // key, so keep those consistent across duplicate rows.
         groups.get(groupKey).baseStock += stockValue;
       } else {
         groups.set(groupKey, {
@@ -111,6 +113,7 @@ export default async function handler(req, res) {
           stock: Math.max(group.baseStock - sold, 0),
           category: group.category,
           cardId: group.cardId,
+          stockKey: groupKey,
         };
       })
     );
