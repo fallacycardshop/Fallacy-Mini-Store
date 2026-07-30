@@ -59,33 +59,58 @@ export default async function handler(req, res) {
     const headers = rows[0];
     const dataRows = rows.slice(1).filter(r => r.some(cell => cell.trim() !== ""));
 
-    const products = await Promise.all(
-      dataRows.map(async (rowArr, index) => {
-        const row = {};
-        headers.forEach((h, i) => (row[h] = rowArr[i]));
+    // Group rows by CardID (falling back to Name if a row has no CardID),
+    // summing their Stock values together. This means pasting an extra row
+    // with the same CardID to restock a card just adds to its total —
+    // it won't create a duplicate/second listing.
+    const groups = new Map();
 
-        const cardId = row.CardID || "";
-        // Sold counts are tracked by CardID (stable) rather than row position,
-        // since row position shifts whenever the CSV is reordered/edited.
-        const soldKey = cardId || row.Name || `row${index}`;
-        const baseStock = Number(row.Stock || 0);
+    dataRows.forEach((rowArr, index) => {
+      const row = {};
+      headers.forEach((h, i) => (row[h] = rowArr[i]));
 
-        let sold = 0;
-        try {
-          sold = Number(await redis.get(`sold:${soldKey}`)) || 0;
-        } catch (kvErr) {
-          console.error("Redis read failed for", soldKey, kvErr);
-        }
+      const cardId = row.CardID || "";
+      const groupKey = cardId || row.Name || `row${index}`;
+      const stockValue = Number(row.Stock || 0);
 
-        return {
-          id: index + 1,
+      if (groups.has(groupKey)) {
+        // Only the stock quantity is combined — other fields (price, photo,
+        // condition, etc.) are taken from the first row seen for this
+        // CardID, so keep those consistent across duplicate rows.
+        groups.get(groupKey).baseStock += stockValue;
+      } else {
+        groups.set(groupKey, {
+          cardId,
           name: row.Name || "",
           price: Number(row.Price || 0),
           photo: row.Photo || "",
           description: row.Description || row.Condition || "",
-          stock: Math.max(baseStock - sold, 0),
           category: row.Category || row.Rarity || "Uncategorized",
-          cardId,
+          baseStock: stockValue,
+        });
+      }
+    });
+
+    const groupEntries = Array.from(groups.entries());
+
+    const products = await Promise.all(
+      groupEntries.map(async ([groupKey, group], index) => {
+        let sold = 0;
+        try {
+          sold = Number(await redis.get(`sold:${groupKey}`)) || 0;
+        } catch (kvErr) {
+          console.error("Redis read failed for", groupKey, kvErr);
+        }
+
+        return {
+          id: index + 1,
+          name: group.name,
+          price: group.price,
+          photo: group.photo,
+          description: group.description,
+          stock: Math.max(group.baseStock - sold, 0),
+          category: group.category,
+          cardId: group.cardId,
         };
       })
     );
