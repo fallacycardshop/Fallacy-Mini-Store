@@ -73,10 +73,15 @@ body {
 
 .page-heading-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   margin-top: calc(12px + var(--safe-top));
+}
+
+.heading-text-col {
+  flex: 1;
+  min-width: 0;
 }
 
 .page-heading-row h2 { margin: 0; }
@@ -143,13 +148,14 @@ h2 {
   border-radius: 12px;
   padding: 12px;
   display: flex;
+  align-items: flex-start;
   gap: 12px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.08);
 }
 
 .product-card img,
 .cart-item img {
-  width: 92px;
+  width: 112px;
   aspect-ratio: 5 / 7; /* matches a trading card's portrait proportions */
   object-fit: cover;
   border-radius: 10px;
@@ -172,6 +178,10 @@ h2 {
   font-weight: 600;
   margin-bottom: 4px;
   word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .product-price {
@@ -255,6 +265,7 @@ h2 {
   border-radius: 12px;
   padding: 12px;
   display: flex;
+  align-items: flex-start;
   gap: 12px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.08);
 }
@@ -406,7 +417,7 @@ footer .btn { width: auto; flex-shrink: 0; }
 @media (max-width: 380px) {
   .logo-svg { width: 115px; }
   .product-card, .cart-item { padding: 10px; gap: 10px; }
-  .product-card img, .cart-item img { width: 76px; }
+  .product-card img, .cart-item img { width: 96px; }
 }
 
 /* Stack product/cart cards vertically on very narrow screens for readability */
@@ -421,7 +432,7 @@ footer .btn { width: auto; flex-shrink: 0; }
 
 /* Larger phones / small tablets in portrait: give products a bit more breathing room */
 @media (min-width: 600px) {
-  .product-card img, .cart-item img { width: 120px; }
+  .product-card img, .cart-item img { width: 136px; }
 }
 </style>
 </head>
@@ -432,7 +443,11 @@ footer .btn { width: auto; flex-shrink: 0; }
   <!-- PRODUCT SCREEN -->
   <section id="productsScreen">
     <div class="page-heading-row">
-      <h2>Available items this week!</h2>
+      <div class="heading-text-col">
+        <h2>Available items this week!</h2>
+        <p class="stock-note">Stock will be refreshed weekly.</p>
+        <p class="stock-note">Note: All photos are for reference only and do not reflect actual condition stated.</p>
+      </div>
       <svg class="logo-svg" viewBox="0 0 270 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Fallacy's Mini Store">
         <text x="0" y="30" font-family="Poppins, sans-serif" font-weight="700" font-size="28" fill="var(--pink-main)">Fallacy's</text>
         <text x="0" y="52" font-family="Poppins, sans-serif" font-weight="500" font-size="16" letter-spacing="3" fill="var(--plum)">MINI STORE</text>
@@ -440,14 +455,15 @@ footer .btn { width: auto; flex-shrink: 0; }
         <circle cx="262" cy="20" r="2.2" fill="var(--plum)"/>
       </svg>
     </div>
-    <p class="stock-note">Stock will be refreshed weekly.</p>
-    <p class="stock-note">Note: All photos are for reference only and do not reflect actual condition stated.</p>
     <p id="statusText" class="status-text">Loading inventory…</p>
 
     <div class="toolbar">
       <input id="searchInput" type="search" inputmode="search" enterkeyhint="search" placeholder="Search cards..." autocomplete="off" autocorrect="off">
       <select id="categoryFilter">
         <option value="">All categories</option>
+      </select>
+      <select id="setFilter">
+        <option value="">All sets</option>
       </select>
     </div>
 
@@ -617,6 +633,7 @@ const totalBoxEl = document.getElementById("totalBox");
 const checkoutSectionEl = document.getElementById("checkoutSection");
 const searchInputEl = document.getElementById("searchInput");
 const categoryFilterEl = document.getElementById("categoryFilter");
+const setFilterEl = document.getElementById("setFilter");
 const checkoutButtonEl = document.getElementById("checkoutButton");
 const paynowAmountEl = document.getElementById("paynowAmount");
 const paynowConfirmButtonEl = document.getElementById("paynowConfirmButton");
@@ -837,6 +854,7 @@ async function loadProducts() {
     products = await res.json();
     statusTextEl.textContent = `Loaded ${products.length} items from inventory.`;
     renderCategoryFilter();
+    renderSetFilter();
     reconcileCartWithStock();
     renderProducts();
     updateCartBadge();
@@ -892,9 +910,23 @@ function renderCategoryFilter() {
   });
 }
 
+function renderSetFilter() {
+  const sets = [...new Set(products.map(p => p.set))].filter(Boolean);
+  const previousValue = setFilterEl.value;
+  setFilterEl.innerHTML = '<option value="">All sets</option>';
+  sets.forEach(setName => {
+    const opt = document.createElement("option");
+    opt.value = setName;
+    opt.textContent = setName;
+    setFilterEl.appendChild(opt);
+  });
+  if (sets.includes(previousValue)) setFilterEl.value = previousValue;
+}
+
 function renderProducts() {
   const search = searchInputEl.value.trim().toLowerCase();
   const category = categoryFilterEl.value;
+  const setValue = setFilterEl.value;
 
   productListEl.innerHTML = "";
 
@@ -905,7 +937,8 @@ function renderProducts() {
         p.name.toLowerCase().includes(search) ||
         (p.description || "").toLowerCase().includes(search);
       const matchesCategory = !category || p.category === category;
-      return matchesSearch && matchesCategory;
+      const matchesSet = !setValue || p.set === setValue;
+      return matchesSearch && matchesCategory && matchesSet;
     })
     .forEach(p => {
       const stock = Number(p.stock || 0);
@@ -921,7 +954,8 @@ function renderProducts() {
           <div class="product-name">${p.name}</div>
           <div class="product-price">$${Number(p.price || 0).toFixed(2)}</div>
           <div class="product-desc">${p.description || ""}</div>
-          <div class="product-meta">Category: ${p.category || "Uncategorized"}</div>
+          <div class="product-meta">Rarity: ${p.category || "Uncategorized"}</div>
+          <div class="product-meta">Set: ${p.set || "N/A"}</div>
           <div class="product-meta">Stock: ${stock}${inCart > 0 ? ` (${inCart} in your cart)` : ""}</div>
         </div>
         <div class="product-actions">
@@ -946,6 +980,7 @@ function renderProducts() {
 
 searchInputEl.oninput = renderProducts;
 categoryFilterEl.onchange = renderProducts;
+setFilterEl.onchange = renderProducts;
 
 function getCartQuantity(productId) {
   return cart[productId] ? cart[productId].quantity : 0;
