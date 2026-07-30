@@ -1,6 +1,8 @@
 import path from "path";
 import { readFileSync } from "fs";
-import { kv } from "@vercel/kv";
+import { Redis } from "@upstash/redis";
+
+const redis = Redis.fromEnv();
 
 // Minimal CSV parser (handles quoted fields with commas, if you ever need them)
 function parseCSV(text) {
@@ -70,9 +72,9 @@ export default async function handler(req, res) {
 
         let sold = 0;
         try {
-          sold = Number(await kv.get(`sold:${soldKey}`)) || 0;
+          sold = Number(await redis.get(`sold:${soldKey}`)) || 0;
         } catch (kvErr) {
-          console.error("KV read failed for", soldKey, kvErr);
+          console.error("Redis read failed for", soldKey, kvErr);
         }
 
         return {
