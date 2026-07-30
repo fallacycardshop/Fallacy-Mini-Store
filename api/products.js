@@ -29,6 +29,7 @@ export default async function handler(req, res) {
           description: group.description,
           stock: Math.max(group.baseStock - sold - reserved, 0),
           category: group.category,
+          set: group.set,
           cardId: group.cardId,
           stockKey: groupKey,
         };
