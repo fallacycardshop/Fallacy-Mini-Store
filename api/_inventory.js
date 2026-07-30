@@ -78,6 +78,7 @@ export function loadInventoryGroups() {
         photo: row.Photo || "",
         description: row.Description || row.Condition || "",
         category: row.Category || row.Rarity || "Uncategorized",
+        set: row.Set || "",
         baseStock: stockValue,
       });
     }
