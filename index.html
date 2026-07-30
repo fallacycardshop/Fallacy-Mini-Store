@@ -18,21 +18,23 @@
 <!-- Telegram Mini App SDK: exposes Telegram.WebApp with the buyer's Telegram identity -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
+<!-- Poppins, to match the invoice branding -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+
 <style>
 :root {
-  --cream: #fdf8f3;
-  --pink-bg: #fdf3f7;
-  --pink-main: #f2a6c0;
-  --pink-deep: #e46f95;
+  --pink-main: #d1447b;   /* matches the invoice header pink */
+  --pink-deep: #a8305f;   /* deeper shade for hover/emphasis */
   --pink-soft: #fbe4ec;
-  --pink-border: #f6d3e0;
-  --sage: #9dc7a0;
-  --sage-deep: #6fa377;
-  --sage-soft: #e8f4ea;
+  --pink-border: #f3c9dc;
+  --plum: #5c3350;        /* replaces the old sage green as the secondary accent */
+  --plum-deep: #45253c;
+  --plum-soft: #f1e6ee;
   --gold: #eddab0;
-  --gold-deep: #d9b06a;
-  --text-main: #4a3b3f;
-  --text-soft: #8a7c80;
+  --text-main: #2b2b2b;
+  --text-soft: #6b6b6b;
 
   /* iOS safe-area insets (0 on devices without a notch/home indicator) */
   --safe-top: env(safe-area-inset-top, 0px);
@@ -43,6 +45,10 @@
 
 * { box-sizing: border-box; }
 
+input, select, textarea, button {
+  font-family: inherit;
+}
+
 html {
   /* Stops iOS Safari from auto-zooming text when input font-size < 16px */
   -webkit-text-size-adjust: 100%;
@@ -52,18 +58,17 @@ html {
 body {
   margin: 0;
   background: #fff;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: var(--text-main);
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none; /* kill the rubber-band "pull to refresh" feel on the whole page */
   min-height: 100dvh; /* dynamic viewport height, accounts for mobile browser chrome */
 }
 
-.logo-img {
-  width: 64px;
+.logo-svg {
+  width: 150px;
   height: auto;
   flex-shrink: 0;
-  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.1));
 }
 
 .page-heading-row {
@@ -87,7 +92,7 @@ main {
 
 h2 {
   margin-top: 0;
-  color: #e46f95;
+  color: var(--pink-deep);
 }
 
 .toolbar {
@@ -123,7 +128,7 @@ h2 {
 .stock-note {
   font-size: 12px;
   font-style: italic;
-  color: var(--sage-deep);
+  color: var(--plum);
   margin: -6px 0 10px;
 }
 
@@ -171,7 +176,7 @@ h2 {
 
 .product-price {
   font-size: 14px;
-  color: #e46f95;
+  color: var(--pink-deep);
   margin-bottom: 6px;
 }
 
@@ -227,14 +232,14 @@ h2 {
 .btn-primary {
   background: var(--pink-main);
   color: #fff;
-  box-shadow: 0 2px 4px rgba(228,111,149,0.2);
+  box-shadow: 0 2px 4px rgba(209,68,123,0.25);
   width: 100%;
 }
 
 .btn-secondary {
   background: #fff;
-  color: var(--sage-deep);
-  border: 1px solid var(--sage);
+  color: var(--plum);
+  border: 1px solid var(--plum);
 }
 
 #cartScreen, #paynowScreen { display: none; }
@@ -278,7 +283,7 @@ h2 {
   border-radius: 50%;
   border: none;
   background: var(--pink-soft);
-  color: #e46f95;
+  color: var(--pink-deep);
   font-weight: bold;
   font-size: 18px;
   cursor: pointer;
@@ -354,11 +359,11 @@ footer {
   padding-left: calc(16px + var(--safe-left));
   padding-right: calc(16px + var(--safe-right));
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
   color: #fff;
   font-size: 14px;
-  box-shadow: 0 -2px 8px rgba(180,120,140,0.15);
+  box-shadow: 0 -2px 8px rgba(168,48,95,0.2);
   z-index: 10;
 }
 
@@ -393,13 +398,13 @@ footer .btn { width: auto; flex-shrink: 0; }
   box-shadow: 0 4px 10px rgba(0,0,0,0.2);
 }
 
-.modal h3 { margin-top: 0; color: #e46f95; }
+.modal h3 { margin-top: 0; color: var(--pink-deep); }
 .modal p { font-size: 14px; color: var(--text-soft); }
 .modal .btn { margin-top: 10px; }
 
 /* Small phones (iPhone SE and similar, ~375px and under) */
 @media (max-width: 380px) {
-  .logo-img { width: 52px; }
+  .logo-svg { width: 115px; }
   .product-card, .cart-item { padding: 10px; gap: 10px; }
   .product-card img, .cart-item img { width: 76px; }
 }
@@ -428,7 +433,12 @@ footer .btn { width: auto; flex-shrink: 0; }
   <section id="productsScreen">
     <div class="page-heading-row">
       <h2>Available items this week!</h2>
-      <img class="logo-img" src="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/FallacyLogo.jpg" alt="Fallacy's Mini Store">
+      <svg class="logo-svg" viewBox="0 0 270 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Fallacy's Mini Store">
+        <text x="0" y="30" font-family="Poppins, sans-serif" font-weight="700" font-size="28" fill="var(--pink-main)">Fallacy's</text>
+        <text x="0" y="52" font-family="Poppins, sans-serif" font-weight="500" font-size="16" letter-spacing="3" fill="var(--plum)">MINI STORE</text>
+        <circle cx="252" cy="10" r="4" fill="var(--pink-main)"/>
+        <circle cx="262" cy="20" r="2.2" fill="var(--plum)"/>
+      </svg>
     </div>
     <p class="stock-note">Stock will be refreshed weekly.</p>
     <p id="statusText" class="status-text">Loading inventory…</p>
@@ -456,7 +466,7 @@ footer .btn { width: auto; flex-shrink: 0; }
     </div>
 
     <div class="checkout-section" id="checkoutSection" style="display:none;">
-      <h3 style="color:#e46f95;">Checkout</h3>
+      <h3 style="color:var(--pink-deep);">Checkout</h3>
       <div class="form-row" style="display:flex;align-items:flex-start;gap:8px;">
         <input type="checkbox" id="holdCheckbox" style="width:20px;height:20px;margin-top:2px;flex-shrink:0;">
         <label for="holdCheckbox" style="font-weight:400;font-size:13px;color:var(--text-main);">
@@ -515,17 +525,17 @@ footer .btn { width: auto; flex-shrink: 0; }
     <button class="btn btn-secondary" id="backToCartButton" style="margin-bottom:12px;">← Back to Cart</button>
     <h2>PayNow Payment</h2>
     <div style="background:#fff;padding:16px;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,0.08);text-align:center;">
-      <p style="font-size:15px;color:#e46f95;font-weight:600;">
+      <p style="font-size:15px;color:var(--pink-deep);font-weight:600;">
         Scan the QR code below to make payment
       </p>
       <img src="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/PayNowQR.jpg"
-           style="width:100%;max-width:220px;height:auto;aspect-ratio:1/1;border-radius:12px;border:3px solid #ffd6e8;margin:12px auto;display:block;">
+           style="width:100%;max-width:220px;height:auto;aspect-ratio:1/1;border-radius:12px;border:3px solid var(--pink-border);margin:12px auto;display:block;">
       <p style="font-size:14px;color:#555;">
         Or PayNow/Paylah to 8963 1819
         <br>(Paynow: CHXX YUX SHEXX RYXX / Paylah: fallacytcg)
         <br><strong>Send your screenshot as proof to our DMs @fallacytcg on Telegram within 24 hours. Orders will only be confirmed upon receipt of screenshot.</strong>
       </p>
-      <p style="font-size:16px;color:#e46f95;font-weight:700;margin-top:10px;">
+      <p style="font-size:16px;color:var(--pink-deep);font-weight:700;margin-top:10px;">
         Amount: <span id="paynowAmount">$0.00</span>
       </p>
       <button class="btn btn-primary" id="paynowConfirmButton" style="margin-top:16px;">
@@ -537,7 +547,6 @@ footer .btn { width: auto; flex-shrink: 0; }
 </main>
 
 <footer>
-  <span id="footerText">Browsing products</span>
   <button class="btn btn-secondary" id="cartButton">Cart (0)</button>
 </footer>
 
@@ -604,7 +613,6 @@ const fullDetailsFieldsEl = document.getElementById("fullDetailsFields");
 const totalTextEl = document.getElementById("totalText");
 const totalBoxEl = document.getElementById("totalBox");
 const checkoutSectionEl = document.getElementById("checkoutSection");
-const footerTextEl = document.getElementById("footerText");
 const searchInputEl = document.getElementById("searchInput");
 const categoryFilterEl = document.getElementById("categoryFilter");
 const checkoutButtonEl = document.getElementById("checkoutButton");
@@ -1012,7 +1020,6 @@ function showProducts() {
   productsScreenEl.style.display = "block";
   cartScreenEl.style.display = "none";
   paynowScreenEl.style.display = "none";
-  footerTextEl.textContent = "Browsing products";
   syncFooterButton();
   renderProducts(); // keeps "in your cart" / remaining-stock counts in sync with any cart changes
   window.scrollTo(0, 0);
@@ -1023,7 +1030,6 @@ function showCart() {
   productsScreenEl.style.display = "none";
   cartScreenEl.style.display = "block";
   paynowScreenEl.style.display = "none";
-  footerTextEl.textContent = "Reviewing cart";
   syncFooterButton();
   renderCart();
   window.scrollTo(0, 0);
@@ -1034,7 +1040,6 @@ function showPayNow() {
   productsScreenEl.style.display = "none";
   cartScreenEl.style.display = "none";
   paynowScreenEl.style.display = "block";
-  footerTextEl.textContent = "PayNow payment";
   syncFooterButton();
   window.scrollTo(0, 0);
 }
