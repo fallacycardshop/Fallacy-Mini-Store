@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Fallacy Store">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#ffbcd4">
+<meta name="theme-color" content="#f2a6c0">
 <meta name="format-detection" content="telephone=no">
 
 <!-- Telegram Mini App SDK: exposes Telegram.WebApp with the buyer's Telegram identity -->
@@ -20,13 +20,19 @@
 
 <style>
 :root {
-  --pink-bg: #ffeef5;
-  --pink-main: #ffbcd4;
-  --pink-accent: #ff8fb3;
-  --pink-soft: #ffe3ec;
-  --pink-border: #ffd6e8;
-  --text-main: #333;
-  --text-soft: #777;
+  --cream: #fdf8f3;
+  --pink-bg: #fdf3f7;
+  --pink-main: #f2a6c0;
+  --pink-deep: #e46f95;
+  --pink-soft: #fbe4ec;
+  --pink-border: #f6d3e0;
+  --sage: #9dc7a0;
+  --sage-deep: #6fa377;
+  --sage-soft: #e8f4ea;
+  --gold: #eddab0;
+  --gold-deep: #d9b06a;
+  --text-main: #4a3b3f;
+  --text-soft: #8a7c80;
 
   /* iOS safe-area insets (0 on devices without a notch/home indicator) */
   --safe-top: env(safe-area-inset-top, 0px);
@@ -45,7 +51,7 @@ html {
 
 body {
   margin: 0;
-  background: var(--pink-bg);
+  background: linear-gradient(180deg, #fdf3f7 0%, var(--cream) 45%, #f3f9f3 100%);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: var(--text-main);
   -webkit-tap-highlight-color: transparent;
@@ -54,18 +60,24 @@ body {
 }
 
 header {
-  background: var(--pink-main);
-  padding: calc(14px + var(--safe-top)) 14px 14px;
+  background: linear-gradient(135deg, var(--pink-main) 0%, #eab8c4 45%, var(--sage) 100%);
+  padding: calc(10px + var(--safe-top)) 14px 10px;
   padding-left: calc(14px + var(--safe-left));
   padding-right: calc(14px + var(--safe-right));
   text-align: center;
-  font-weight: 700;
-  font-size: 20px;
-  color: #fff;
   position: sticky;
   top: 0;
   z-index: 10;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(180,120,140,0.18);
+}
+
+.logo-img {
+  max-width: 130px;
+  width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.12));
 }
 
 main {
@@ -79,7 +91,7 @@ main {
 
 h2 {
   margin-top: 0;
-  color: #d14f7b;
+  color: #e46f95;
 }
 
 .toolbar {
@@ -88,9 +100,9 @@ h2 {
   gap: 8px;
   margin-bottom: 12px;
   position: sticky;
-  top: calc(52px + var(--safe-top)); /* sits right under the header when scrolling */
+  top: calc(148px + var(--safe-top)); /* sits right under the taller logo header when scrolling */
   z-index: 9;
-  background: var(--pink-bg);
+  background: var(--cream);
   padding-top: 4px;
 }
 
@@ -112,6 +124,13 @@ h2 {
   margin-bottom: 8px;
 }
 
+.stock-note {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--sage-deep);
+  margin: -6px 0 10px;
+}
+
 .product-list {
   display: flex;
   flex-direction: column;
@@ -129,13 +148,20 @@ h2 {
 
 .product-card img,
 .cart-item img {
-  width: 100px;
-  height: 100px;
+  width: 92px;
+  aspect-ratio: 5 / 7; /* matches a trading card's portrait proportions */
+  object-fit: cover;
   border-radius: 10px;
-  object-fit: contain;
   background: #fff;
-  border: 2px solid var(--pink-border);
+  border: 3px solid var(--gold);
   flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.product-card img:active,
+.cart-item img:active {
+  transform: scale(0.96);
 }
 
 .product-info { flex: 1; min-width: 0; }
@@ -149,7 +175,7 @@ h2 {
 
 .product-price {
   font-size: 14px;
-  color: #d14f7b;
+  color: #e46f95;
   margin-bottom: 6px;
 }
 
@@ -203,15 +229,15 @@ h2 {
 }
 
 .btn-primary {
-  background: var(--pink-accent);
+  background: linear-gradient(135deg, var(--pink-main), var(--pink-deep));
   color: #fff;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.12);
+  box-shadow: 0 2px 4px rgba(228,111,149,0.25);
   width: 100%;
 }
 
 .btn-secondary {
-  background: var(--pink-soft);
-  color: #d14f7b;
+  background: var(--sage-soft);
+  color: var(--sage-deep);
 }
 
 #cartScreen, #paynowScreen { display: none; }
@@ -255,7 +281,7 @@ h2 {
   border-radius: 50%;
   border: none;
   background: var(--pink-soft);
-  color: #d14f7b;
+  color: #e46f95;
   font-weight: bold;
   font-size: 18px;
   cursor: pointer;
@@ -326,7 +352,7 @@ footer {
   bottom: 0;
   left: 0;
   right: 0;
-  background: var(--pink-main);
+  background: linear-gradient(135deg, var(--pink-main) 0%, #eab8c4 45%, var(--sage) 100%);
   padding: 12px 16px calc(12px + var(--safe-bottom));
   padding-left: calc(16px + var(--safe-left));
   padding-right: calc(16px + var(--safe-right));
@@ -335,7 +361,7 @@ footer {
   align-items: center;
   color: #fff;
   font-size: 14px;
-  box-shadow: 0 -2px 6px rgba(0,0,0,0.1);
+  box-shadow: 0 -2px 8px rgba(180,120,140,0.18);
   z-index: 10;
 }
 
@@ -370,15 +396,16 @@ footer .btn { width: auto; flex-shrink: 0; }
   box-shadow: 0 4px 10px rgba(0,0,0,0.2);
 }
 
-.modal h3 { margin-top: 0; color: #d14f7b; }
+.modal h3 { margin-top: 0; color: #e46f95; }
 .modal p { font-size: 14px; color: var(--text-soft); }
 .modal .btn { margin-top: 10px; }
 
 /* Small phones (iPhone SE and similar, ~375px and under) */
 @media (max-width: 380px) {
-  header { font-size: 18px; }
+  header { padding-top: calc(8px + var(--safe-top)); padding-bottom: 8px; }
+  .logo-img { max-width: 105px; }
   .product-card, .cart-item { padding: 10px; gap: 10px; }
-  .product-card img, .cart-item img { width: 80px; height: 80px; }
+  .product-card img, .cart-item img { width: 76px; }
 }
 
 /* Stack product/cart cards vertically on very narrow screens for readability */
@@ -393,19 +420,22 @@ footer .btn { width: auto; flex-shrink: 0; }
 
 /* Larger phones / small tablets in portrait: give products a bit more breathing room */
 @media (min-width: 600px) {
-  .product-card img, .cart-item img { width: 110px; height: 110px; }
+  .product-card img, .cart-item img { width: 120px; }
 }
 </style>
 </head>
 <body>
 
-<header>Fallacy's Mini Store</header>
+<header>
+  <img class="logo-img" src="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/FallacyLogo.png" alt="Fallacy's Mini Store">
+</header>
 
 <main>
 
   <!-- PRODUCT SCREEN -->
   <section id="productsScreen">
-    <h2>Products</h2>
+    <h2>Available items this week!</h2>
+    <p class="stock-note">Stock will be refreshed weekly.</p>
     <p id="statusText" class="status-text">Loading inventory…</p>
 
     <div class="toolbar">
@@ -431,7 +461,7 @@ footer .btn { width: auto; flex-shrink: 0; }
     </div>
 
     <div class="checkout-section" id="checkoutSection" style="display:none;">
-      <h3 style="color:#d14f7b;">Checkout</h3>
+      <h3 style="color:#e46f95;">Checkout</h3>
       <div class="form-row">
         <label>Name</label>
         <input id="nameInput" type="text" inputmode="text" enterkeyhint="next" autocomplete="name">
@@ -453,7 +483,7 @@ footer .btn { width: auto; flex-shrink: 0; }
     <button class="btn btn-secondary" id="backToCartButton" style="margin-bottom:12px;">← Back to Cart</button>
     <h2>PayNow Payment</h2>
     <div style="background:#fff;padding:16px;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,0.08);text-align:center;">
-      <p style="font-size:15px;color:#d14f7b;font-weight:600;">
+      <p style="font-size:15px;color:#e46f95;font-weight:600;">
         Scan the QR code below to make payment
       </p>
       <img src="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/PayNowQR.jpg"
@@ -463,7 +493,7 @@ footer .btn { width: auto; flex-shrink: 0; }
         <br>(Paynow: CHXX YUX SHEXX RYXX / Paylah: fallacytcg)
         <br><strong>Send your screenshot as proof to our DMs @fallacytcg on Telegram within 24 hours. Orders will only be confirmed upon receipt of screenshot.</strong>
       </p>
-      <p style="font-size:16px;color:#d14f7b;font-weight:700;margin-top:10px;">
+      <p style="font-size:16px;color:#e46f95;font-weight:700;margin-top:10px;">
         Amount: <span id="paynowAmount">$0.00</span>
       </p>
       <button class="btn btn-primary" id="paynowConfirmButton" style="margin-top:16px;">
@@ -478,6 +508,10 @@ footer .btn { width: auto; flex-shrink: 0; }
   <span id="footerText">Browsing products</span>
   <button class="btn btn-secondary" id="cartButton">Cart (0)</button>
 </footer>
+
+<div class="modal-backdrop" id="imageLightbox">
+  <img id="lightboxImg" src="" alt="" style="max-width:92vw;max-height:85vh;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,0.35);">
+</div>
 
 <div class="modal-backdrop" id="modalBackdrop">
   <div class="modal">
@@ -546,6 +580,18 @@ const modalCloseButtonEl = document.getElementById("modalCloseButton");
 const statusTextEl = document.getElementById("statusText");
 const backToShopButtonEl = document.getElementById("backToShopButton");
 const backToCartButtonEl = document.getElementById("backToCartButton");
+const imageLightboxEl = document.getElementById("imageLightbox");
+const lightboxImgEl = document.getElementById("lightboxImg");
+
+function openLightbox(src, alt) {
+  lightboxImgEl.src = src;
+  lightboxImgEl.alt = alt || "";
+  imageLightboxEl.style.display = "flex";
+}
+
+imageLightboxEl.onclick = () => {
+  imageLightboxEl.style.display = "none";
+};
 
 // Prefill the checkout name field from Telegram's profile, if available.
 if (telegramUser) {
@@ -557,6 +603,14 @@ if (telegramUser) {
 // IMPORTANT: replace this with your real notification email address.
 const ORDER_NOTIFY_EMAIL = "fallacycardshop@gmail.com";
 
+function formatDateDDMMYYYY(timestamp) {
+  const d = new Date(timestamp);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
 async function sendOrderToBackend(order) {
   try {
     const telegramUsernameDisplay = telegramUser ? (telegramUser.username || "(no username set)") : "not available";
@@ -566,7 +620,7 @@ async function sendOrderToBackend(order) {
     // exact manual-entry columns. Deliberately skips the Card Name / Rarity
     // columns since those are formula-driven (VLOOKUP off CardID) — pasting
     // over them would overwrite the formulas.
-    const dateStr = new Date(order.id).toLocaleDateString();
+    const dateStr = formatDateDDMMYYYY(order.id);
 
     // Block 1 → paste into column A, then use Excel's Text to Columns
     // (Data tab → Text to Columns → Delimited → Other: "|") to split into
@@ -718,7 +772,7 @@ function renderProducts() {
       const card = document.createElement("div");
       card.className = "product-card";
       card.innerHTML = `
-        <img src="${p.photo || 'https://via.placeholder.com/100?text=Card'}" loading="lazy" alt="${p.name}">
+        <img src="${p.photo || 'https://via.placeholder.com/300x420?text=Card'}" loading="lazy" alt="${p.name}">
         <div class="product-info">
           <div class="product-name">${p.name}</div>
           <div class="product-price">$${Number(p.price || 0).toFixed(2)}</div>
@@ -735,6 +789,8 @@ function renderProducts() {
       if (!isMaxed) {
         card.querySelector("button").onclick = () => addToCart(p);
       }
+      const productImgSrc = p.photo || 'https://via.placeholder.com/300x420?text=Card';
+      card.querySelector("img").onclick = () => openLightbox(productImgSrc, p.name);
       productListEl.appendChild(card);
     });
 
@@ -832,7 +888,7 @@ function renderCart() {
       const stockLeft = stock - quantity;
 
       item.innerHTML = `
-        <img src="${product.photo || 'https://via.placeholder.com/100?text=Card'}" loading="lazy" alt="${product.name}">
+        <img src="${product.photo || 'https://via.placeholder.com/300x420?text=Card'}" loading="lazy" alt="${product.name}">
         <div class="cart-info">
           <div class="product-name">${product.name}</div>
           <div class="product-price">$${price.toFixed(2)} × ${quantity}</div>
@@ -858,6 +914,7 @@ function renderCart() {
       minus.onclick = () => changeQuantity(product.id, -1);
       plus.onclick = () => changeQuantity(product.id, 1);
       item.querySelector(".btn-secondary").onclick = () => removeItem(product.id);
+      item.querySelector("img").onclick = () => openLightbox(product.photo || 'https://via.placeholder.com/300x420?text=Card', product.name);
 
       cartListEl.appendChild(item);
     });
