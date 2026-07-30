@@ -451,12 +451,18 @@ footer .btn { width: auto; flex-shrink: 0; }
 
     <div class="total-box" id="totalBox" style="display:none;">
       <div class="total-row"><span>Subtotal</span><span id="subtotalText">$0.00</span></div>
-      <div class="total-row"><span>Shipping</span><span id="shippingText">$0.00</span></div>
+      <div class="total-row"><span>Mailing Fee</span><span id="shippingText">$0.00</span></div>
       <div class="total-row" style="font-weight:700;"><span>Total</span><span id="totalText">$0.00</span></div>
     </div>
 
     <div class="checkout-section" id="checkoutSection" style="display:none;">
       <h3 style="color:#e46f95;">Checkout</h3>
+      <div class="form-row" style="display:flex;align-items:flex-start;gap:8px;">
+        <input type="checkbox" id="holdCheckbox" style="width:20px;height:20px;margin-top:2px;flex-shrink:0;">
+        <label for="holdCheckbox" style="font-weight:400;font-size:13px;color:var(--text-main);">
+          I already have a package on hold with @fallacytcg — no mailing fee needed for this order.
+        </label>
+      </div>
       <div class="form-row">
         <label>Name</label>
         <input id="nameInput" type="text" inputmode="text" enterkeyhint="next" autocomplete="name">
@@ -561,6 +567,7 @@ const cartScreenEl = document.getElementById("cartScreen");
 const paynowScreenEl = document.getElementById("paynowScreen");
 const subtotalTextEl = document.getElementById("subtotalText");
 const shippingTextEl = document.getElementById("shippingText");
+const holdCheckboxEl = document.getElementById("holdCheckbox");
 const totalTextEl = document.getElementById("totalText");
 const totalBoxEl = document.getElementById("totalBox");
 const checkoutSectionEl = document.getElementById("checkoutSection");
@@ -653,6 +660,7 @@ async function sendOrderToBackend(order) {
         Address: order.address,
         Telegram_Username: telegramUsernameDisplay,
         Telegram_User_ID: telegramUserIdDisplay,
+        "Buyer_Claims_Package_On_Hold": order.holdClaimed ? "YES — verify against hold list before confirming" : "No",
         Subtotal: order.subtotal || "",
         Shipping: order.shipping || "",
         Total: order.total || "",
@@ -669,6 +677,21 @@ async function sendOrderToBackend(order) {
     console.error("Order logging request failed:", err);
   }
 }
+
+const MAILING_FEE = 3;
+let currentSubtotal = 0;
+
+function updateTotals() {
+  const hasHold = holdCheckboxEl.checked;
+  const shipping = currentSubtotal > 0 && !hasHold ? MAILING_FEE : 0;
+  const total = currentSubtotal + shipping;
+
+  subtotalTextEl.textContent = `$${currentSubtotal.toFixed(2)}`;
+  shippingTextEl.textContent = `$${shipping.toFixed(2)}`;
+  totalTextEl.textContent = `$${total.toFixed(2)}`;
+}
+
+holdCheckboxEl.onchange = updateTotals;
 
 function saveCart() {
   localStorage.setItem("fallacyCart", JSON.stringify(cart));
@@ -914,12 +937,8 @@ function renderCart() {
       cartListEl.appendChild(item);
     });
 
-    const shipping = subtotal > 0 ? 5 : 0;
-    const total = subtotal + shipping;
-
-    subtotalTextEl.textContent = `$${subtotal.toFixed(2)}`;
-    shippingTextEl.textContent = `$${shipping.toFixed(2)}`;
-    totalTextEl.textContent = `$${total.toFixed(2)}`;
+    currentSubtotal = subtotal;
+    updateTotals();
 
     totalBoxEl.style.display = "block";
     checkoutSectionEl.style.display = "block";
@@ -1000,6 +1019,7 @@ checkoutButtonEl.onclick = () => {
     cart,
     subtotal: subtotalTextEl.textContent,
     shipping: shippingTextEl.textContent,
+    holdClaimed: holdCheckboxEl.checked,
     total
   };
 
@@ -1030,6 +1050,7 @@ paynowConfirmButtonEl.onclick = async () => {
   cart = {};
   saveCart();
   updateCartBadge();
+  holdCheckboxEl.checked = false;
   modalBackdropEl.style.display = "flex";
 };
 
