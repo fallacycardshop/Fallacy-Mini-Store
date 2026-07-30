@@ -15,10 +15,12 @@ export default async function handler(req, res) {
     }
 
     // items: [{ key: "<CardID or Name>", quantity: <number> }]
-    // incrby is atomic, so concurrent checkouts don't clobber each other's counts.
+    // Positive quantity reserves stock (checkout); negative releases a
+    // reservation (buyer backed out before paying). incrby is atomic,
+    // so concurrent requests don't clobber each other's counts.
     await Promise.all(
       items
-        .filter(item => item && item.key && item.quantity > 0)
+        .filter(item => item && item.key && Number.isFinite(item.quantity) && item.quantity !== 0)
         .map(item => redis.incrby(`sold:${item.key}`, item.quantity))
     );
 
