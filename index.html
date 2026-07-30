@@ -524,6 +524,7 @@ footer .btn { width: auto; flex-shrink: 0; }
   <section id="paynowScreen">
     <button class="btn btn-secondary" id="backToCartButton" style="margin-bottom:12px;">← Back to Cart</button>
     <h2>PayNow Payment</h2>
+    <p id="paynowTimer" style="text-align:center;font-size:13px;color:var(--plum);font-weight:600;margin-bottom:8px;"></p>
     <div style="background:#fff;padding:16px;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,0.08);text-align:center;">
       <p style="font-size:15px;color:var(--pink-deep);font-weight:600;">
         Scan the QR code below to make payment
@@ -625,6 +626,7 @@ const backToShopButtonEl = document.getElementById("backToShopButton");
 const backToCartButtonEl = document.getElementById("backToCartButton");
 const imageLightboxEl = document.getElementById("imageLightbox");
 const lightboxImgEl = document.getElementById("lightboxImg");
+const paynowTimerEl = document.getElementById("paynowTimer");
 
 function openLightbox(src, alt) {
   lightboxImgEl.src = src;
@@ -725,6 +727,66 @@ async function sendOrderToBackend(order) {
 const MAILING_FEE = 3;
 let currentSubtotal = 0;
 let pendingOrder = null;
+let paynowTimerInterval = null;
+let paynowExpiresAt = null;
+
+function generateReservationId() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return `res_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
+async function releaseReservation(reservationId) {
+  if (!reservationId) return;
+  try {
+    await fetch("/api/release-reservation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reservationId }),
+    });
+  } catch (err) {
+    console.error("Release reservation failed:", err);
+  }
+}
+
+function clearPaynowTimer() {
+  if (paynowTimerInterval) {
+    clearInterval(paynowTimerInterval);
+    paynowTimerInterval = null;
+  }
+  paynowExpiresAt = null;
+}
+
+function updatePaynowTimerDisplay() {
+  if (!paynowExpiresAt) return;
+  const remainingMs = Math.max(paynowExpiresAt - Date.now(), 0);
+  const totalSeconds = Math.ceil(remainingMs / 1000);
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  paynowTimerEl.textContent = `Time remaining to complete payment: ${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+async function expirePaynowSession() {
+  clearPaynowTimer();
+  const idToRelease = pendingOrder ? pendingOrder.reservationId : null;
+  pendingOrder = null;
+  await releaseReservation(idToRelease);
+  loadProducts();
+  alert("Your payment session has expired. Please review your cart and try again.");
+  showCart();
+}
+
+function startPaynowTimer() {
+  clearPaynowTimer();
+  paynowExpiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+  updatePaynowTimerDisplay();
+  paynowTimerInterval = setInterval(() => {
+    if (Date.now() >= paynowExpiresAt) {
+      expirePaynowSession();
+      return;
+    }
+    updatePaynowTimerDisplay();
+  }, 1000);
+}
 
 function getMailPreference() {
   const checked = document.querySelector('input[name="mailPreference"]:checked');
@@ -1060,20 +1122,9 @@ function syncFooterButton() {
 cartButtonEl.onclick = showCart;
 backToShopButtonEl.onclick = showProducts;
 backToCartButtonEl.onclick = async () => {
+  clearPaynowTimer();
   if (pendingOrder) {
-    const releaseItems = Object.values(pendingOrder.cart).map(({ product, quantity }) => ({
-      key: product.stockKey || product.cardId || product.name,
-      quantity: -quantity, // negative delta releases the reservation
-    }));
-    try {
-      await fetch("/api/reserve-stock", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: releaseItems }),
-      });
-    } catch (err) {
-      console.error("Stock release failed:", err);
-    }
+    await releaseReservation(pendingOrder.reservationId);
     pendingOrder = null;
     loadProducts(); // refresh stock counts now that the reservation was released
   }
@@ -1131,34 +1182,81 @@ checkoutButtonEl.onclick = async () => {
 
   // Reserve stock now, at the moment they commit to checkout — this locks
   // the item so another buyer can't also claim it while this buyer is on
-  // the payment screen. The order itself isn't emailed/considered a real
-  // sale yet; that only happens once they confirm they've actually paid.
+  // the payment screen. The reservation auto-expires in ~5.5 minutes on
+  // the server side even if this page is closed or crashes, and the order
+  // itself isn't emailed/considered a real sale yet — that only happens
+  // once they confirm they've actually paid.
+  const reservationId = generateReservationId();
   const reservationItems = Object.values(order.cart).map(({ product, quantity }) => ({
     key: product.stockKey || product.cardId || product.name,
     quantity,
   }));
 
+  let reserveRes;
   try {
-    await fetch("/api/reserve-stock", {
+    reserveRes = await fetch("/api/reserve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items: reservationItems }),
+      body: JSON.stringify({ reservationId, items: reservationItems }),
     });
   } catch (err) {
-    console.error("Stock reservation failed:", err);
+    console.error("Stock reservation request failed:", err);
+    alert("Something went wrong reserving your items. Please try again.");
+    return;
   }
-  loadProducts(); // refresh stock counts in the background
 
+  if (!reserveRes.ok) {
+    const errData = await reserveRes.json().catch(() => ({}));
+    if (reserveRes.status === 409 && Array.isArray(errData.unavailable)) {
+      const names = errData.unavailable
+        .map(u => `${u.name} (only ${u.available} left)`)
+        .join(", ");
+      alert(`Sorry, someone else just claimed part of your order before you: ${names}. Please adjust your cart and try again.`);
+    } else {
+      alert("Something went wrong reserving your items. Please try again.");
+    }
+    loadProducts();
+    renderCart();
+    return;
+  }
+
+  order.reservationId = reservationId;
   pendingOrder = order;
   saveLastOrder(order);
   paynowAmountEl.textContent = total;
   showPayNow();
+  startPaynowTimer();
 };
 
-paynowConfirmButtonEl.onclick = () => {
-  if (pendingOrder) {
-    sendOrderToBackend(pendingOrder);
+paynowConfirmButtonEl.onclick = async () => {
+  clearPaynowTimer();
+
+  if (!pendingOrder) {
+    showCart();
+    return;
   }
+
+  try {
+    const confirmRes = await fetch("/api/confirm-order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reservationId: pendingOrder.reservationId }),
+    });
+    if (!confirmRes.ok) {
+      const errData = await confirmRes.json().catch(() => ({}));
+      alert(errData.error || "Your reservation has expired. Please try again.");
+      pendingOrder = null;
+      loadProducts();
+      showCart();
+      return;
+    }
+  } catch (err) {
+    console.error("Confirm order failed:", err);
+    alert("Something went wrong confirming your order. Please try again, or message us directly if this keeps happening.");
+    return;
+  }
+
+  sendOrderToBackend(pendingOrder);
   pendingOrder = null;
 
   cart = {};
