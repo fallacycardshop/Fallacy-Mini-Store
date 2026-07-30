@@ -118,7 +118,7 @@ export default async function handler(req, res) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "Fallacy Mini Store <onboarding@resend.dev>",
+        from: "onboarding@resend.dev",
         to: [toEmail],
         subject: `New order #${order.id} — ${order.name} — ${order.total || ""}`,
         html: emailHtml,
