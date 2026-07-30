@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Fallacy Store">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#f2a6c0">
+<meta name="theme-color" content="#ffffff">
 <meta name="format-detection" content="telephone=no">
 
 <!-- Telegram Mini App SDK: exposes Telegram.WebApp with the buyer's Telegram identity -->
@@ -60,7 +60,7 @@ body {
 }
 
 header {
-  background: var(--pink-main);
+  background: #fff;
   padding: calc(10px + var(--safe-top)) 14px 10px;
   padding-left: calc(14px + var(--safe-left));
   padding-right: calc(14px + var(--safe-right));
@@ -68,7 +68,7 @@ header {
   position: sticky;
   top: 0;
   z-index: 10;
-  box-shadow: 0 2px 8px rgba(180,120,140,0.15);
+  box-shadow: 0 2px 8px rgba(180,120,140,0.1);
 }
 
 .logo-img {
@@ -1015,7 +1015,24 @@ checkoutButtonEl.onclick = () => {
   showPayNow();
 };
 
-paynowConfirmButtonEl.onclick = () => {
+paynowConfirmButtonEl.onclick = async () => {
+  const items = Object.values(cart).map(({ product, quantity }) => ({
+    key: product.cardId || product.name,
+    quantity,
+  }));
+
+  try {
+    await fetch("/api/reserve-stock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    });
+  } catch (err) {
+    // Don't block the buyer's confirmation if this fails — worst case,
+    // the seller reconciles stock manually from the order email.
+    console.error("Stock reservation failed:", err);
+  }
+
   cart = {};
   saveCart();
   updateCartBadge();
