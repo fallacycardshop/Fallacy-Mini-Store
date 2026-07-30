@@ -1011,7 +1011,7 @@ checkoutButtonEl.onclick = () => {
 
 paynowConfirmButtonEl.onclick = async () => {
   const items = Object.values(cart).map(({ product, quantity }) => ({
-    key: product.cardId || product.name,
+    key: product.stockKey || product.cardId || product.name,
     quantity,
   }));
 
