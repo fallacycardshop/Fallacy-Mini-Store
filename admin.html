@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Store Admin — Fallacy's Mini Store</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body {
+    margin: 0;
+    font-family: 'Poppins', sans-serif;
+    background: #fdf3f7;
+    color: #2b2b2b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px;
+    box-sizing: border-box;
+  }
+  .card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 28px;
+    max-width: 400px;
+    width: 100%;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  }
+  h1 {
+    font-size: 20px;
+    color: #a8305f;
+    margin-top: 0;
+  }
+  p {
+    font-size: 14px;
+    color: #6b6b6b;
+    line-height: 1.5;
+  }
+  input {
+    width: 100%;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid #f3c9dc;
+    font-size: 16px;
+    font-family: inherit;
+    box-sizing: border-box;
+    margin: 12px 0;
+  }
+  button {
+    width: 100%;
+    padding: 12px;
+    border-radius: 10px;
+    border: none;
+    background: #d1447b;
+    color: #fff;
+    font-size: 15px;
+    font-family: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled {
+    background: #e0e0e0;
+    cursor: not-allowed;
+  }
+  #resultText {
+    margin-top: 14px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .success { color: #3a7d44; }
+  .error { color: #c0392b; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>Reset Sold Counts</h1>
+  <p>
+    This clears the running "sold" tally for every card, so newly restocked
+    quantities in your CSV will display exactly as entered. It does <strong>not</strong>
+    touch anyone's in-progress checkout — active payment sessions expire on their own as normal.
+  </p>
+  <input type="password" id="passphraseInput" placeholder="Enter admin passphrase" autocomplete="off">
+  <button id="resetButton">Reset Sold Counts</button>
+  <p id="resultText"></p>
+</div>
+
+<script>
+document.getElementById("resetButton").onclick = async () => {
+  const button = document.getElementById("resetButton");
+  const resultEl = document.getElementById("resultText");
+  const key = document.getElementById("passphraseInput").value.trim();
+
+  if (!key) {
+    resultEl.textContent = "Please enter the passphrase.";
+    resultEl.className = "error";
+    return;
+  }
+
+  if (!confirm("This will reset ALL sold counts to zero. Are you sure?")) return;
+
+  button.disabled = true;
+  resultEl.textContent = "Working...";
+  resultEl.className = "";
+
+  try {
+    const res = await fetch("/api/reset-sold-counts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      resultEl.textContent = data.error || "Something went wrong.";
+      resultEl.className = "error";
+    } else {
+      resultEl.textContent = `Done — reset ${data.deletedCount} card(s) to zero sold.`;
+      resultEl.className = "success";
+    }
+  } catch (err) {
+    resultEl.textContent = "Network error — please try again.";
+    resultEl.className = "error";
+  } finally {
+    button.disabled = false;
+  }
+};
+</script>
+
+</body>
+</html>
