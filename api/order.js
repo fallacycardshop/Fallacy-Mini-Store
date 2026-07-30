@@ -1,0 +1,139 @@
+import crypto from "crypto";
+
+// Validates Telegram Mini App initData against your bot token.
+// Returns true if valid, false if invalid or missing/unconfigured.
+function validateTelegramInitData(initData, botToken) {
+  if (!initData || !botToken) return false;
+
+  try {
+    const params = new URLSearchParams(initData);
+    const hash = params.get("hash");
+    params.delete("hash");
+
+    const dataCheckArr = [];
+    for (const [key, value] of params.entries()) {
+      dataCheckArr.push(`${key}=${value}`);
+    }
+    dataCheckArr.sort();
+    const dataCheckString = dataCheckArr.join("\n");
+
+    const secretKey = crypto
+      .createHmac("sha256", "WebAppData")
+      .update(botToken)
+      .digest();
+
+    const computedHash = crypto
+      .createHmac("sha256", secretKey)
+      .update(dataCheckString)
+      .digest("hex");
+
+    return computedHash === hash;
+  } catch (err) {
+    console.error("initData validation error:", err);
+    return false;
+  }
+}
+
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  try {
+    const { order, telegramUser, initData } = req.body || {};
+
+    if (!order || !order.cart || !order.name || !order.phone || !order.address) {
+      return res.status(400).json({ error: "Missing required order fields" });
+    }
+
+    // Optional but recommended: validate the Telegram data actually came from
+    // Telegram, not a spoofed client. Set TELEGRAM_BOT_TOKEN in Vercel env vars
+    // to enable this. If unset, we skip validation and mark the user as unverified.
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const isVerified = botToken
+      ? validateTelegramInitData(initData, botToken)
+      : false;
+
+    // Flatten cart object { id: { product, quantity } } into a line-item array.
+    const items = Object.values(order.cart).map(({ product, quantity }) => ({
+      name: product.name,
+      category: product.category || "",
+      quantity,
+      unitPrice: Number(product.price || 0),
+      lineTotal: Number(product.price || 0) * quantity,
+    }));
+
+    const telegramUsernameDisplay =
+      telegramUser && isVerified ? telegramUser.username || "(no username set)" : "unverified";
+    const telegramUserIdDisplay = telegramUser && isVerified ? telegramUser.id || "" : "";
+
+    const itemRowsHtml = items
+      .map(
+        (item) => `
+          <tr>
+            <td>${item.name}</td>
+            <td>${item.category}</td>
+            <td>${item.quantity}</td>
+            <td>${item.unitPrice.toFixed(2)}</td>
+            <td>${item.lineTotal.toFixed(2)}</td>
+          </tr>`
+      )
+      .join("");
+
+    const emailHtml = `
+      <h2>New order — #${order.id}</h2>
+      <p>
+        <strong>Buyer:</strong> ${order.name}<br>
+        <strong>Phone:</strong> ${order.phone}<br>
+        <strong>Address:</strong> ${order.address}<br>
+        <strong>Telegram username:</strong> ${telegramUsernameDisplay}<br>
+        <strong>Telegram user ID:</strong> ${telegramUserIdDisplay}
+      </p>
+      <p><strong>Subtotal:</strong> ${order.subtotal || ""} &nbsp; <strong>Shipping:</strong> ${order.shipping || ""} &nbsp; <strong>Total:</strong> ${order.total || ""}</p>
+      <p><em>Tip: select the table below and paste it directly into Excel — it'll drop into columns automatically.</em></p>
+      <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">
+        <thead>
+          <tr>
+            <th>Card Name</th><th>Category</th><th>Qty</th><th>Unit Price</th><th>Line Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemRowsHtml}
+        </tbody>
+      </table>
+    `;
+
+    const resendApiKey = process.env.RESEND_API_KEY;
+    const toEmail = process.env.RESEND_TO_EMAIL;
+
+    if (!resendApiKey || !toEmail) {
+      console.error("RESEND_API_KEY or RESEND_TO_EMAIL is not set in Vercel env vars");
+      return res.status(500).json({ error: "Order notifications are not configured yet." });
+    }
+
+    const emailRes = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "Fallacy Mini Store <onboarding@resend.dev>",
+        to: [toEmail],
+        subject: `New order #${order.id} — ${order.name} — ${order.total || ""}`,
+        html: emailHtml,
+      }),
+    });
+
+    if (!emailRes.ok) {
+      const text = await emailRes.text();
+      console.error("Resend email failed:", emailRes.status, text);
+      return res.status(502).json({ error: "Failed to send order notification email." });
+    }
+
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    console.error("Order handler error:", err);
+    res.status(500).json({ error: "Unexpected server error." });
+  }
+}
