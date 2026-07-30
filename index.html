@@ -1084,7 +1084,7 @@ function showProducts() {
   cartScreenEl.style.display = "none";
   paynowScreenEl.style.display = "none";
   syncFooterButton();
-  renderProducts(); // keeps "in your cart" / remaining-stock counts in sync with any cart changes
+  loadProducts(); // always pull the latest stock from the server, not just re-render cached data
   window.scrollTo(0, 0);
 }
 
@@ -1277,6 +1277,15 @@ modalCloseButtonEl.onclick = () => {
 loadProducts();
 updateCartBadge();
 showProducts();
+
+// Quietly refresh stock every 20 seconds while browsing the shop, so changes
+// made by other buyers (someone else's reservation expiring, a sale going
+// through, etc.) show up without needing to navigate away and back.
+setInterval(() => {
+  if (currentScreen === "products") {
+    loadProducts();
+  }
+}, 20000);
 </script>
 
 </body>
