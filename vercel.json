@@ -8,7 +8,13 @@
       "config": { "includeFiles": "ministore-inventory.csv" }
     },
     { "src": "api/order.js", "use": "@vercel/node" },
-    { "src": "api/reserve-stock.js", "use": "@vercel/node" },
+    {
+      "src": "api/reserve.js",
+      "use": "@vercel/node",
+      "config": { "includeFiles": "ministore-inventory.csv" }
+    },
+    { "src": "api/confirm-order.js", "use": "@vercel/node" },
+    { "src": "api/release-reservation.js", "use": "@vercel/node" },
     { "src": "index.html", "use": "@vercel/static" }
   ],
   "routes": [
