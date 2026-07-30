@@ -724,6 +724,7 @@ async function sendOrderToBackend(order) {
 
 const MAILING_FEE = 3;
 let currentSubtotal = 0;
+let pendingOrder = null;
 
 function getMailPreference() {
   const checked = document.querySelector('input[name="mailPreference"]:checked');
@@ -1058,9 +1059,28 @@ function syncFooterButton() {
 
 cartButtonEl.onclick = showCart;
 backToShopButtonEl.onclick = showProducts;
-backToCartButtonEl.onclick = showCart;
+backToCartButtonEl.onclick = async () => {
+  if (pendingOrder) {
+    const releaseItems = Object.values(pendingOrder.cart).map(({ product, quantity }) => ({
+      key: product.stockKey || product.cardId || product.name,
+      quantity: -quantity, // negative delta releases the reservation
+    }));
+    try {
+      await fetch("/api/reserve-stock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: releaseItems }),
+      });
+    } catch (err) {
+      console.error("Stock release failed:", err);
+    }
+    pendingOrder = null;
+    loadProducts(); // refresh stock counts now that the reservation was released
+  }
+  showCart();
+};
 
-checkoutButtonEl.onclick = () => {
+checkoutButtonEl.onclick = async () => {
   const telegramUsername = telegramUsernameInputEl.value.trim();
   const hasHold = holdCheckboxEl.checked;
 
@@ -1109,14 +1129,11 @@ checkoutButtonEl.onclick = () => {
     total
   };
 
-  saveLastOrder(order);
-  sendOrderToBackend(order);
-  paynowAmountEl.textContent = total;
-  showPayNow();
-};
-
-paynowConfirmButtonEl.onclick = async () => {
-  const items = Object.values(cart).map(({ product, quantity }) => ({
+  // Reserve stock now, at the moment they commit to checkout — this locks
+  // the item so another buyer can't also claim it while this buyer is on
+  // the payment screen. The order itself isn't emailed/considered a real
+  // sale yet; that only happens once they confirm they've actually paid.
+  const reservationItems = Object.values(order.cart).map(({ product, quantity }) => ({
     key: product.stockKey || product.cardId || product.name,
     quantity,
   }));
@@ -1125,13 +1142,24 @@ paynowConfirmButtonEl.onclick = async () => {
     await fetch("/api/reserve-stock", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items }),
+      body: JSON.stringify({ items: reservationItems }),
     });
   } catch (err) {
-    // Don't block the buyer's confirmation if this fails — worst case,
-    // the seller reconciles stock manually from the order email.
     console.error("Stock reservation failed:", err);
   }
+  loadProducts(); // refresh stock counts in the background
+
+  pendingOrder = order;
+  saveLastOrder(order);
+  paynowAmountEl.textContent = total;
+  showPayNow();
+};
+
+paynowConfirmButtonEl.onclick = () => {
+  if (pendingOrder) {
+    sendOrderToBackend(pendingOrder);
+  }
+  pendingOrder = null;
 
   cart = {};
   saveCart();
