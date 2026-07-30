@@ -460,21 +460,52 @@ footer .btn { width: auto; flex-shrink: 0; }
       <div class="form-row" style="display:flex;align-items:flex-start;gap:8px;">
         <input type="checkbox" id="holdCheckbox" style="width:20px;height:20px;margin-top:2px;flex-shrink:0;">
         <label for="holdCheckbox" style="font-weight:400;font-size:13px;color:var(--text-main);">
-          I already have a package on hold with @fallacytcg — no mailing fee needed for this order.
+          I already have a package on hold with @fallacycardshop — no mailing fee needed for this order.
         </label>
       </div>
+
       <div class="form-row">
-        <label>Name</label>
-        <input id="nameInput" type="text" inputmode="text" enterkeyhint="next" autocomplete="name">
+        <label>Telegram Username</label>
+        <input id="telegramUsernameInput" type="text" inputmode="text" enterkeyhint="next" autocomplete="off" placeholder="@yourusername">
       </div>
-      <div class="form-row">
-        <label>Phone</label>
-        <input id="phoneInput" type="tel" inputmode="tel" enterkeyhint="next" autocomplete="tel">
+
+      <div id="fullDetailsFields">
+        <div class="form-row">
+          <label>Name</label>
+          <input id="nameInput" type="text" inputmode="text" enterkeyhint="next" autocomplete="name">
+        </div>
+        <div class="form-row">
+          <label>Phone</label>
+          <input id="phoneInput" type="tel" inputmode="tel" enterkeyhint="next" autocomplete="tel">
+        </div>
+        <div class="form-row">
+          <label>Address Line</label>
+          <input id="addressLineInput" type="text" inputmode="text" enterkeyhint="next" autocomplete="address-line1">
+        </div>
+        <div class="form-row">
+          <label>Unit Number</label>
+          <input id="unitNumberInput" type="text" inputmode="text" enterkeyhint="next" autocomplete="address-line2" placeholder="e.g. #01-23">
+        </div>
+        <div class="form-row">
+          <label>Postal Code</label>
+          <input id="postalCodeInput" type="text" inputmode="numeric" enterkeyhint="done" autocomplete="postal-code">
+        </div>
+
+        <div class="form-row">
+          <label>What would you like to do with this order?</label>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;">
+              <input type="radio" name="mailPreference" value="immediate" id="mailPrefImmediate" checked style="width:18px;height:18px;">
+              Mail out immediately
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;">
+              <input type="radio" name="mailPreference" value="hold" id="mailPrefHold" style="width:18px;height:18px;">
+              Hold the package with us (mailing fee paid upfront)
+            </label>
+          </div>
+        </div>
       </div>
-      <div class="form-row">
-        <label>Address</label>
-        <textarea id="addressInput" rows="2" enterkeyhint="done" autocomplete="street-address"></textarea>
-      </div>
+
       <button class="btn btn-primary" id="checkoutButton">Proceed to PayNow</button>
     </div>
   </section>
@@ -568,6 +599,8 @@ const paynowScreenEl = document.getElementById("paynowScreen");
 const subtotalTextEl = document.getElementById("subtotalText");
 const shippingTextEl = document.getElementById("shippingText");
 const holdCheckboxEl = document.getElementById("holdCheckbox");
+const telegramUsernameInputEl = document.getElementById("telegramUsernameInput");
+const fullDetailsFieldsEl = document.getElementById("fullDetailsFields");
 const totalTextEl = document.getElementById("totalText");
 const totalBoxEl = document.getElementById("totalBox");
 const checkoutSectionEl = document.getElementById("checkoutSection");
@@ -600,6 +633,7 @@ if (telegramUser) {
   const nameInputEl = document.getElementById("nameInput");
   const fullName = [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ");
   if (fullName) nameInputEl.value = fullName;
+  if (telegramUser.username) telegramUsernameInputEl.value = `@${telegramUser.username}`;
 }
 
 // IMPORTANT: replace this with your real notification email address.
@@ -633,7 +667,7 @@ async function sendOrderToBackend(order) {
       .join("\n");
 
     // Block 2 → paste into column F, then Text to Columns to split into F:G (Buyer, Price).
-    const buyerDisplay = telegramUser ? (telegramUser.username ? `@${telegramUser.username}` : order.name) : order.name;
+    const buyerDisplay = order.telegramUsername || (telegramUser && telegramUser.username ? `@${telegramUser.username}` : order.name);
     const block2_BuyerPrice = Object.values(order.cart)
       .map(({ product }) => [buyerDisplay, Number(product.price || 0).toFixed(2)].join(" | "))
       .join("\n");
@@ -660,7 +694,9 @@ async function sendOrderToBackend(order) {
         Address: order.address,
         Telegram_Username: telegramUsernameDisplay,
         Telegram_User_ID: telegramUserIdDisplay,
+        Buyer_Entered_Telegram_Username: order.telegramUsername || "",
         "Buyer_Claims_Package_On_Hold": order.holdClaimed ? "YES — verify against hold list before confirming" : "No",
+        Mail_Preference: order.mailPreference || "",
         Subtotal: order.subtotal || "",
         Shipping: order.shipping || "",
         Total: order.total || "",
@@ -681,8 +717,16 @@ async function sendOrderToBackend(order) {
 const MAILING_FEE = 3;
 let currentSubtotal = 0;
 
+function getMailPreference() {
+  const checked = document.querySelector('input[name="mailPreference"]:checked');
+  return checked ? checked.value : "immediate";
+}
+
 function updateTotals() {
   const hasHold = holdCheckboxEl.checked;
+  // Mailing fee applies whenever there's no existing hold — both "mail
+  // immediately" and "hold with us" are paid upfront; the choice only
+  // tells the seller what to physically do with the package.
   const shipping = currentSubtotal > 0 && !hasHold ? MAILING_FEE : 0;
   const total = currentSubtotal + shipping;
 
@@ -691,7 +735,17 @@ function updateTotals() {
   totalTextEl.textContent = `$${total.toFixed(2)}`;
 }
 
-holdCheckboxEl.onchange = updateTotals;
+function updateCheckoutFieldsVisibility() {
+  // If the buyer already has a package on hold, this order is just being
+  // added to it — we only need their Telegram username to match it up,
+  // and there's nothing to decide about mailing since it's already held.
+  fullDetailsFieldsEl.style.display = holdCheckboxEl.checked ? "none" : "block";
+  updateTotals();
+}
+
+holdCheckboxEl.onchange = updateCheckoutFieldsVisibility;
+document.getElementById("mailPrefImmediate").onchange = updateTotals;
+document.getElementById("mailPrefHold").onchange = updateTotals;
 
 function saveCart() {
   localStorage.setItem("fallacyCart", JSON.stringify(cart));
@@ -960,6 +1014,7 @@ function showProducts() {
   paynowScreenEl.style.display = "none";
   footerTextEl.textContent = "Browsing products";
   syncFooterButton();
+  renderProducts(); // keeps "in your cart" / remaining-stock counts in sync with any cart changes
   window.scrollTo(0, 0);
 }
 
@@ -1001,25 +1056,51 @@ backToShopButtonEl.onclick = showProducts;
 backToCartButtonEl.onclick = showCart;
 
 checkoutButtonEl.onclick = () => {
-  const name = document.getElementById("nameInput").value.trim();
-  const phone = document.getElementById("phoneInput").value.trim();
-  const address = document.getElementById("addressInput").value.trim();
+  const telegramUsername = telegramUsernameInputEl.value.trim();
+  const hasHold = holdCheckboxEl.checked;
 
-  if (!name || !phone || !address) {
-    alert("Please fill in all fields.");
+  if (!telegramUsername) {
+    alert("Please enter your Telegram username.");
     return;
   }
+
+  let name = "";
+  let phone = "";
+  let addressLine = "";
+  let unitNumber = "";
+  let postalCode = "";
+  let mailPreference = "";
+
+  if (!hasHold) {
+    name = document.getElementById("nameInput").value.trim();
+    phone = document.getElementById("phoneInput").value.trim();
+    addressLine = document.getElementById("addressLineInput").value.trim();
+    unitNumber = document.getElementById("unitNumberInput").value.trim();
+    postalCode = document.getElementById("postalCodeInput").value.trim();
+    mailPreference = getMailPreference();
+
+    if (!name || !phone || !addressLine || !postalCode) {
+      alert("Please fill in Name, Phone, Address Line, and Postal Code.");
+      return;
+    }
+  }
+
+  const fullAddress = hasHold
+    ? "(on hold — no new address needed)"
+    : [addressLine, unitNumber, postalCode].filter(Boolean).join(", ");
 
   const total = totalTextEl.textContent;
   const order = {
     id: Date.now(),
+    telegramUsername,
     name,
     phone,
-    address,
+    address: fullAddress,
     cart,
     subtotal: subtotalTextEl.textContent,
     shipping: shippingTextEl.textContent,
-    holdClaimed: holdCheckboxEl.checked,
+    holdClaimed: hasHold,
+    mailPreference: hasHold ? "n/a (already on hold)" : mailPreference,
     total
   };
 
@@ -1051,6 +1132,8 @@ paynowConfirmButtonEl.onclick = async () => {
   saveCart();
   updateCartBadge();
   holdCheckboxEl.checked = false;
+  document.getElementById("mailPrefImmediate").checked = true;
+  updateCheckoutFieldsVisibility();
   modalBackdropEl.style.display = "flex";
 };
 
