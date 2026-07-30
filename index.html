@@ -15,6 +15,9 @@
 <meta name="theme-color" content="#ffbcd4">
 <meta name="format-detection" content="telephone=no">
 
+<!-- Telegram Mini App SDK: exposes Telegram.WebApp with the buyer's Telegram identity -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+
 <style>
 :root {
   --pink-bg: #ffeef5;
@@ -498,6 +501,18 @@ window.onerror = function (message, source, lineno, colno, error) {
 let products = [];
 let currentScreen = "products";
 
+// Telegram Mini App identity (populated below if running inside Telegram).
+let telegramUser = null;
+let telegramInitData = null;
+
+if (window.Telegram && window.Telegram.WebApp) {
+  const tg = window.Telegram.WebApp;
+  tg.ready();
+  tg.expand();
+  telegramUser = tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user : null;
+  telegramInitData = tg.initData || null;
+}
+
 let cart;
 try {
   cart = JSON.parse(localStorage.getItem("fallacyCart") || "{}");
@@ -531,6 +546,29 @@ const modalCloseButtonEl = document.getElementById("modalCloseButton");
 const statusTextEl = document.getElementById("statusText");
 const backToShopButtonEl = document.getElementById("backToShopButton");
 const backToCartButtonEl = document.getElementById("backToCartButton");
+
+// Prefill the checkout name field from Telegram's profile, if available.
+if (telegramUser) {
+  const nameInputEl = document.getElementById("nameInput");
+  const fullName = [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ");
+  if (fullName) nameInputEl.value = fullName;
+}
+
+async function sendOrderToBackend(order) {
+  try {
+    const res = await fetch("/api/order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order, telegramUser, initData: telegramInitData }),
+    });
+    if (!res.ok) {
+      console.error("Order logging failed:", await res.text());
+    }
+  } catch (err) {
+    // Never let a logging failure block the buyer's checkout flow.
+    console.error("Order logging request failed:", err);
+  }
+}
 
 function saveCart() {
   localStorage.setItem("fallacyCart", JSON.stringify(cart));
@@ -857,10 +895,13 @@ checkoutButtonEl.onclick = () => {
     phone,
     address,
     cart,
+    subtotal: subtotalTextEl.textContent,
+    shipping: shippingTextEl.textContent,
     total
   };
 
   saveLastOrder(order);
+  sendOrderToBackend(order);
   paynowAmountEl.textContent = total;
   showPayNow();
 };
