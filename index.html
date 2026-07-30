@@ -559,15 +559,32 @@ const ORDER_NOTIFY_EMAIL = "fallacycardshop@gmail.com";
 
 async function sendOrderToBackend(order) {
   try {
+    const telegramUsernameDisplay = telegramUser ? (telegramUser.username || "(no username set)") : "not available";
+    const telegramUserIdDisplay = telegramUser ? (telegramUser.id || "") : "";
+
+    // Two small paste-ready blocks per item, matching your Excel sheet's
+    // exact manual-entry columns. Deliberately skips the Card Name / Rarity
+    // columns since those are formula-driven (VLOOKUP off CardID) — pasting
+    // over them would overwrite the formulas.
+    const dateStr = new Date(order.id).toLocaleDateString();
+
+    // Block 1 → paste into columns A:C (Date, CardID, Condition), one row per item.
+    const block1_DateCardIdCondition = Object.values(order.cart)
+      .map(({ product }) => [dateStr, product.cardId || "", product.description || ""].join("\t"))
+      .join("\n");
+
+    // Block 2 → paste into columns F:G (Buyer username, Price), one row per item.
+    const buyerDisplay = telegramUser ? (telegramUser.username ? `@${telegramUser.username}` : order.name) : order.name;
+    const block2_BuyerPrice = Object.values(order.cart)
+      .map(({ product }) => [buyerDisplay, Number(product.price || 0).toFixed(2)].join("\t"))
+      .join("\n");
+
     const itemsSummary = Object.values(order.cart)
       .map(({ product, quantity }) => {
         const price = Number(product.price || 0);
-        return `${product.name} (${product.category || ""}) x${quantity} @ $${price.toFixed(2)} = $${(price * quantity).toFixed(2)}`;
+        return `${product.name} [${product.cardId || "no CardID set"}] (${product.category || ""}, ${product.description || ""}) x${quantity} @ $${price.toFixed(2)} = $${(price * quantity).toFixed(2)}`;
       })
       .join("\n");
-
-    const telegramUsernameDisplay = telegramUser ? (telegramUser.username || "(no username set)") : "not available";
-    const telegramUserIdDisplay = telegramUser ? (telegramUser.id || "") : "";
 
     // Sent directly from the browser (not via our own backend) — FormSubmit
     // sits behind Cloudflare, which blocks server-to-server requests but
@@ -587,7 +604,9 @@ async function sendOrderToBackend(order) {
         Subtotal: order.subtotal || "",
         Shipping: order.shipping || "",
         Total: order.total || "",
-        Items: itemsSummary,
+        Items_Readable: itemsSummary,
+        "PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition": block1_DateCardIdCondition,
+        "PASTE_INTO_COLUMNS_F_to_G_Buyer_Price": block2_BuyerPrice,
       }),
     });
     if (!res.ok) {
