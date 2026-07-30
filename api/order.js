@@ -67,67 +67,48 @@ export default async function handler(req, res) {
       telegramUser && isVerified ? telegramUser.username || "(no username set)" : "unverified";
     const telegramUserIdDisplay = telegramUser && isVerified ? telegramUser.id || "" : "";
 
-    const itemRowsHtml = items
+    const itemsSummary = items
       .map(
-        (item) => `
-          <tr>
-            <td>${item.name}</td>
-            <td>${item.category}</td>
-            <td>${item.quantity}</td>
-            <td>${item.unitPrice.toFixed(2)}</td>
-            <td>${item.lineTotal.toFixed(2)}</td>
-          </tr>`
+        (item) =>
+          `${item.name} (${item.category}) x${item.quantity} @ $${item.unitPrice.toFixed(2)} = $${item.lineTotal.toFixed(2)}`
       )
-      .join("");
+      .join("\n");
 
-    const emailHtml = `
-      <h2>New order — #${order.id}</h2>
-      <p>
-        <strong>Buyer:</strong> ${order.name}<br>
-        <strong>Phone:</strong> ${order.phone}<br>
-        <strong>Address:</strong> ${order.address}<br>
-        <strong>Telegram username:</strong> ${telegramUsernameDisplay}<br>
-        <strong>Telegram user ID:</strong> ${telegramUserIdDisplay}
-      </p>
-      <p><strong>Subtotal:</strong> ${order.subtotal || ""} &nbsp; <strong>Shipping:</strong> ${order.shipping || ""} &nbsp; <strong>Total:</strong> ${order.total || ""}</p>
-      <p><em>Tip: select the table below and paste it directly into Excel — it'll drop into columns automatically.</em></p>
-      <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">
-        <thead>
-          <tr>
-            <th>Card Name</th><th>Category</th><th>Qty</th><th>Unit Price</th><th>Line Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${itemRowsHtml}
-        </tbody>
-      </table>
-    `;
-
-    const resendApiKey = process.env.RESEND_API_KEY;
+    // FormSubmit.co needs no API key or account setup — it just needs the
+    // destination email address in the URL itself. We reuse RESEND_TO_EMAIL
+    // here since it's already set correctly in Vercel.
     const toEmail = process.env.RESEND_TO_EMAIL;
 
-    if (!resendApiKey || !toEmail) {
-      console.error("RESEND_API_KEY or RESEND_TO_EMAIL is not set in Vercel env vars");
+    if (!toEmail) {
+      console.error("RESEND_TO_EMAIL is not set in Vercel env vars");
       return res.status(500).json({ error: "Order notifications are not configured yet." });
     }
 
-    const emailRes = await fetch("https://api.resend.com/emails", {
+    const emailRes = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(toEmail)}`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${resendApiKey}`,
         "Content-Type": "application/json",
+        Accept: "application/json",
       },
       body: JSON.stringify({
-        from: "onboarding@resend.dev",
-        to: [toEmail],
-        subject: `New order #${order.id} — ${order.name} — ${order.total || ""}`,
-        html: emailHtml,
+        _subject: `New order #${order.id} — ${order.name} — ${order.total || ""}`,
+        _template: "table",
+        Order_ID: order.id,
+        Buyer_Name: order.name,
+        Phone: order.phone,
+        Address: order.address,
+        Telegram_Username: telegramUsernameDisplay,
+        Telegram_User_ID: telegramUserIdDisplay,
+        Subtotal: order.subtotal || "",
+        Shipping: order.shipping || "",
+        Total: order.total || "",
+        Items: itemsSummary,
       }),
     });
 
     if (!emailRes.ok) {
       const text = await emailRes.text();
-      console.error("Resend email failed:", emailRes.status, text);
+      console.error("FormSubmit request failed:", emailRes.status, text);
       return res.status(502).json({ error: "Failed to send order notification email." });
     }
 
