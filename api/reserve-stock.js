@@ -1,4 +1,6 @@
-import { kv } from "@vercel/kv";
+import { Redis } from "@upstash/redis";
+
+const redis = Redis.fromEnv();
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -13,11 +15,11 @@ export default async function handler(req, res) {
     }
 
     // items: [{ key: "<CardID or Name>", quantity: <number> }]
-    // kv.incrby is atomic, so concurrent checkouts don't clobber each other's counts.
+    // incrby is atomic, so concurrent checkouts don't clobber each other's counts.
     await Promise.all(
       items
         .filter(item => item && item.key && item.quantity > 0)
-        .map(item => kv.incrby(`sold:${item.key}`, item.quantity))
+        .map(item => redis.incrby(`sold:${item.key}`, item.quantity))
     );
 
     res.status(200).json({ ok: true });
