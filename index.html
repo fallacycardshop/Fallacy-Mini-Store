@@ -554,12 +554,41 @@ if (telegramUser) {
   if (fullName) nameInputEl.value = fullName;
 }
 
+// IMPORTANT: replace this with your real notification email address.
+const ORDER_NOTIFY_EMAIL = "fallacycardshop@gmail.com";
+
 async function sendOrderToBackend(order) {
   try {
-    const res = await fetch("/api/order", {
+    const itemsSummary = Object.values(order.cart)
+      .map(({ product, quantity }) => {
+        const price = Number(product.price || 0);
+        return `${product.name} (${product.category || ""}) x${quantity} @ $${price.toFixed(2)} = $${(price * quantity).toFixed(2)}`;
+      })
+      .join("\n");
+
+    const telegramUsernameDisplay = telegramUser ? (telegramUser.username || "(no username set)") : "not available";
+    const telegramUserIdDisplay = telegramUser ? (telegramUser.id || "") : "";
+
+    // Sent directly from the browser (not via our own backend) — FormSubmit
+    // sits behind Cloudflare, which blocks server-to-server requests but
+    // allows genuine browser requests like this one.
+    const res = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(ORDER_NOTIFY_EMAIL)}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ order, telegramUser, initData: telegramInitData }),
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({
+        _subject: `New order #${order.id} — ${order.name} — ${order.total || ""}`,
+        _template: "table",
+        Order_ID: order.id,
+        Buyer_Name: order.name,
+        Phone: order.phone,
+        Address: order.address,
+        Telegram_Username: telegramUsernameDisplay,
+        Telegram_User_ID: telegramUserIdDisplay,
+        Subtotal: order.subtotal || "",
+        Shipping: order.shipping || "",
+        Total: order.total || "",
+        Items: itemsSummary,
+      }),
     });
     if (!res.ok) {
       console.error("Order logging failed:", await res.text());
