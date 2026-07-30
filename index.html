@@ -568,15 +568,18 @@ async function sendOrderToBackend(order) {
     // over them would overwrite the formulas.
     const dateStr = new Date(order.id).toLocaleDateString();
 
-    // Block 1 → paste into columns A:C (Date, CardID, Condition), one row per item.
+    // Block 1 → paste into column A, then use Excel's Text to Columns
+    // (Data tab → Text to Columns → Delimited → Other: "|") to split into
+    // A:C (Date, CardID, Condition). We use "|" instead of a tab character
+    // because HTML email rendering collapses tabs into plain spaces.
     const block1_DateCardIdCondition = Object.values(order.cart)
-      .map(({ product }) => [dateStr, product.cardId || "", product.description || ""].join("\t"))
+      .map(({ product }) => [dateStr, product.cardId || "", product.description || ""].join(" | "))
       .join("\n");
 
-    // Block 2 → paste into columns F:G (Buyer username, Price), one row per item.
+    // Block 2 → paste into column F, then Text to Columns to split into F:G (Buyer, Price).
     const buyerDisplay = telegramUser ? (telegramUser.username ? `@${telegramUser.username}` : order.name) : order.name;
     const block2_BuyerPrice = Object.values(order.cart)
-      .map(({ product }) => [buyerDisplay, Number(product.price || 0).toFixed(2)].join("\t"))
+      .map(({ product }) => [buyerDisplay, Number(product.price || 0).toFixed(2)].join(" | "))
       .join("\n");
 
     const itemsSummary = Object.values(order.cart)
