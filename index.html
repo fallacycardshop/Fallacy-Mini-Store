@@ -553,7 +553,7 @@ footer .btn { width: auto; flex-shrink: 0; }
           <div style="display:flex;flex-direction:column;gap:6px;">
             <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;">
               <input type="radio" name="holdMailPreference" value="mail_with_hold" id="holdMailPrefMail" checked style="width:18px;height:18px;">
-              Mail it out with the rest of my cards on hold
+              Mail it out with the rest of my cards
             </label>
             <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;">
               <input type="radio" name="holdMailPreference" value="continue_hold" id="holdMailPrefContinue" style="width:18px;height:18px;">
@@ -618,7 +618,7 @@ footer .btn { width: auto; flex-shrink: 0; }
       <p style="font-size:14px;color:#555;">
         Or PayNow/Paylah to 8963 1819
         <br>(Paynow: CHXX YUX SHEXX RYXX / Paylah: fallacytcg)
-        <br><strong>Send your screenshot as proof to our DMs @fallacytcg on Telegram within 24 hours. Orders will only be confirmed upon receipt of screenshot.</strong>
+        <br><strong>Screenshot your payment as proof. Once you click to confirm your order below, send your screenshot to our DMs @fallacytcg on Telegram within 24 hours. Your order will only be processed upon receipt of screenshot and verification of payment.</strong>
       </p>
       <p style="font-size:16px;color:var(--pink-deep);font-weight:700;margin-top:10px;">
         Amount: <span id="paynowAmount">$0.00</span>
@@ -642,7 +642,7 @@ footer .btn { width: auto; flex-shrink: 0; }
 <div class="modal-backdrop" id="modalBackdrop">
   <div class="modal">
     <h3>Thank you for your order! 💖</h3>
-    <p>If you haven't sent your proof of payment, please remember to do so! Your order will only be confirmed once we verify receipt of payment.</p>
+    <p>Your order request has been sent. Click on the link below to enter our chat and send your proof of payment.</p>
     <button class="btn btn-primary" id="modalCloseButton">Go to chat @fallacytcg</button>
   </div>
 </div>
@@ -1317,7 +1317,7 @@ checkoutButtonEl.onclick = async () => {
   } else {
     mailPreference =
       getHoldMailPreference() === "mail_with_hold"
-        ? "Mail it out with the rest of cards on hold"
+        ? "Mail it out with the rest of my cards"
         : "Continue to hold with the rest of package";
   }
 
