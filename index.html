@@ -65,26 +65,42 @@ body {
   min-height: 100dvh; /* dynamic viewport height, accounts for mobile browser chrome */
 }
 
-.logo-svg {
-  width: 150px;
-  height: auto;
+.top-bar {
+  background: var(--pink-main);
+  padding: calc(14px + var(--safe-top)) 16px 14px;
+  padding-left: calc(16px + var(--safe-left));
+  padding-right: calc(16px + var(--safe-right));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #fff;
+}
+
+.top-bar-title {
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.top-bar-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex-shrink: 0;
 }
 
-.page-heading-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: calc(12px + var(--safe-top));
+.top-bar-characters {
+  height: 40px;
+  width: auto;
+  display: block;
 }
 
-.heading-text-col {
-  flex: 1;
-  min-width: 0;
+.top-bar-handle {
+  font-weight: 700;
+  font-size: 13px;
+  white-space: nowrap;
 }
-
-.page-heading-row h2 { margin: 0; }
 
 main {
   padding: 16px;
@@ -102,27 +118,28 @@ h2 {
 
 .toolbar {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
+  flex-wrap: nowrap;
+  gap: 6px;
+  margin-bottom: 0;
   position: sticky;
   top: var(--safe-top); /* sticks to the very top of the viewport once scrolled past the heading */
   z-index: 9;
   background: #fff;
-  padding-top: 4px;
+  padding: 8px 0 14px;
 }
 
 .toolbar input,
 .toolbar select {
-  padding: 10px 12px;
+  padding: 8px 6px;
   border-radius: 10px;
   border: 1px solid var(--pink-border);
-  font-size: 16px; /* 16px minimum — prevents iOS Safari auto-zoom on focus */
-  min-height: 44px; /* Apple HIG minimum tap target */
+  font-size: 13px;
+  min-height: 40px;
+  min-width: 0;
 }
 
-.toolbar input { flex: 1; min-width: 0; }
-.toolbar select { background: #fff; }
+.toolbar input { flex: 1.2; }
+.toolbar select { flex: 1; background: #fff; }
 
 .status-text {
   font-size: 13px;
@@ -179,7 +196,7 @@ h2 {
   margin-bottom: 4px;
   word-break: break-word;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
   cursor: pointer;
@@ -209,7 +226,7 @@ h2 {
 
 .product-actions {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
 }
 
 /* All buttons: real tap targets, no lag, no accidental text-selection while tapping */
@@ -420,7 +437,8 @@ footer .btn { width: auto; flex-shrink: 0; }
 
 /* Small phones (iPhone SE and similar, ~375px and under) */
 @media (max-width: 380px) {
-  .logo-svg { width: 115px; }
+  .top-bar-title { font-size: 16px; line-height: 1.05; }
+  .top-bar-characters { height: 34px; }
   .product-card, .cart-item { padding: 10px; gap: 10px; }
   .product-card img, .cart-item img { width: 76px; }
 }
@@ -443,27 +461,24 @@ footer .btn { width: auto; flex-shrink: 0; }
 </head>
 <body>
 
+<header class="top-bar">
+  <span class="top-bar-title">Available items this week!</span>
+  <div class="top-bar-brand">
+    <img class="top-bar-characters" src="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/HeaderCharacters.png" alt="">
+    <span class="top-bar-handle">@fallacycardshop</span>
+  </div>
+</header>
+
 <main>
 
   <!-- PRODUCT SCREEN -->
   <section id="productsScreen">
-    <div class="page-heading-row">
-      <div class="heading-text-col">
-        <h2>Available items this week!</h2>
-        <p class="stock-note">Stock will be refreshed weekly.</p>
-        <p class="stock-note">Note: All photos are for reference only and do not reflect actual condition stated.</p>
-      </div>
-      <svg class="logo-svg" viewBox="0 0 270 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Fallacy's Mini Store">
-        <text x="0" y="30" font-family="Poppins, sans-serif" font-weight="700" font-size="28" fill="var(--pink-main)">Fallacy's</text>
-        <text x="0" y="52" font-family="Poppins, sans-serif" font-weight="500" font-size="16" letter-spacing="3" fill="var(--plum)">MINI STORE</text>
-        <circle cx="252" cy="10" r="4" fill="var(--pink-main)"/>
-        <circle cx="262" cy="20" r="2.2" fill="var(--plum)"/>
-      </svg>
-    </div>
+    <p class="stock-note">Stock will be refreshed weekly.</p>
+    <p class="stock-note">Note: All photos are for reference only and do not reflect actual condition stated.</p>
     <p id="statusText" class="status-text">Loading inventory…</p>
 
     <div class="toolbar">
-      <input id="searchInput" type="search" inputmode="search" enterkeyhint="search" placeholder="Search cards..." autocomplete="off" autocorrect="off">
+      <input id="searchInput" type="search" inputmode="search" enterkeyhint="search" placeholder="Search" autocomplete="off" autocorrect="off">
       <select id="categoryFilter">
         <option value="">All categories</option>
       </select>
