@@ -185,13 +185,9 @@ h2 {
 
 .product-card .photo-wrap img,
 .cart-item .photo-wrap img {
-  position: absolute;
-  top: -12%;
-  left: 0;
   width: 100%;
-  height: 112%; /* slightly larger than the box — lets us crop away more of the top than object-fit alone allows */
-  object-fit: cover;
-  object-position: center bottom;
+  height: 100%;
+  object-fit: contain;
   display: block;
   cursor: pointer;
   transition: transform 0.12s ease;
