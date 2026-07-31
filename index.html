@@ -527,8 +527,18 @@ footer .btn { width: auto; flex-shrink: 0; }
     <h2>Your Cart</h2>
     <div class="cart-list" id="cartList"></div>
 
+    <div class="checkout-section" id="discountBox" style="display:none;">
+      <label style="font-size:13px;font-weight:600;color:var(--text-soft);display:block;margin-bottom:6px;">Discount code</label>
+      <div style="display:flex;gap:8px;">
+        <input id="discountCodeInput" type="text" inputmode="text" enterkeyhint="done" autocomplete="off" placeholder="Enter code" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--pink-border);font-size:16px;font-family:inherit;">
+        <button class="btn btn-secondary" id="applyDiscountButton" style="width:auto;padding:0 16px;">Apply</button>
+      </div>
+      <p id="discountErrorText" style="color:#c0392b;font-size:12px;margin:6px 0 0;display:none;"></p>
+    </div>
+
     <div class="total-box" id="totalBox" style="display:none;">
       <div class="total-row"><span>Subtotal</span><span id="subtotalText">$0.00</span></div>
+      <div class="total-row" id="discountRow" style="display:none;color:#3a7d44;"><span>Discount</span><span id="discountText">-$0.00</span></div>
       <div class="total-row"><span>Mailing Fee</span><span id="shippingText">$0.00</span></div>
       <div class="total-row" style="font-weight:700;"><span>Total</span><span id="totalText">$0.00</span></div>
     </div>
@@ -717,6 +727,12 @@ const holdCheckboxEl = document.getElementById("holdCheckbox");
 const telegramUsernameInputEl = document.getElementById("telegramUsernameInput");
 const fullDetailsFieldsEl = document.getElementById("fullDetailsFields");
 const holdModeFieldsEl = document.getElementById("holdModeFields");
+const discountBoxEl = document.getElementById("discountBox");
+const discountCodeInputEl = document.getElementById("discountCodeInput");
+const applyDiscountButtonEl = document.getElementById("applyDiscountButton");
+const discountErrorTextEl = document.getElementById("discountErrorText");
+const discountRowEl = document.getElementById("discountRow");
+const discountTextEl = document.getElementById("discountText");
 const totalTextEl = document.getElementById("totalText");
 const totalBoxEl = document.getElementById("totalBox");
 const checkoutSectionEl = document.getElementById("checkoutSection");
@@ -784,9 +800,24 @@ async function sendOrderToBackend(order) {
       .join("\n");
 
     // Block 2 → paste into column F, then Text to Columns to split into F:G (Buyer, Price).
+    // Price here is net of any discount, prorated across items by their share
+    // of the subtotal, so per-card revenue in Excel still adds up correctly
+    // even when a discount code was used.
     const buyerDisplay = order.telegramUsername || (telegramUser && telegramUser.username ? `@${telegramUser.username}` : order.name);
+    const rawSubtotal = Object.values(order.cart).reduce(
+      (sum, { product, quantity }) => sum + Number(product.price || 0) * quantity,
+      0
+    );
+    const totalDiscount = Number(order.discountAmount || 0);
+
     const block2_BuyerPrice = Object.values(order.cart)
-      .map(({ product }) => [buyerDisplay, Number(product.price || 0).toFixed(2)].join(" | "))
+      .map(({ product, quantity }) => {
+        const price = Number(product.price || 0);
+        const lineTotal = price * quantity;
+        const lineDiscountShare = rawSubtotal > 0 ? (lineTotal / rawSubtotal) * totalDiscount : 0;
+        const netUnitPrice = quantity > 0 ? Math.max(lineTotal - lineDiscountShare, 0) / quantity : price;
+        return [buyerDisplay, netUnitPrice.toFixed(2)].join(" | ");
+      })
       .join("\n");
 
     const itemsSummary = Object.values(order.cart)
@@ -815,6 +846,8 @@ async function sendOrderToBackend(order) {
         "Buyer_Claims_Package_On_Hold": order.holdClaimed ? "YES — verify against hold list before confirming" : "No",
         Mail_Preference: order.mailPreference || "",
         Subtotal: order.subtotal || "",
+        Discount_Code: order.discountCode || "None",
+        Discount_Amount: order.discountAmount && Number(order.discountAmount) > 0 ? `$${order.discountAmount}` : "$0.00",
         Shipping: order.shipping || "",
         Total: order.total || "",
         Items_Readable: itemsSummary,
@@ -905,17 +938,38 @@ function getHoldMailPreference() {
   return checked ? checked.value : "mail_with_hold";
 }
 
+let appliedDiscount = null; // { code, type: "percent"|"fixed", value }
+
+function computeDiscountAmount(subtotal, discount) {
+  if (!discount || !(subtotal > 0)) return 0;
+  if (discount.type === "percent") {
+    return Math.min(subtotal * (discount.value / 100), subtotal);
+  }
+  if (discount.type === "fixed") {
+    return Math.min(discount.value, subtotal);
+  }
+  return 0;
+}
+
 function updateTotals() {
   const hasHold = holdCheckboxEl.checked;
   // Mailing fee applies whenever there's no existing hold — both "mail
   // immediately" and "hold with us" are paid upfront; the choice only
   // tells the seller what to physically do with the package.
   const shipping = currentSubtotal > 0 && !hasHold ? MAILING_FEE : 0;
-  const total = currentSubtotal + shipping;
+  const discountAmount = computeDiscountAmount(currentSubtotal, appliedDiscount);
+  const total = Math.max(currentSubtotal - discountAmount, 0) + shipping;
 
   subtotalTextEl.textContent = `$${currentSubtotal.toFixed(2)}`;
   shippingTextEl.textContent = `$${shipping.toFixed(2)}`;
   totalTextEl.textContent = `$${total.toFixed(2)}`;
+
+  if (discountAmount > 0) {
+    discountRowEl.style.display = "flex";
+    discountTextEl.textContent = `-$${discountAmount.toFixed(2)}`;
+  } else {
+    discountRowEl.style.display = "none";
+  }
 }
 
 function updateCheckoutFieldsVisibility() {
@@ -1173,6 +1227,7 @@ function renderCart() {
       cartListEl.innerHTML =
         '<p style="text-align:center;color:#777;">Your cart is empty.</p>';
       totalBoxEl.style.display = "none";
+      discountBoxEl.style.display = "none";
       checkoutSectionEl.style.display = "none";
       return;
     }
@@ -1224,6 +1279,7 @@ function renderCart() {
     updateTotals();
 
     totalBoxEl.style.display = "block";
+    discountBoxEl.style.display = "block";
     checkoutSectionEl.style.display = "block";
   } catch (err) {
     console.error("renderCart failed:", err);
@@ -1232,6 +1288,7 @@ function renderCart() {
       'Something went wrong showing your cart: ' + (err && err.message ? err.message : err) +
       '<br><br>Please screenshot this message and send it over.</p>';
     totalBoxEl.style.display = "none";
+    discountBoxEl.style.display = "none";
     checkoutSectionEl.style.display = "none";
   }
 }
@@ -1276,6 +1333,49 @@ function syncFooterButton() {
     cartButtonEl.style.display = "none";
   }
 }
+
+applyDiscountButtonEl.onclick = async () => {
+  const code = discountCodeInputEl.value.trim();
+  discountErrorTextEl.style.display = "none";
+
+  if (!code) return;
+
+  applyDiscountButtonEl.disabled = true;
+  try {
+    const res = await fetch("/api/validate-discount", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    const data = await res.json();
+
+    if (data.valid) {
+      appliedDiscount = { code: code.toUpperCase(), type: data.type, value: data.value };
+      discountCodeInputEl.value = appliedDiscount.code;
+      discountErrorTextEl.style.display = "none";
+    } else {
+      appliedDiscount = null;
+      discountCodeInputEl.value = "";
+      discountErrorTextEl.textContent = "This discount code is invalid.";
+      discountErrorTextEl.style.display = "block";
+    }
+  } catch (err) {
+    console.error("Discount validation failed:", err);
+    appliedDiscount = null;
+    discountErrorTextEl.textContent = "Something went wrong checking that code. Please try again.";
+    discountErrorTextEl.style.display = "block";
+  } finally {
+    applyDiscountButtonEl.disabled = false;
+    updateTotals();
+  }
+};
+
+discountCodeInputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    applyDiscountButtonEl.click();
+  }
+});
 
 cartButtonEl.onclick = showCart;
 backToShopButtonEl.onclick = showProducts;
@@ -1337,6 +1437,8 @@ checkoutButtonEl.onclick = async () => {
     address: fullAddress,
     cart,
     subtotal: subtotalTextEl.textContent,
+    discountCode: appliedDiscount ? appliedDiscount.code : "",
+    discountAmount: computeDiscountAmount(currentSubtotal, appliedDiscount).toFixed(2),
     shipping: shippingTextEl.textContent,
     holdClaimed: hasHold,
     mailPreference,
@@ -1428,6 +1530,9 @@ paynowConfirmButtonEl.onclick = async () => {
   holdCheckboxEl.checked = false;
   document.getElementById("mailPrefImmediate").checked = true;
   document.getElementById("holdMailPrefMail").checked = true;
+  appliedDiscount = null;
+  discountCodeInputEl.value = "";
+  discountErrorTextEl.style.display = "none";
   updateCheckoutFieldsVisibility();
   modalBackdropEl.style.display = "flex";
 };
