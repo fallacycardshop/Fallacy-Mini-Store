@@ -169,18 +169,47 @@ h2 {
   box-shadow: 0 2px 6px rgba(0,0,0,0.08);
 }
 
-.product-card img,
-.cart-item img {
+.product-card .photo-wrap,
+.cart-item .photo-wrap {
   width: 92px;
   aspect-ratio: 5 / 7; /* matches a trading card's portrait proportions */
-  object-fit: cover;
-  border-radius: 10px;
-  background: #fff;
-  border: 3px solid var(--pink-border);
   flex-shrink: 0;
   align-self: flex-start; /* keeps the photo a fixed size even if the card stretches taller */
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+  border: 3px solid var(--pink-border);
+}
+
+.product-card .photo-wrap img,
+.cart-item .photo-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
   cursor: pointer;
   transition: transform 0.12s ease;
+}
+
+.photo-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-28deg);
+  color: rgba(255,255,255,0.8);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+
+.photo-watermark-large {
+  font-size: 20px;
+  letter-spacing: 1px;
 }
 
 .product-card img:active,
@@ -471,7 +500,7 @@ footer .btn { width: auto; flex-shrink: 0; }
   .top-bar-title { font-size: 16px; line-height: 1.05; }
   .top-bar-characters { height: 34px; }
   .product-card, .cart-item { padding: 10px; gap: 10px; }
-  .product-card img, .cart-item img { width: 76px; }
+  .product-card .photo-wrap, .cart-item .photo-wrap { width: 76px; }
 }
 
 /* Stack product/cart cards vertically on very narrow screens for readability */
@@ -480,13 +509,13 @@ footer .btn { width: auto; flex-shrink: 0; }
     flex-direction: column;
     text-align: center;
   }
-  .product-card img, .cart-item img { margin: 0 auto; }
+  .product-card .photo-wrap, .cart-item .photo-wrap { margin: 0 auto; }
   .cart-actions { align-items: center; }
 }
 
 /* Larger phones / small tablets in portrait: give products a bit more breathing room */
 @media (min-width: 600px) {
-  .product-card img, .cart-item img { width: 120px; }
+  .product-card .photo-wrap, .cart-item .photo-wrap { width: 120px; }
 }
 </style>
 </head>
@@ -649,7 +678,10 @@ footer .btn { width: auto; flex-shrink: 0; }
 </footer>
 
 <div class="modal-backdrop" id="imageLightbox">
-  <img id="lightboxImg" src="" alt="" style="max-width:92vw;max-height:85vh;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,0.35);">
+  <div style="position:relative;display:inline-block;max-width:92vw;max-height:85vh;border-radius:14px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,0.35);">
+    <img id="lightboxImg" src="" alt="" style="display:block;max-width:92vw;max-height:85vh;">
+    <span class="photo-watermark photo-watermark-large">@fallacycardshop</span>
+  </div>
 </div>
 
 <div class="modal-backdrop" id="modalBackdrop">
@@ -1105,7 +1137,10 @@ function renderProducts() {
       const rarityExpanded = expandedFields.has(fieldKey(p, "rarity")) ? " text-expanded" : "";
       const setExpanded = expandedFields.has(fieldKey(p, "set")) ? " text-expanded" : "";
       card.innerHTML = `
-        <img src="${p.photo || 'https://via.placeholder.com/300x420?text=Card'}" loading="lazy" alt="${p.name}">
+        <div class="photo-wrap">
+          <img src="${p.photo || 'https://via.placeholder.com/300x420?text=Card'}" loading="lazy" alt="${p.name}">
+          <span class="photo-watermark">@fallacycardshop</span>
+        </div>
         <div class="product-info">
           <div class="product-name${nameExpanded}">${p.name}</div>
           <div class="product-price">$${Number(p.price || 0).toFixed(2)}</div>
@@ -1244,7 +1279,10 @@ function renderCart() {
       const stockLeft = stock - quantity;
 
       item.innerHTML = `
-        <img src="${product.photo || 'https://via.placeholder.com/300x420?text=Card'}" loading="lazy" alt="${product.name}">
+        <div class="photo-wrap">
+          <img src="${product.photo || 'https://via.placeholder.com/300x420?text=Card'}" loading="lazy" alt="${product.name}">
+          <span class="photo-watermark">@fallacycardshop</span>
+        </div>
         <div class="cart-info">
           <div class="product-name">${product.name}</div>
           <div class="product-price">$${price.toFixed(2)} × ${quantity}</div>
