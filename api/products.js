@@ -20,6 +20,7 @@ export default async function handler(req, res) {
         }
 
         const reserved = reservedMap[groupKey] || 0;
+        const trueStock = Math.max(group.baseStock - sold, 0);
 
         return {
           id: index + 1,
@@ -28,6 +29,7 @@ export default async function handler(req, res) {
           photo: group.photo,
           description: group.description,
           stock: Math.max(group.baseStock - sold - reserved, 0),
+          trueStock, // ignores other buyers' in-progress reservations — only reflects genuine permanent sales
           category: group.category,
           set: group.set,
           cardId: group.cardId,
