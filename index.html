@@ -216,12 +216,39 @@ h2 {
 .product-desc {
   font-size: 12px;
   color: var(--text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
 }
 
 .product-meta {
   font-size: 11px;
   color: var(--text-soft);
   margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.product-stock-line {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--plum);
+  margin: 2px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.product-desc.text-expanded,
+.product-meta.text-expanded,
+.product-stock-line.text-expanded {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .product-actions {
@@ -273,6 +300,10 @@ h2 {
   background: #fff;
   color: var(--plum);
   border: 1px solid var(--plum);
+}
+
+#cartButton {
+  font-weight: 700;
 }
 
 #cartScreen, #paynowScreen { display: none; }
@@ -392,7 +423,7 @@ footer {
   padding-left: calc(16px + var(--safe-left));
   padding-right: calc(16px + var(--safe-right));
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
   align-items: center;
   color: #fff;
   font-size: 14px;
@@ -973,10 +1004,10 @@ function renderProducts() {
         <div class="product-info">
           <div class="product-name">${p.name}</div>
           <div class="product-price">$${Number(p.price || 0).toFixed(2)}</div>
-          <div class="product-desc">${p.description || ""}</div>
+          <div class="product-stock-line">Stock: ${stock}${inCart > 0 ? ` (${inCart} in your cart)` : ""}</div>
+          <div class="product-desc">Condition: ${p.description || ""}</div>
           <div class="product-meta">Rarity: ${p.category || "Uncategorized"}</div>
           <div class="product-meta">Set: ${p.set || "N/A"}</div>
-          <div class="product-meta">Stock: ${stock}${inCart > 0 ? ` (${inCart} in your cart)` : ""}</div>
         </div>
         <div class="product-actions">
           <button class="btn btn-primary" ${isMaxed ? "disabled" : ""}>
@@ -992,6 +1023,9 @@ function renderProducts() {
       card.querySelector(".product-name").onclick = (e) => {
         e.currentTarget.classList.toggle("name-expanded");
       };
+      card.querySelectorAll(".product-desc, .product-meta, .product-stock-line").forEach(el => {
+        el.onclick = (e) => e.currentTarget.classList.toggle("text-expanded");
+      });
       productListEl.appendChild(card);
     });
 
