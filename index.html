@@ -63,6 +63,7 @@ body {
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none; /* kill the rubber-band "pull to refresh" feel on the whole page */
   min-height: 100dvh; /* dynamic viewport height, accounts for mobile browser chrome */
+  overflow-x: hidden; /* safety net — prevents any stray element from causing sideways scroll */
 }
 
 .top-bar {
