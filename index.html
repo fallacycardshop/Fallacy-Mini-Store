@@ -187,6 +187,7 @@ h2 {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center 25%;
   display: block;
   cursor: pointer;
   transition: transform 0.12s ease;
@@ -1052,6 +1053,11 @@ function reconcileCartWithStock() {
   // real inventory: trims quantities down to available stock, drops items
   // that no longer exist, and refreshes each cart item's product snapshot
   // (price/photo/stock) so the cart screen always shows current data.
+  //
+  // Important: this uses trueStock (genuine permanent sales only), NOT the
+  // reservation-aware "stock" field — otherwise another buyer's temporary
+  // in-progress checkout (which briefly drops "stock" to 0) would silently
+  // empty this buyer's cart even though nothing was actually, permanently sold.
   let changed = false;
 
   Object.keys(cart).forEach(id => {
@@ -1063,7 +1069,7 @@ function reconcileCartWithStock() {
       return;
     }
 
-    const stock = Number(fresh.stock || 0);
+    const stock = Number(fresh.trueStock ?? fresh.stock ?? 0);
 
     if (cart[id].quantity > stock) {
       cart[id].quantity = stock;
