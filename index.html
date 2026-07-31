@@ -214,7 +214,7 @@ h2 {
 }
 
 .product-desc {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-soft);
   white-space: nowrap;
   overflow: hidden;
@@ -645,6 +645,24 @@ window.onerror = function (message, source, lineno, colno, error) {
 let products = [];
 let currentScreen = "products";
 
+// Tracks which product fields (name/condition/rarity/set/stock) are currently
+// expanded, so a background refresh doesn't silently reset them. Keyed by
+// "<stockKey>:<field>" rather than the array index, since stockKey is stable
+// across fetches while numeric ids can shift if products are added/removed.
+let expandedFields = new Set();
+
+function fieldKey(product, field) {
+  return `${product.stockKey || product.name}:${field}`;
+}
+
+function toggleExpandedField(key) {
+  if (expandedFields.has(key)) {
+    expandedFields.delete(key);
+  } else {
+    expandedFields.add(key);
+  }
+}
+
 // Telegram Mini App identity (populated below if running inside Telegram).
 let telegramUser = null;
 let telegramInitData = null;
@@ -999,15 +1017,20 @@ function renderProducts() {
 
       const card = document.createElement("div");
       card.className = "product-card";
+      const nameExpanded = expandedFields.has(fieldKey(p, "name")) ? " name-expanded" : "";
+      const stockExpanded = expandedFields.has(fieldKey(p, "stock")) ? " text-expanded" : "";
+      const descExpanded = expandedFields.has(fieldKey(p, "desc")) ? " text-expanded" : "";
+      const rarityExpanded = expandedFields.has(fieldKey(p, "rarity")) ? " text-expanded" : "";
+      const setExpanded = expandedFields.has(fieldKey(p, "set")) ? " text-expanded" : "";
       card.innerHTML = `
         <img src="${p.photo || 'https://via.placeholder.com/300x420?text=Card'}" loading="lazy" alt="${p.name}">
         <div class="product-info">
-          <div class="product-name">${p.name}</div>
+          <div class="product-name${nameExpanded}">${p.name}</div>
           <div class="product-price">$${Number(p.price || 0).toFixed(2)}</div>
-          <div class="product-stock-line">Stock: ${stock}${inCart > 0 ? ` (${inCart} in your cart)` : ""}</div>
-          <div class="product-desc">Condition: ${p.description || ""}</div>
-          <div class="product-meta">Rarity: ${p.category || "Uncategorized"}</div>
-          <div class="product-meta">Set: ${p.set || "N/A"}</div>
+          <div class="product-stock-line${stockExpanded}">Stock: ${stock}${inCart > 0 ? ` (${inCart} in your cart)` : ""}</div>
+          <div class="product-desc${descExpanded}">Condition: ${p.description || ""}</div>
+          <div class="product-meta${rarityExpanded}" data-field="rarity">Rarity: ${p.category || "Uncategorized"}</div>
+          <div class="product-meta${setExpanded}" data-field="set">Set: ${p.set || "N/A"}</div>
         </div>
         <div class="product-actions">
           <button class="btn btn-primary" ${isMaxed ? "disabled" : ""}>
@@ -1022,10 +1045,24 @@ function renderProducts() {
       card.querySelector("img").onclick = () => openLightbox(productImgSrc, p.name);
       card.querySelector(".product-name").onclick = (e) => {
         e.currentTarget.classList.toggle("name-expanded");
+        toggleExpandedField(fieldKey(p, "name"));
       };
-      card.querySelectorAll(".product-desc, .product-meta, .product-stock-line").forEach(el => {
-        el.onclick = (e) => e.currentTarget.classList.toggle("text-expanded");
-      });
+      card.querySelector(".product-stock-line").onclick = (e) => {
+        e.currentTarget.classList.toggle("text-expanded");
+        toggleExpandedField(fieldKey(p, "stock"));
+      };
+      card.querySelector(".product-desc").onclick = (e) => {
+        e.currentTarget.classList.toggle("text-expanded");
+        toggleExpandedField(fieldKey(p, "desc"));
+      };
+      card.querySelector('[data-field="rarity"]').onclick = (e) => {
+        e.currentTarget.classList.toggle("text-expanded");
+        toggleExpandedField(fieldKey(p, "rarity"));
+      };
+      card.querySelector('[data-field="set"]').onclick = (e) => {
+        e.currentTarget.classList.toggle("text-expanded");
+        toggleExpandedField(fieldKey(p, "set"));
+      };
       productListEl.appendChild(card);
     });
 
