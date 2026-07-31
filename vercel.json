@@ -16,6 +16,11 @@
     { "src": "api/confirm-order.js", "use": "@vercel/node" },
     { "src": "api/release-reservation.js", "use": "@vercel/node" },
     { "src": "api/reset-sold-counts.js", "use": "@vercel/node" },
+    {
+      "src": "api/validate-discount.js",
+      "use": "@vercel/node",
+      "config": { "includeFiles": "discount-codes.csv" }
+    },
     { "src": "index.html", "use": "@vercel/static" },
     { "src": "admin.html", "use": "@vercel/static" }
   ],
