@@ -547,6 +547,22 @@ footer .btn { width: auto; flex-shrink: 0; }
         <input id="telegramUsernameInput" type="text" inputmode="text" enterkeyhint="next" autocomplete="off" placeholder="@yourusername">
       </div>
 
+      <div id="holdModeFields" style="display:none;">
+        <div class="form-row">
+          <label>What would you like to do with this order?</label>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;">
+              <input type="radio" name="holdMailPreference" value="mail_with_hold" id="holdMailPrefMail" checked style="width:18px;height:18px;">
+              Mail it out with the rest of my cards on hold
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;">
+              <input type="radio" name="holdMailPreference" value="continue_hold" id="holdMailPrefContinue" style="width:18px;height:18px;">
+              Continue to hold with the rest of my package
+            </label>
+          </div>
+        </div>
+      </div>
+
       <div id="fullDetailsFields">
         <div class="form-row">
           <label>Name</label>
@@ -697,6 +713,7 @@ const shippingTextEl = document.getElementById("shippingText");
 const holdCheckboxEl = document.getElementById("holdCheckbox");
 const telegramUsernameInputEl = document.getElementById("telegramUsernameInput");
 const fullDetailsFieldsEl = document.getElementById("fullDetailsFields");
+const holdModeFieldsEl = document.getElementById("holdModeFields");
 const totalTextEl = document.getElementById("totalText");
 const totalBoxEl = document.getElementById("totalBox");
 const checkoutSectionEl = document.getElementById("checkoutSection");
@@ -880,6 +897,11 @@ function getMailPreference() {
   return checked ? checked.value : "immediate";
 }
 
+function getHoldMailPreference() {
+  const checked = document.querySelector('input[name="holdMailPreference"]:checked');
+  return checked ? checked.value : "mail_with_hold";
+}
+
 function updateTotals() {
   const hasHold = holdCheckboxEl.checked;
   // Mailing fee applies whenever there's no existing hold — both "mail
@@ -895,9 +917,12 @@ function updateTotals() {
 
 function updateCheckoutFieldsVisibility() {
   // If the buyer already has a package on hold, this order is just being
-  // added to it — we only need their Telegram username to match it up,
-  // and there's nothing to decide about mailing since it's already held.
-  fullDetailsFieldsEl.style.display = holdCheckboxEl.checked ? "none" : "block";
+  // added to it — we only need their Telegram username plus what to do
+  // with this addition (mail everything now, or keep holding), instead
+  // of full shipping details.
+  const hasHold = holdCheckboxEl.checked;
+  fullDetailsFieldsEl.style.display = hasHold ? "none" : "block";
+  holdModeFieldsEl.style.display = hasHold ? "block" : "none";
   updateTotals();
 }
 
@@ -1289,6 +1314,11 @@ checkoutButtonEl.onclick = async () => {
       alert("Please fill in Name, Phone, Address Line, and Postal Code.");
       return;
     }
+  } else {
+    mailPreference =
+      getHoldMailPreference() === "mail_with_hold"
+        ? "Mail it out with the rest of cards on hold"
+        : "Continue to hold with the rest of package";
   }
 
   const fullAddress = hasHold
@@ -1306,7 +1336,7 @@ checkoutButtonEl.onclick = async () => {
     subtotal: subtotalTextEl.textContent,
     shipping: shippingTextEl.textContent,
     holdClaimed: hasHold,
-    mailPreference: hasHold ? "n/a (already on hold)" : mailPreference,
+    mailPreference,
     total
   };
 
@@ -1394,6 +1424,7 @@ paynowConfirmButtonEl.onclick = async () => {
   updateCartBadge();
   holdCheckboxEl.checked = false;
   document.getElementById("mailPrefImmediate").checked = true;
+  document.getElementById("holdMailPrefMail").checked = true;
   updateCheckoutFieldsVisibility();
   modalBackdropEl.style.display = "flex";
 };
