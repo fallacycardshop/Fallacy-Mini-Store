@@ -592,12 +592,12 @@ footer .btn { width: auto; flex-shrink: 0; }
           <label>What would you like to do with this order?</label>
           <div style="display:flex;flex-direction:column;gap:6px;">
             <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;">
-              <input type="radio" name="holdMailPreference" value="mail_with_hold" id="holdMailPrefMail" checked style="width:18px;height:18px;">
-              Mail it out with the rest of my cards
+              <input type="radio" name="holdMailPreference" value="continue_hold" id="holdMailPrefContinue" checked style="width:18px;height:18px;">
+              Continue to hold with the rest of my package
             </label>
             <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;">
-              <input type="radio" name="holdMailPreference" value="continue_hold" id="holdMailPrefContinue" style="width:18px;height:18px;">
-              Continue to hold with the rest of my package
+              <input type="radio" name="holdMailPreference" value="mail_with_hold" id="holdMailPrefMail" style="width:18px;height:18px;">
+              Mail it out with the rest of my cards
             </label>
           </div>
         </div>
@@ -629,12 +629,12 @@ footer .btn { width: auto; flex-shrink: 0; }
           <label>What would you like to do with this order?</label>
           <div style="display:flex;flex-direction:column;gap:6px;">
             <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;">
-              <input type="radio" name="mailPreference" value="immediate" id="mailPrefImmediate" checked style="width:18px;height:18px;">
-              Mail out immediately
+              <input type="radio" name="mailPreference" value="hold" id="mailPrefHold" checked style="width:18px;height:18px;">
+              Hold the package with us (mailing fee paid upfront)
             </label>
             <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;">
-              <input type="radio" name="mailPreference" value="hold" id="mailPrefHold" style="width:18px;height:18px;">
-              Hold the package with us (mailing fee paid upfront)
+              <input type="radio" name="mailPreference" value="immediate" id="mailPrefImmediate" style="width:18px;height:18px;">
+              Mail out immediately
             </label>
           </div>
         </div>
@@ -963,12 +963,12 @@ function startPaynowTimer() {
 
 function getMailPreference() {
   const checked = document.querySelector('input[name="mailPreference"]:checked');
-  return checked ? checked.value : "immediate";
+  return checked ? checked.value : "hold";
 }
 
 function getHoldMailPreference() {
   const checked = document.querySelector('input[name="holdMailPreference"]:checked');
-  return checked ? checked.value : "mail_with_hold";
+  return checked ? checked.value : "continue_hold";
 }
 
 let appliedDiscount = null; // { code, type: "percent"|"fixed", value }
@@ -1089,7 +1089,8 @@ function reconcileCartWithStock() {
 }
 
 function renderCategoryFilter() {
-  const categories = [...new Set(products.map(p => p.category))].filter(Boolean);
+  const categories = [...new Set(products.map(p => p.category))].filter(Boolean).sort((a, b) => a.localeCompare(b));
+  const previousValue = categoryFilterEl.value;
   categoryFilterEl.innerHTML = '<option value="">All categories</option>';
   categories.forEach(cat => {
     const opt = document.createElement("option");
@@ -1097,10 +1098,11 @@ function renderCategoryFilter() {
     opt.textContent = cat;
     categoryFilterEl.appendChild(opt);
   });
+  if (categories.includes(previousValue)) categoryFilterEl.value = previousValue;
 }
 
 function renderSetFilter() {
-  const sets = [...new Set(products.map(p => p.set))].filter(Boolean);
+  const sets = [...new Set(products.map(p => p.set))].filter(Boolean).sort((a, b) => a.localeCompare(b));
   const previousValue = setFilterEl.value;
   setFilterEl.innerHTML = '<option value="">All sets</option>';
   sets.forEach(setName => {
@@ -1572,8 +1574,8 @@ paynowConfirmButtonEl.onclick = async () => {
   saveCart();
   updateCartBadge();
   holdCheckboxEl.checked = false;
-  document.getElementById("mailPrefImmediate").checked = true;
-  document.getElementById("holdMailPrefMail").checked = true;
+  document.getElementById("mailPrefHold").checked = true;
+  document.getElementById("holdMailPrefContinue").checked = true;
   appliedDiscount = null;
   discountCodeInputEl.value = "";
   discountErrorTextEl.style.display = "none";
