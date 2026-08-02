@@ -181,6 +181,16 @@ h2 {
   margin: 4px 0 -4px;
 }
 
+.hidden-sold-out-wrap {
+  display: none;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hidden-sold-out-wrap.expanded {
+  display: flex;
+}
+
 .product-card {
   background: #fff;
   border-radius: 12px;
@@ -1210,6 +1220,43 @@ function buildProductCard(p) {
   return card;
 }
 
+function renderSection(headingText, matches) {
+  if (matches.length === 0) return;
+
+  const heading = document.createElement("h3");
+  heading.className = "section-heading";
+  heading.textContent = headingText;
+  productListEl.appendChild(heading);
+
+  const available = matches.filter(p => Number(p.stock || 0) > 0);
+  const soldOut = matches.filter(p => Number(p.stock || 0) <= 0);
+
+  available.forEach(p => productListEl.appendChild(buildProductCard(p)));
+
+  const visibleSoldOut = soldOut.slice(0, 5);
+  const hiddenSoldOut = soldOut.slice(5);
+
+  visibleSoldOut.forEach(p => productListEl.appendChild(buildProductCard(p)));
+
+  if (hiddenSoldOut.length > 0) {
+    const hiddenWrap = document.createElement("div");
+    hiddenWrap.className = "hidden-sold-out-wrap";
+    hiddenSoldOut.forEach(p => hiddenWrap.appendChild(buildProductCard(p)));
+
+    const showMoreBtn = document.createElement("button");
+    showMoreBtn.className = "btn btn-secondary";
+    showMoreBtn.style.width = "100%";
+    showMoreBtn.textContent = `Show ${hiddenSoldOut.length} more sold out item${hiddenSoldOut.length === 1 ? "" : "s"}`;
+    showMoreBtn.onclick = () => {
+      hiddenWrap.classList.add("expanded");
+      showMoreBtn.remove();
+    };
+
+    productListEl.appendChild(showMoreBtn);
+    productListEl.appendChild(hiddenWrap);
+  }
+}
+
 function renderProducts() {
   const search = searchInputEl.value.trim().toLowerCase();
   const category = categoryFilterEl.value;
@@ -1233,21 +1280,8 @@ function renderProducts() {
   const totalMatches = featuredMatches.length + otherMatches.length;
   resultsCounterEl.textContent = `${totalMatches} card${totalMatches === 1 ? "" : "s"} available`;
 
-  if (featuredMatches.length > 0) {
-    const heading = document.createElement("h3");
-    heading.className = "section-heading";
-    heading.textContent = "🔥 Popular this week";
-    productListEl.appendChild(heading);
-    featuredMatches.forEach(p => productListEl.appendChild(buildProductCard(p)));
-  }
-
-  if (otherMatches.length > 0) {
-    const heading = document.createElement("h3");
-    heading.className = "section-heading";
-    heading.textContent = "All Cards";
-    productListEl.appendChild(heading);
-    otherMatches.forEach(p => productListEl.appendChild(buildProductCard(p)));
-  }
+  renderSection("🔥 Popular this week", featuredMatches);
+  renderSection("All Cards", otherMatches);
 
   if (featuredMatches.length === 0 && otherMatches.length === 0) {
     productListEl.innerHTML =
