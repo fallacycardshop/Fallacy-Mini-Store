@@ -1267,9 +1267,9 @@ function buildProductCard(p) {
       <div class="product-name${nameExpanded}">${p.name}</div>
       <div class="product-price">$${Number(p.price || 0).toFixed(2)}</div>
       <div class="product-stock-line${stockExpanded}">Stock: ${stock}${inCart > 0 ? ` (${inCart} in your cart)` : ""}</div>
-      <div class="product-desc${descExpanded}">Condition: ${p.description || ""}</div>
+      <div class="product-desc${descExpanded}">${p.description || ""}</div>
       <div class="product-meta${rarityExpanded}" data-field="rarity">Rarity: ${p.category || "Uncategorized"}</div>
-      <div class="product-meta${setExpanded}" data-field="set">Set: ${p.set || "N/A"}</div>
+      <div class="product-meta${setExpanded}" data-field="set">${p.set || "N/A"}</div>
     </div>
     <div class="product-actions">
       ${buildProductActionsHtml(stock, inCart)}
