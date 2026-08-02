@@ -1,19 +1,102 @@
 CardID,Name,Set,Rarity,Price,Condition,Stock,Photo,Featured
-S12A179,Keldeo,S12A VSTAR Universe,AR,,,,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/KeldeoARS12A179.jpg
-S12A195,Latias,S12A VSTAR Universe,AR,,,,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/LatiasARS12A195.jpg
-S12A189,Solrock,S12A VSTAR Universe,AR,,,,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SolrockARS12A189.jpg
-S12A181,Toxtricity,S12A VSTAR Universe,AR,,,,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ToxtricityARS12A181.jpg
-S12A187,Comfey,S12A VSTAR Universe,AR,,,,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ComfeyARS12A187.jpg
-S12A192,Thievul,S12A VSTAR Universe,AR,,,,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ThievulARS12A192.jpg
-S12A192,Thievul,S12A VSTAR Universe,AR,,,,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ThievulARS12A192.jpg
-S12A176,Oricorio,S12A VSTAR Universe,AR,,,,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/OricorioARS12A176.jpg
-S12A176,Oricorio,S12A VSTAR Universe,AR,,,,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/OricorioARS12A176.jpg
-S12A176,Oricorio,S12A VSTAR Universe,AR,,,,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/OricorioARS12A176.jpg
-S12A176,Oricorio,S12A VSTAR Universe,AR,,,,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/OricorioARS12A176.jpg
-S12A189,Solrock,S12A VSTAR Universe,AR,,,,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SolrockARS12A189.jpg
-S12A190,Galarian Moltres,S12A VSTAR Universe,AR,,,,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/GalarianMoltresARS12A190.jpg,Y
-S12A190,Galarian Moltres,S12A VSTAR Universe,AR,,,,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/GalarianMoltresARS12A190.jpg
-S12A190,Galarian Moltres,S12A VSTAR Universe,AR,,,,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/GalarianMoltresARS12A190.jpg
-S12A190,Galarian Moltres,S12A VSTAR Universe,AR,,,,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/GalarianMoltresARS12A190.jpg
-
-
+S12A179,Keldeo,S12A VSTAR Universe,AR,10,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/KeldeoARS12A179.jpg
+S12A195,Latias,S12A VSTAR Universe,AR,13,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/LatiasARS12A195.jpg
+S12A189,Solrock,S12A VSTAR Universe,AR,4,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SolrockARS12A189.jpg
+S12A181,Toxtricity,S12A VSTAR Universe,AR,3,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ToxtricityARS12A181.jpg
+S12A187,Comfey,S12A VSTAR Universe,AR,3,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ComfeyARS12A187.jpg
+S12A192,Thievul,S12A VSTAR Universe,AR,2.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ThievulARS12A192.jpg
+S12A192,Thievul,S12A VSTAR Universe,AR,2.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ThievulARS12A192.jpg
+S12A176,Oricorio,S12A VSTAR Universe,AR,3,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/OricorioARS12A176.jpg
+S12A176,Oricorio,S12A VSTAR Universe,AR,3,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/OricorioARS12A176.jpg
+S12A176,Oricorio,S12A VSTAR Universe,AR,3,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/OricorioARS12A176.jpg
+S12A176,Oricorio,S12A VSTAR Universe,AR,3,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/OricorioARS12A176.jpg
+S12A189,Solrock,S12A VSTAR Universe,AR,4,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SolrockARS12A189.jpg
+S12A190,Galarian Moltres,S12A VSTAR Universe,AR,16,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/GalarianMoltresARS12A190.jpg
+S12A190,Galarian Moltres,S12A VSTAR Universe,AR,16,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/GalarianMoltresARS12A190.jpg
+S12A190,Galarian Moltres,S12A VSTAR Universe,AR,16,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/GalarianMoltresARS12A190.jpg
+S12A190,Galarian Moltres,S12A VSTAR Universe,AR,16,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/GalarianMoltresARS12A190.jpg
+S12A173,Hisuian Voltorb,S12A VSTAR Universe,AR,3,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/HisuianVoltorbARS12A173.jpg
+S12A190,Galarian Moltres,S12A VSTAR Universe,AR,16,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/GalarianMoltresARS12A190.jpg
+SV1A083,Mismagius,SV1A Triple Beat,AR,14,Lightly Played,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MismagiusARSV1A083.jpg
+SV1S088,Klawf,SV1S Scarlet ex,AR,2.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/KlawfARSV1S088.jpg
+SV1V080,Toedscool,SV1V Violet ex,AR,2.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ToedscoolARSV1V080.jpg
+SV1V080,Toedscool,SV1V Violet ex,AR,2.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ToedscoolARSV1V080.jpg
+SV1V080,Toedscool,SV1V Violet ex,AR,2.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ToedscoolARSV1V080.jpg
+SV1V080,Toedscool,SV1V Violet ex,AR,2.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ToedscoolARSV1V080.jpg
+SV1V080,Toedscool,SV1V Violet ex,AR,2.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ToedscoolARSV1V080.jpg
+SV1V080,Toedscool,SV1V Violet ex,AR,2.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ToedscoolARSV1V080.jpg
+SV1V080,Toedscool,SV1V Violet ex,AR,2.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ToedscoolARSV1V080.jpg
+SV1V086,Drowzee,SV1V Violet ex,AR,21,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/DrowzeeARSV1V086.jpg
+SV1A074,Tropius,SV1A Triple Beat,AR,4,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/TropiusARSV1A074.jpg
+SV1V090,Skwovet,SV1V Violet ex,AR,3.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SkwovetARSV1V090.jpg
+SV1V090,Skwovet,SV1V Violet ex,AR,3.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SkwovetARSV1V090.jpg
+SV1V090,Skwovet,SV1V Violet ex,AR,3.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SkwovetARSV1V090.jpg
+SV1V090,Skwovet,SV1V Violet ex,AR,3.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SkwovetARSV1V090.jpg
+SV1A077,Pyroar,SV1A Triple Beat,AR,4,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/PyroarARSV1A077.jpg
+SV1A077,Pyroar,SV1A Triple Beat,AR,4,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/PyroarARSV1A077.jpg
+SV1A077,Pyroar,SV1A Triple Beat,AR,4,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/PyroarARSV1A077.jpg
+SV1A085,Paldean Wooper,SV1A Triple Beat,AR,5.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/PaldeanWooperARSV1A085.jpg
+SV1V089,Bombirdier,SV1V Violet ex,AR,2.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/BombirdierARSV1V089.jpg
+SV1V089,Bombirdier,SV1V Violet ex,AR,2.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/BombirdierARSV1V089.jpg
+SV1S079,Dolliv,SV1S Scarlet ex,AR,4,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/DollivARSV1S079.jpg
+SV1V087,Greavard,SV1V Violet ex,AR,6,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/GreavardARSV1V087.jpg
+SV1S087,Sandile,SV1S Scarlet ex,AR,3,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SandileARSV1S087.jpg
+SV1S087,Sandile,SV1S Scarlet ex,AR,3,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SandileARSV1S087.jpg
+SV1S087,Sandile,SV1S Scarlet ex,AR,3,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SandileARSV1S087.jpg
+SV1S087,Sandile,SV1S Scarlet ex,AR,3,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SandileARSV1S087.jpg
+SV1V081,Scovillain,SV1V Violet ex,AR,3,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ScovillainARSV1V081.jpg
+SV1V081,Scovillain,SV1V Violet ex,AR,3,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ScovillainARSV1V081.jpg
+SV1V081,Scovillain,SV1V Violet ex,AR,3,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ScovillainARSV1V081.jpg
+S12A195,Latias,S12A VSTAR Universe,AR,13,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/LatiasARS12A195.jpg
+S8B200,Dedenne,S8B VMAX Climax,CHR,10,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/DedenneCHRS8B200.jpg
+S8B200,Dedenne,S8B VMAX Climax,CHR,10,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/DedenneCHRS8B200.jpg
+SV3109,Gloom,SV3 Ruler of the Black Flame,AR,8.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/GloomARSV3109.jpg
+SV2P076,Arctibax,SV2P Snow Hazard,AR,7,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ArctibaxARSV2P076.jpg
+SV2P076,Arctibax,SV2P Snow Hazard,AR,7,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ArctibaxARSV2P076.jpg
+SV2P076,Arctibax,SV2P Snow Hazard,AR,7,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ArctibaxARSV2P076.jpg
+SV2P076,Arctibax,SV2P Snow Hazard,AR,7,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ArctibaxARSV2P076.jpg
+SV2P076,Arctibax,SV2P Snow Hazard,AR,7,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ArctibaxARSV2P076.jpg
+M2A199,Psyduck,M2A Mega Dream,AR,21,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/PsyduckARM2A199.jpg
+M2A199,Psyduck,M2A Mega Dream,AR,21,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/PsyduckARM2A199.jpg
+SV8112,Magneton,SV8 Super Electric Breaker,AR,10,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MagnetonARSV8112.jpg
+SV8112,Magneton,SV8 Super Electric Breaker,AR,10,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MagnetonARSV8112.jpg
+SV8112,Magneton,SV8 Super Electric Breaker,AR,10,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MagnetonARSV8112.jpg
+SV8112,Magneton,SV8 Super Electric Breaker,AR,10,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MagnetonARSV8112.jpg
+M4088,Ampharos,M4 Ninja Spinner,AR,6,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/AmpharosARM4088.jpg
+M4088,Ampharos,M4 Ninja Spinner,AR,6,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/AmpharosARM4088.jpg
+SV3113,Cleffa,SV3 Ruler of the Black Flame,AR,20,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/CleffaARSV3113.jpg
+M1L067,Vulpix,M1L Mega Brave,AR,6.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/VulpixARM1L067.jpg
+M2A228,Mega Lucario ex,M2A Mega Dream,MA,11.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MegaLucarioexMAM2A228.jpg
+M5088,Dhelmise,M5 Abyss Eye,AR,3.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/DhelmiseARM5088.jpg
+SVP291,Pikachu (Gym Event Campaign),SVP Scarlet & Violet Promos,N.A.,10,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/Pikachu(GymEventCampaign)N.A.SVP291.jpg
+SVP291,Pikachu (Gym Event Campaign),SVP Scarlet & Violet Promos,N.A.,10,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/Pikachu(GymEventCampaign)N.A.SVP291.jpg
+SVP291,Pikachu (Gym Event Campaign),SVP Scarlet & Violet Promos,N.A.,10,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/Pikachu(GymEventCampaign)N.A.SVP291.jpg
+S12A243,Gardenia's Vigor,S12A VSTAR Universe,SAR,20,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/Gardenia'sVigorSARS12A243.jpg
+M2112,Rotom ex,M2 Inferno X,SAR,10,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/RotomexSARM2112.jpg
+SV2D074,Raichu,SV2D Clay Burst,AR,24,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/RaichuARSV2D074.jpg
+SV2D074,Raichu,SV2D Clay Burst,AR,24,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/RaichuARSV2D074.jpg
+SV2D074,Raichu,SV2D Clay Burst,AR,24,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/RaichuARSV2D074.jpg
+SV2D074,Raichu,SV2D Clay Burst,AR,24,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/RaichuARSV2D074.jpg
+SV2D074,Raichu,SV2D Clay Burst,AR,24,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/RaichuARSV2D074.jpg
+M2A207,Medicham,M2A Mega Dream,AR,2.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MedichamARM2A207.jpg
+SV4K076,Morpeko,SV4K Ancient Roar,AR,16,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MorpekoARSV4K076.jpg
+SV4K076,Morpeko,SV4K Ancient Roar,AR,16,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MorpekoARSV4K076.jpg
+M4103,Cinccino ex,M4 Ninja Spinner,SR,6.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/CinccinoexSRM4103.jpg
+S12A193,Magnezone,S12A VSTAR Universe,AR,3,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MagnezoneARS12A193.jpg
+S10A077,Snorlax,S10A Dark Phantasma,CHR,18.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SnorlaxCHRS10A077.jpg
+S10A077,Snorlax,S10A Dark Phantasma,CHR,18.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SnorlaxCHRS10A077.jpg
+SV2D081,Maushold,SV2D Clay Burst,AR,42,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MausholdARSV2D081.jpg
+SV2D081,Maushold,SV2D Clay Burst,AR,42,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MausholdARSV2D081.jpg
+M2113,Mega Sharpedo ex,M2 Inferno X,SAR,15,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MegaSharpedoexSARM2113.jpg
+S8B212,Oranguru,S8B VMAX Climax,CHR,2.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/OranguruCHRS8B212.jpg
+MBD022,Meloetta,MBD Mega Diancie ex Starter Deck,N.A.,10,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MeloettaN.A.MBD022.jpg
+MBD022,Meloetta,MBD Mega Diancie ex Starter Deck,N.A.,10,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MeloettaN.A.MBD022.jpg
+MBD022,Meloetta,MBD Mega Diancie ex Starter Deck,N.A.,10,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MeloettaN.A.MBD022.jpg
+MBD022,Meloetta,MBD Mega Diancie ex Starter Deck,N.A.,10,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MeloettaN.A.MBD022.jpg
+MBD022,Meloetta,MBD Mega Diancie ex Starter Deck,N.A.,10,Lightly Played,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MeloettaN.A.MBD022.jpg
+M4091,Crobat,M4 Ninja Spinner,AR,3,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/CrobatARM4091.jpg
+SV8A195,Friends in Paldea,SV8A Terastal Festival,SR,5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/FriendsinPaldeaSRSV8A195.jpg
+M5091,Bastiodon,M5 Abyss Eye,AR,2.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/BastiodonARM5091.jpg
+M5091,Bastiodon,M5 Abyss Eye,AR,2.5,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/BastiodonARM5091.jpg
+S12A214,Simisear VSTAR,S12A VSTAR Universe,SAR,30,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SimisearVSTARSARS12A214.jpg,Y
+S12A214,Simisear VSTAR,S12A VSTAR Universe,SAR,30,Near Mint,1,https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SimisearVSTARSARS12A214.jpg,Y
