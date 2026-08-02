@@ -1061,7 +1061,7 @@ function reconcileCartWithStock() {
   let changed = false;
 
   Object.keys(cart).forEach(id => {
-    const fresh = products.find(p => String(p.id) === String(id));
+    const fresh = products.find(p => p.stockKey === id);
 
     if (!fresh) {
       delete cart[id];
@@ -1133,7 +1133,7 @@ function renderProducts() {
     })
     .forEach(p => {
       const stock = Number(p.stock || 0);
-      const inCart = getCartQuantity(p.id);
+      const inCart = getCartQuantity(cartKeyFor(p));
       const remaining = stock - inCart;
       const isMaxed = stock <= 0 || remaining <= 0;
 
@@ -1150,7 +1150,7 @@ function renderProducts() {
           <span class="photo-watermark">@fallacycardshop</span>
         </div>
         <div class="product-info">
-          <div class="product-name${nameExpanded}">${p.name}</div>
+          <div class="product-name${nameExpanded}">${p.featured ? "🔥 " : ""}${p.name}</div>
           <div class="product-price">$${Number(p.price || 0).toFixed(2)}</div>
           <div class="product-stock-line${stockExpanded}">Stock: ${stock}${inCart > 0 ? ` (${inCart} in your cart)` : ""}</div>
           <div class="product-desc${descExpanded}">Condition: ${p.description || ""}</div>
@@ -1205,8 +1205,12 @@ function getCartQuantity(productId) {
   return cart[productId] ? cart[productId].quantity : 0;
 }
 
+function cartKeyFor(product) {
+  return product.stockKey || product.name;
+}
+
 function addToCart(product) {
-  const id = product.id;
+  const id = cartKeyFor(product);
   const stock = Number(product.stock || 0);
   const currentQty = getCartQuantity(id);
 
@@ -1313,9 +1317,9 @@ function renderCart() {
 
       const minus = item.querySelector(".qty-minus");
       const plus = item.querySelector(".qty-plus");
-      minus.onclick = () => changeQuantity(product.id, -1);
-      plus.onclick = () => changeQuantity(product.id, 1);
-      item.querySelector(".btn-secondary").onclick = () => removeItem(product.id);
+      minus.onclick = () => changeQuantity(cartKeyFor(product), -1);
+      plus.onclick = () => changeQuantity(cartKeyFor(product), 1);
+      item.querySelector(".btn-secondary").onclick = () => removeItem(cartKeyFor(product));
       item.querySelector("img").onclick = () => openLightbox(product.photo || 'https://via.placeholder.com/300x420?text=Card', product.name);
 
       cartListEl.appendChild(item);
