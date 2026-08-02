@@ -44,9 +44,24 @@ export default async function handler(req, res) {
     // Featured cards are pinned to the top, in the order they appear in the
     // CSV. Everything else is shuffled with a seed based on today's date —
     // stable all day (won't reshuffle on every refresh), different tomorrow.
+    //
+    // Same physical card in different conditions (e.g. NM and NM-) share a
+    // CardID but are separate stock-tracked listings — shuffling them
+    // individually would scatter them apart. Instead we cluster same-CardID
+    // listings together first, then shuffle the clusters as whole units, so
+    // different conditions of the same card always stay adjacent.
     const featured = unordered.filter(p => p.featured);
     const others = unordered.filter(p => !p.featured);
-    const shuffledOthers = seededShuffle(others, getTodaySeed());
+
+    const clusterMap = new Map();
+    others.forEach(p => {
+      const clusterKey = p.cardId || p.name;
+      if (!clusterMap.has(clusterKey)) clusterMap.set(clusterKey, []);
+      clusterMap.get(clusterKey).push(p);
+    });
+    const clusters = Array.from(clusterMap.values());
+    const shuffledClusters = seededShuffle(clusters, getTodaySeed());
+    const shuffledOthers = shuffledClusters.flat();
 
     const products = [...featured, ...shuffledOthers].map((p, index) => ({
       id: index + 1,
