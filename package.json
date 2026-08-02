@@ -1,6 +1,7 @@
 {
   "type": "module",
   "dependencies": {
-    "@upstash/redis": "^1.35.0"
+    "@upstash/redis": "^1.35.0",
+    "@vercel/analytics": "^2.0.1"
   }
 }
