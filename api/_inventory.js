@@ -71,6 +71,7 @@ export function loadInventoryGroups() {
     if (groups.has(groupKey)) {
       groups.get(groupKey).baseStock += stockValue;
     } else {
+      const featuredRaw = (row.Featured || "").trim().toLowerCase();
       groups.set(groupKey, {
         cardId,
         name: row.Name || "",
@@ -79,12 +80,53 @@ export function loadInventoryGroups() {
         description: row.Description || row.Condition || "",
         category: row.Category || row.Rarity || "Uncategorized",
         set: row.Set || "",
+        featured: ["y", "yes", "true", "1"].includes(featuredRaw),
         baseStock: stockValue,
       });
     }
   });
 
   return groups;
+}
+
+// Simple deterministic hash of a string into a 32-bit integer, used to seed the shuffle.
+function hashStringToSeed(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash >>> 0;
+}
+
+// Seeded pseudo-random number generator (mulberry32) — same seed always
+// produces the same sequence, which is what makes the shuffle "stable for
+// the day" rather than different on every request.
+function mulberry32(seed) {
+  return function () {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Returns a string that's the same all day (UTC) and different the next day.
+export function getTodaySeed() {
+  const d = new Date();
+  return `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
+}
+
+// Fisher-Yates shuffle driven by a seeded RNG — deterministic for a given seedStr.
+export function seededShuffle(array, seedStr) {
+  const rng = mulberry32(hashStringToSeed(seedStr));
+  const result = array.slice();
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
 }
 
 // Scans all keys matching a pattern (paginated via cursor, safe for small keyspaces like this store's).
