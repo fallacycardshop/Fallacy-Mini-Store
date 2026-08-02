@@ -1359,8 +1359,10 @@ function renderProducts() {
   const featuredMatches = matches.filter(p => p.featured);
   const otherMatches = matches.filter(p => !p.featured);
 
-  const totalMatches = featuredMatches.length + otherMatches.length;
-  resultsCounterEl.textContent = `${totalMatches} card${totalMatches === 1 ? "" : "s"} available`;
+  // Counter reflects what is actually buyable, so sold-out listings are excluded
+  // even though they are still rendered further down the page.
+  const inStockMatches = matches.filter(p => Number(p.stock || 0) > 0).length;
+  resultsCounterEl.textContent = `${inStockMatches} card${inStockMatches === 1 ? "" : "s"} available`;
 
   renderSection("🔥 Popular this week", featuredMatches);
   renderSection("All Cards", otherMatches);
