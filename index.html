@@ -1060,7 +1060,7 @@ async function loadProducts() {
       throw new Error("Failed to load inventory");
     }
     products = await res.json();
-    statusTextEl.textContent = ""; // the results counter in the toolbar shows the count instead
+    statusTextEl.textContent = "All items have been updated.";
     renderCategoryFilter();
     renderSetFilter();
     reconcileCartWithStock();
