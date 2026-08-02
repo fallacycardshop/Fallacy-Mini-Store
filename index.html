@@ -119,8 +119,8 @@ h2 {
 
 .toolbar {
   display: flex;
-  flex-wrap: nowrap;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
   margin-bottom: 0;
   position: sticky;
   top: var(--safe-top); /* sticks to the very top of the viewport once scrolled past the heading */
@@ -129,8 +129,20 @@ h2 {
   padding: 8px 0 14px;
 }
 
-.toolbar input,
-.toolbar select {
+.filters-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.results-counter {
+  font-size: 11px;
+  color: var(--text-soft);
+  margin: 0;
+}
+
+.filters-row input,
+.filters-row select {
   padding: 8px 6px;
   border-radius: 10px;
   border: 1px solid var(--pink-border);
@@ -139,8 +151,8 @@ h2 {
   min-width: 0;
 }
 
-.toolbar input { flex: 1.2; }
-.toolbar select { flex: 1; background: #fff; }
+.filters-row input { flex: 1.2; }
+.filters-row select { flex: 1; background: #fff; }
 
 .status-text {
   font-size: 13px;
@@ -546,13 +558,16 @@ footer .btn { width: auto; flex-shrink: 0; }
     <p id="statusText" class="status-text">Loading inventory…</p>
 
     <div class="toolbar">
-      <input id="searchInput" type="search" inputmode="search" enterkeyhint="search" placeholder="Search" autocomplete="off" autocorrect="off">
-      <select id="categoryFilter">
-        <option value="">All categories</option>
-      </select>
-      <select id="setFilter">
-        <option value="">All sets</option>
-      </select>
+      <div class="filters-row">
+        <input id="searchInput" type="search" inputmode="search" enterkeyhint="search" placeholder="Search" autocomplete="off" autocorrect="off">
+        <select id="categoryFilter">
+          <option value="">All categories</option>
+        </select>
+        <select id="setFilter">
+          <option value="">All sets</option>
+        </select>
+      </div>
+      <p id="resultsCounter" class="results-counter"></p>
     </div>
 
     <div class="product-list" id="productList"></div>
@@ -777,6 +792,7 @@ const totalTextEl = document.getElementById("totalText");
 const totalBoxEl = document.getElementById("totalBox");
 const checkoutSectionEl = document.getElementById("checkoutSection");
 const searchInputEl = document.getElementById("searchInput");
+const resultsCounterEl = document.getElementById("resultsCounter");
 const categoryFilterEl = document.getElementById("categoryFilter");
 const setFilterEl = document.getElementById("setFilter");
 const checkoutButtonEl = document.getElementById("checkoutButton");
@@ -1200,6 +1216,9 @@ function renderProducts() {
 
   const featuredMatches = matches.filter(p => p.featured);
   const otherMatches = matches.filter(p => !p.featured);
+
+  const totalMatches = featuredMatches.length + otherMatches.length;
+  resultsCounterEl.textContent = `${totalMatches} card${totalMatches === 1 ? "" : "s"} available`;
 
   if (featuredMatches.length > 0) {
     const heading = document.createElement("h3");
