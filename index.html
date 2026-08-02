@@ -423,6 +423,41 @@ h2 {
   font-weight: 600;
 }
 
+/* Quantity stepper shown on the product card once an item is in the cart */
+.product-actions .quantity-control {
+  width: 100%;
+  justify-content: center;
+  gap: 12px;
+  position: relative;
+  min-height: 44px;
+  padding: 3px 6px;
+  background: #fff;
+  border: 1px solid var(--pink-soft);
+  border-radius: 10px;
+}
+
+.product-actions .quantity-control button:disabled {
+  background: #eee;
+  color: #aaa;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.product-actions .card-qty-value {
+  min-width: 26px;
+  font-size: 16px;
+}
+
+.card-qty-max {
+  position: absolute;
+  right: 8px;
+  top: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #c0392b;
+  pointer-events: none;
+}
+
 .stock-warning {
   font-size: 11px;
   color: #c0392b;
@@ -1160,11 +1195,62 @@ function renderSetFilter() {
   if (sets.includes(previousValue)) setFilterEl.value = previousValue;
 }
 
+function buildProductActionsHtml(stock, inCart) {
+  const remaining = stock - inCart;
+  if (stock <= 0) {
+    return '<button class="btn btn-primary" disabled>Sold out</button>';
+  }
+  if (inCart <= 0) {
+    return '<button class="btn btn-primary js-add-to-cart">Add to cart</button>';
+  }
+  return `
+    <div class="quantity-control">
+      <button class="qty-minus" aria-label="Remove one from cart">-</button>
+      <span class="card-qty-value">${inCart}</span>
+      <button class="qty-plus" aria-label="Add one to cart" ${remaining <= 0 ? "disabled" : ""}>+</button>
+      ${remaining <= 0 ? '<span class="card-qty-max">Max</span>' : ""}
+    </div>
+  `;
+}
+
+function wireProductActions(card, p) {
+  const addBtn = card.querySelector(".js-add-to-cart");
+  if (addBtn) addBtn.onclick = () => addToCart(p);
+
+  const minus = card.querySelector(".product-actions .qty-minus");
+  const plus = card.querySelector(".product-actions .qty-plus");
+  if (minus) minus.onclick = () => changeQuantity(cartKeyFor(p), -1);
+  if (plus) plus.onclick = () => changeQuantity(cartKeyFor(p), 1);
+}
+
+function updateProductCardState(card) {
+  const p = card._product;
+  if (!p) return;
+  const stock = Number(p.stock || 0);
+  const inCart = getCartQuantity(cartKeyFor(p));
+
+  const stockLine = card.querySelector(".product-stock-line");
+  if (stockLine) {
+    stockLine.textContent = `Stock: ${stock}${inCart > 0 ? ` (${inCart} in your cart)` : ""}`;
+  }
+
+  const actions = card.querySelector(".product-actions");
+  if (!actions) return;
+  actions.innerHTML = buildProductActionsHtml(stock, inCart);
+  wireProductActions(card, p);
+}
+
+function refreshProductCards(id) {
+  document.querySelectorAll(".product-card").forEach(card => {
+    if (!card._product) return;
+    if (id && cartKeyFor(card._product) !== id) return;
+    updateProductCardState(card);
+  });
+}
+
 function buildProductCard(p) {
   const stock = Number(p.stock || 0);
   const inCart = getCartQuantity(cartKeyFor(p));
-  const remaining = stock - inCart;
-  const isMaxed = stock <= 0 || remaining <= 0;
 
   const card = document.createElement("div");
   card.className = "product-card";
@@ -1187,14 +1273,11 @@ function buildProductCard(p) {
       <div class="product-meta${setExpanded}" data-field="set">Set: ${p.set || "N/A"}</div>
     </div>
     <div class="product-actions">
-      <button class="btn btn-primary" ${isMaxed ? "disabled" : ""}>
-        ${stock <= 0 ? "Sold out" : isMaxed ? "Max in cart" : "Add to cart"}
-      </button>
+      ${buildProductActionsHtml(stock, inCart)}
     </div>
   `;
-  if (!isMaxed) {
-    card.querySelector("button").onclick = () => addToCart(p);
-  }
+  card._product = p;
+  wireProductActions(card, p);
   const productImgSrc = p.photo || 'https://via.placeholder.com/300x420?text=Card';
   card.querySelector("img").onclick = () => openLightbox(productImgSrc, p.name);
   card.querySelector(".product-name").onclick = (e) => {
@@ -1324,7 +1407,7 @@ function addToCart(product) {
   cart[id].quantity++;
   saveCart();
   updateCartBadge();
-  renderProducts();
+  refreshProductCards(id);
 }
 
 function updateCartBadge() {
@@ -1354,6 +1437,7 @@ function changeQuantity(id, delta) {
   saveCart();
   renderCart();
   updateCartBadge();
+  refreshProductCards(id);
 }
 
 function removeItem(id) {
@@ -1361,6 +1445,7 @@ function removeItem(id) {
   saveCart();
   renderCart();
   updateCartBadge();
+  refreshProductCards(id);
 }
 
 function renderCart() {
