@@ -68,10 +68,15 @@ export function loadInventoryGroups() {
     const groupKey = `${cardId || row.Name || `row${index}`}::${condition}`;
     const stockValue = Number(row.Stock || 0);
 
+    const featuredRaw = (row.Featured || "").trim().toLowerCase();
+    const rowIsFeatured = ["y", "yes", "true", "1"].includes(featuredRaw);
+
     if (groups.has(groupKey)) {
       groups.get(groupKey).baseStock += stockValue;
+      // If ANY duplicate row for this card+condition is marked Featured,
+      // the whole merged listing is featured — regardless of row order.
+      if (rowIsFeatured) groups.get(groupKey).featured = true;
     } else {
-      const featuredRaw = (row.Featured || "").trim().toLowerCase();
       groups.set(groupKey, {
         cardId,
         name: row.Name || "",
@@ -80,7 +85,7 @@ export function loadInventoryGroups() {
         description: row.Description || row.Condition || "",
         category: row.Category || row.Rarity || "Uncategorized",
         set: row.Set || "",
-        featured: ["y", "yes", "true", "1"].includes(featuredRaw),
+        featured: rowIsFeatured,
         baseStock: stockValue,
       });
     }
