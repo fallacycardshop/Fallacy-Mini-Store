@@ -1290,6 +1290,12 @@ function renderProducts() {
 }
 
 searchInputEl.oninput = renderProducts;
+searchInputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    searchInputEl.blur();
+  }
+});
 categoryFilterEl.onchange = renderProducts;
 setFilterEl.onchange = renderProducts;
 
@@ -1695,6 +1701,17 @@ modalCloseButtonEl.onclick = () => {
   showProducts();
   loadProducts(); // refresh stock counts now that this order was just recorded
 };
+
+// Tapping anywhere outside the currently focused field dismisses the mobile
+// keyboard — browsers don't do this automatically for bare <input> elements
+// that aren't inside a <form>.
+document.addEventListener("click", (e) => {
+  const active = document.activeElement;
+  const isFormField = active && ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName);
+  if (isFormField && e.target !== active) {
+    active.blur();
+  }
+});
 
 loadProducts();
 updateCartBadge();
