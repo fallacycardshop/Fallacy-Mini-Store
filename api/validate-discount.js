@@ -46,13 +46,15 @@ function parseCSV(text) {
   return rows;
 }
 
+const MINIMUM_DISCOUNT_SPEND = 10;
+
 export default function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ valid: false, error: "Method not allowed" });
   }
 
   try {
-    const { code } = req.body || {};
+    const { code, subtotal } = req.body || {};
     if (!code || !code.trim()) {
       return res.status(200).json({ valid: false });
     }
@@ -78,6 +80,14 @@ export default function handler(req, res) {
 
     if (!matchArr) {
       return res.status(200).json({ valid: false });
+    }
+
+    if (Number(subtotal || 0) < MINIMUM_DISCOUNT_SPEND) {
+      return res.status(200).json({
+        valid: false,
+        reason: "minimum_not_met",
+        minimumRequired: MINIMUM_DISCOUNT_SPEND,
+      });
     }
 
     const row = {};
