@@ -1,52 +1,25 @@
-import path from "path";
-import { readFileSync } from "fs";
-
-function parseCSV(text) {
-  const rows = [];
-  let row = [];
-  let field = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    const next = text[i + 1];
-
-    if (inQuotes) {
-      if (char === '"' && next === '"') {
-        field += '"';
-        i++;
-      } else if (char === '"') {
-        inQuotes = false;
-      } else {
-        field += char;
-      }
-    } else {
-      if (char === '"') {
-        inQuotes = true;
-      } else if (char === ",") {
-        row.push(field);
-        field = "";
-      } else if (char === "\n" || char === "\r") {
-        if (field !== "" || row.length > 0) {
-          row.push(field);
-          rows.push(row);
-          row = [];
-          field = "";
-        }
-        if (char === "\r" && next === "\n") i++;
-      } else {
-        field += char;
-      }
-    }
-  }
-  if (field !== "" || row.length > 0) {
-    row.push(field);
-    rows.push(row);
-  }
-  return rows;
-}
-
 const MINIMUM_DISCOUNT_SPEND = 10;
+
+// Codes live in the DISCOUNT_CODES environment variable (Vercel Settings →
+// Environment Variables), NOT in the repo — this repo is public (needed for
+// product photos to load), so anything in it can be read by anyone. Format:
+//   CODE:type:value;CODE2:type:value
+// e.g.  MINILAUNCH10:percent:10;WELCOME5:fixed:5
+function parseDiscountCodes(raw) {
+  if (!raw) return [];
+  return raw
+    .split(";")
+    .map(entry => entry.trim())
+    .filter(Boolean)
+    .map(entry => {
+      const [code, type, value] = entry.split(":");
+      return {
+        code: (code || "").trim().toUpperCase(),
+        type: (type || "").trim().toLowerCase(),
+        value: Number(value || 0),
+      };
+    });
+}
 
 export default function handler(req, res) {
   if (req.method !== "POST") {
@@ -59,26 +32,10 @@ export default function handler(req, res) {
       return res.status(200).json({ valid: false });
     }
 
-    const filePath = path.join(process.cwd(), "discount-codes.csv");
-    let fileText;
-    try {
-      fileText = readFileSync(filePath, "utf-8");
-    } catch (e) {
-      // No discount-codes.csv in the repo yet — treat every code as invalid.
-      return res.status(200).json({ valid: false });
-    }
+    const codes = parseDiscountCodes(process.env.DISCOUNT_CODES);
+    const match = codes.find(c => c.code === code.trim().toUpperCase());
 
-    const rows = parseCSV(fileText);
-    const headers = rows[0];
-    const dataRows = rows.slice(1).filter(r => r.some(cell => cell.trim() !== ""));
-
-    const matchArr = dataRows.find(rowArr => {
-      const row = {};
-      headers.forEach((h, i) => (row[h] = rowArr[i]));
-      return (row.Code || "").trim().toUpperCase() === code.trim().toUpperCase();
-    });
-
-    if (!matchArr) {
+    if (!match) {
       return res.status(200).json({ valid: false });
     }
 
@@ -90,13 +47,10 @@ export default function handler(req, res) {
       });
     }
 
-    const row = {};
-    headers.forEach((h, i) => (row[h] = matchArr[i]));
-
     res.status(200).json({
       valid: true,
-      type: (row.Type || "").trim().toLowerCase(), // "percent" or "fixed"
-      value: Number(row.Value || 0),
+      type: match.type, // "percent" or "fixed"
+      value: match.value,
     });
   } catch (err) {
     console.error("validate-discount error:", err);
