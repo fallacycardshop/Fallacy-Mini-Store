@@ -314,6 +314,16 @@ h2 {
 .product-actions {
   display: flex;
   align-items: flex-start;
+  flex-shrink: 0;
+  width: 116px; /* fixed so "Add to cart" and the +/- stepper are identical in size */
+}
+
+.product-actions > * {
+  width: 100%;
+}
+
+.product-actions .btn {
+  white-space: nowrap;
 }
 
 /* All buttons: real tap targets, no lag, no accidental text-selection while tapping */
@@ -423,14 +433,14 @@ h2 {
   font-weight: 600;
 }
 
-/* Quantity stepper shown on the product card once an item is in the cart */
+/* Quantity stepper shown on the product card once an item is in the cart.
+   Matches the "Add to cart" button exactly: same 116px width, same 44px height. */
 .product-actions .quantity-control {
   width: 100%;
-  justify-content: center;
-  gap: 12px;
-  position: relative;
-  min-height: 44px;
-  padding: 3px 6px;
+  height: 44px;
+  gap: 0;
+  justify-content: space-between;
+  padding: 0 4px;
   background: #fff;
   border: 1px solid var(--pink-soft);
   border-radius: 10px;
@@ -444,18 +454,8 @@ h2 {
 }
 
 .product-actions .card-qty-value {
-  min-width: 26px;
+  flex: 1;
   font-size: 16px;
-}
-
-.card-qty-max {
-  position: absolute;
-  right: 8px;
-  top: 3px;
-  font-size: 10px;
-  font-weight: 700;
-  color: #c0392b;
-  pointer-events: none;
 }
 
 .stock-warning {
@@ -1208,7 +1208,6 @@ function buildProductActionsHtml(stock, inCart) {
       <button class="qty-minus" aria-label="Remove one from cart">-</button>
       <span class="card-qty-value">${inCart}</span>
       <button class="qty-plus" aria-label="Add one to cart" ${remaining <= 0 ? "disabled" : ""}>+</button>
-      ${remaining <= 0 ? '<span class="card-qty-max">Max</span>' : ""}
     </div>
   `;
 }
