@@ -1008,8 +1008,20 @@ function computeDiscountAmount(subtotal, discount) {
   return 0;
 }
 
+const MIN_DISCOUNT_SPEND = 10;
+
 function updateTotals() {
   const hasHold = holdCheckboxEl.checked;
+
+  // If items were removed from the cart after a discount was applied and
+  // the subtotal has since dropped below the minimum, revoke it automatically.
+  if (appliedDiscount && currentSubtotal < MIN_DISCOUNT_SPEND) {
+    appliedDiscount = null;
+    discountCodeInputEl.value = "";
+    discountErrorTextEl.textContent = `Discount removed — a minimum spend of $${MIN_DISCOUNT_SPEND} is required.`;
+    discountErrorTextEl.style.display = "block";
+  }
+
   // Mailing fee applies whenever there's no existing hold — both "mail
   // immediately" and "hold with us" are paid upfront; the choice only
   // tells the seller what to physically do with the package.
@@ -1441,7 +1453,7 @@ applyDiscountButtonEl.onclick = async () => {
     const res = await fetch("/api/validate-discount", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, subtotal: currentSubtotal }),
     });
     const data = await res.json();
 
@@ -1449,6 +1461,11 @@ applyDiscountButtonEl.onclick = async () => {
       appliedDiscount = { code: code.toUpperCase(), type: data.type, value: data.value };
       discountCodeInputEl.value = appliedDiscount.code;
       discountErrorTextEl.style.display = "none";
+    } else if (data.reason === "minimum_not_met") {
+      appliedDiscount = null;
+      discountCodeInputEl.value = "";
+      discountErrorTextEl.textContent = `A minimum spend of $${data.minimumRequired} is required to use this code.`;
+      discountErrorTextEl.style.display = "block";
     } else {
       appliedDiscount = null;
       discountCodeInputEl.value = "";
