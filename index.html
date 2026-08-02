@@ -161,6 +161,13 @@ h2 {
   gap: 14px;
 }
 
+.section-heading {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pink-deep);
+  margin: 4px 0 -4px;
+}
+
 .product-card {
   background: #fff;
   border-radius: 12px;
@@ -1114,6 +1121,66 @@ function renderSetFilter() {
   if (sets.includes(previousValue)) setFilterEl.value = previousValue;
 }
 
+function buildProductCard(p) {
+  const stock = Number(p.stock || 0);
+  const inCart = getCartQuantity(cartKeyFor(p));
+  const remaining = stock - inCart;
+  const isMaxed = stock <= 0 || remaining <= 0;
+
+  const card = document.createElement("div");
+  card.className = "product-card";
+  const nameExpanded = expandedFields.has(fieldKey(p, "name")) ? " name-expanded" : "";
+  const stockExpanded = expandedFields.has(fieldKey(p, "stock")) ? " text-expanded" : "";
+  const descExpanded = expandedFields.has(fieldKey(p, "desc")) ? " text-expanded" : "";
+  const rarityExpanded = expandedFields.has(fieldKey(p, "rarity")) ? " text-expanded" : "";
+  const setExpanded = expandedFields.has(fieldKey(p, "set")) ? " text-expanded" : "";
+  card.innerHTML = `
+    <div class="photo-wrap">
+      <img src="${p.photo || 'https://via.placeholder.com/300x420?text=Card'}" loading="lazy" alt="${p.name}">
+      <span class="photo-watermark">@fallacycardshop</span>
+    </div>
+    <div class="product-info">
+      <div class="product-name${nameExpanded}">${p.name}</div>
+      <div class="product-price">$${Number(p.price || 0).toFixed(2)}</div>
+      <div class="product-stock-line${stockExpanded}">Stock: ${stock}${inCart > 0 ? ` (${inCart} in your cart)` : ""}</div>
+      <div class="product-desc${descExpanded}">Condition: ${p.description || ""}</div>
+      <div class="product-meta${rarityExpanded}" data-field="rarity">Rarity: ${p.category || "Uncategorized"}</div>
+      <div class="product-meta${setExpanded}" data-field="set">Set: ${p.set || "N/A"}</div>
+    </div>
+    <div class="product-actions">
+      <button class="btn btn-primary" ${isMaxed ? "disabled" : ""}>
+        ${stock <= 0 ? "Sold out" : isMaxed ? "Max in cart" : "Add to cart"}
+      </button>
+    </div>
+  `;
+  if (!isMaxed) {
+    card.querySelector("button").onclick = () => addToCart(p);
+  }
+  const productImgSrc = p.photo || 'https://via.placeholder.com/300x420?text=Card';
+  card.querySelector("img").onclick = () => openLightbox(productImgSrc, p.name);
+  card.querySelector(".product-name").onclick = (e) => {
+    e.currentTarget.classList.toggle("name-expanded");
+    toggleExpandedField(fieldKey(p, "name"));
+  };
+  card.querySelector(".product-stock-line").onclick = (e) => {
+    e.currentTarget.classList.toggle("text-expanded");
+    toggleExpandedField(fieldKey(p, "stock"));
+  };
+  card.querySelector(".product-desc").onclick = (e) => {
+    e.currentTarget.classList.toggle("text-expanded");
+    toggleExpandedField(fieldKey(p, "desc"));
+  };
+  card.querySelector('[data-field="rarity"]').onclick = (e) => {
+    e.currentTarget.classList.toggle("text-expanded");
+    toggleExpandedField(fieldKey(p, "rarity"));
+  };
+  card.querySelector('[data-field="set"]').onclick = (e) => {
+    e.currentTarget.classList.toggle("text-expanded");
+    toggleExpandedField(fieldKey(p, "set"));
+  };
+  return card;
+}
+
 function renderProducts() {
   const search = searchInputEl.value.trim().toLowerCase();
   const category = categoryFilterEl.value;
@@ -1121,77 +1188,36 @@ function renderProducts() {
 
   productListEl.innerHTML = "";
 
-  products
-    .filter(p => {
-      const matchesSearch =
-        !search ||
-        p.name.toLowerCase().includes(search) ||
-        (p.description || "").toLowerCase().includes(search);
-      const matchesCategory = !category || p.category === category;
-      const matchesSet = !setValue || p.set === setValue;
-      return matchesSearch && matchesCategory && matchesSet;
-    })
-    .forEach(p => {
-      const stock = Number(p.stock || 0);
-      const inCart = getCartQuantity(cartKeyFor(p));
-      const remaining = stock - inCart;
-      const isMaxed = stock <= 0 || remaining <= 0;
+  const matches = products.filter(p => {
+    const matchesSearch =
+      !search ||
+      p.name.toLowerCase().includes(search) ||
+      (p.description || "").toLowerCase().includes(search);
+    const matchesCategory = !category || p.category === category;
+    const matchesSet = !setValue || p.set === setValue;
+    return matchesSearch && matchesCategory && matchesSet;
+  });
 
-      const card = document.createElement("div");
-      card.className = "product-card";
-      const nameExpanded = expandedFields.has(fieldKey(p, "name")) ? " name-expanded" : "";
-      const stockExpanded = expandedFields.has(fieldKey(p, "stock")) ? " text-expanded" : "";
-      const descExpanded = expandedFields.has(fieldKey(p, "desc")) ? " text-expanded" : "";
-      const rarityExpanded = expandedFields.has(fieldKey(p, "rarity")) ? " text-expanded" : "";
-      const setExpanded = expandedFields.has(fieldKey(p, "set")) ? " text-expanded" : "";
-      card.innerHTML = `
-        <div class="photo-wrap">
-          <img src="${p.photo || 'https://via.placeholder.com/300x420?text=Card'}" loading="lazy" alt="${p.name}">
-          <span class="photo-watermark">@fallacycardshop</span>
-        </div>
-        <div class="product-info">
-          <div class="product-name${nameExpanded}">${p.featured ? "🔥 " : ""}${p.name}</div>
-          <div class="product-price">$${Number(p.price || 0).toFixed(2)}</div>
-          <div class="product-stock-line${stockExpanded}">Stock: ${stock}${inCart > 0 ? ` (${inCart} in your cart)` : ""}</div>
-          <div class="product-desc${descExpanded}">Condition: ${p.description || ""}</div>
-          <div class="product-meta${rarityExpanded}" data-field="rarity">Rarity: ${p.category || "Uncategorized"}</div>
-          <div class="product-meta${setExpanded}" data-field="set">Set: ${p.set || "N/A"}</div>
-        </div>
-        <div class="product-actions">
-          <button class="btn btn-primary" ${isMaxed ? "disabled" : ""}>
-            ${stock <= 0 ? "Sold out" : isMaxed ? "Max in cart" : "Add to cart"}
-          </button>
-        </div>
-      `;
-      if (!isMaxed) {
-        card.querySelector("button").onclick = () => addToCart(p);
-      }
-      const productImgSrc = p.photo || 'https://via.placeholder.com/300x420?text=Card';
-      card.querySelector("img").onclick = () => openLightbox(productImgSrc, p.name);
-      card.querySelector(".product-name").onclick = (e) => {
-        e.currentTarget.classList.toggle("name-expanded");
-        toggleExpandedField(fieldKey(p, "name"));
-      };
-      card.querySelector(".product-stock-line").onclick = (e) => {
-        e.currentTarget.classList.toggle("text-expanded");
-        toggleExpandedField(fieldKey(p, "stock"));
-      };
-      card.querySelector(".product-desc").onclick = (e) => {
-        e.currentTarget.classList.toggle("text-expanded");
-        toggleExpandedField(fieldKey(p, "desc"));
-      };
-      card.querySelector('[data-field="rarity"]').onclick = (e) => {
-        e.currentTarget.classList.toggle("text-expanded");
-        toggleExpandedField(fieldKey(p, "rarity"));
-      };
-      card.querySelector('[data-field="set"]').onclick = (e) => {
-        e.currentTarget.classList.toggle("text-expanded");
-        toggleExpandedField(fieldKey(p, "set"));
-      };
-      productListEl.appendChild(card);
-    });
+  const featuredMatches = matches.filter(p => p.featured);
+  const otherMatches = matches.filter(p => !p.featured);
 
-  if (!productListEl.innerHTML) {
+  if (featuredMatches.length > 0) {
+    const heading = document.createElement("h3");
+    heading.className = "section-heading";
+    heading.textContent = "🔥 Popular this week";
+    productListEl.appendChild(heading);
+    featuredMatches.forEach(p => productListEl.appendChild(buildProductCard(p)));
+  }
+
+  if (otherMatches.length > 0) {
+    const heading = document.createElement("h3");
+    heading.className = "section-heading";
+    heading.textContent = "All Cards";
+    productListEl.appendChild(heading);
+    otherMatches.forEach(p => productListEl.appendChild(buildProductCard(p)));
+  }
+
+  if (featuredMatches.length === 0 && otherMatches.length === 0) {
     productListEl.innerHTML =
       '<p style="text-align:center;color:#777;">No products found.</p>';
   }
