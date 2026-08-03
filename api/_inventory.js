@@ -169,3 +169,115 @@ export async function getActiveReservedMap(redis) {
 
   return map;
 }
+
+// ---------------------------------------------------------------------------
+// Temporarily hidden cards (used when a card goes up for auction and we don't
+// want the store listing competing with it).
+//
+// IMPORTANT: every hidden card lives inside ONE Redis key holding a small JSON
+// object, so checking "is anything hidden?" costs exactly one GET no matter how
+// many cards are hidden. One key per hidden card would mean a lookup per
+// listing on every page load, which is the pattern that took the store down.
+//
+// Shape: { "<cardId>": { expiresAt: <epoch ms>, label: "<card name>" } }
+// Entries are pruned lazily on read, so expiry is automatic — nothing needs to
+// run on a schedule to bring a card back.
+// ---------------------------------------------------------------------------
+
+export const HIDDEN_CARDS_KEY = "hidden:cards";
+
+// CardIDs are compared case-insensitively and trimmed, so "abc123 " typed into
+// the admin box still matches "ABC123" in the CSV.
+export function normaliseCardId(id) {
+  return String(id || "").trim().toLowerCase();
+}
+
+// Returns { <normalisedCardId>: { expiresAt, label } } for cards still hidden.
+export async function getHiddenCardsMap(redis) {
+  const raw = await redis.get(HIDDEN_CARDS_KEY);
+  if (!raw) return {};
+
+  let data;
+  try {
+    data = typeof raw === "string" ? JSON.parse(raw) : raw;
+  } catch (e) {
+    console.error("Corrupted hidden-cards data:", e);
+    return {};
+  }
+  if (!data || typeof data !== "object") return {};
+
+  const now = Date.now();
+  const active = {};
+  Object.entries(data).forEach(([cardId, entry]) => {
+    const expiresAt = Number(entry && entry.expiresAt);
+    if (Number.isFinite(expiresAt) && expiresAt > now) {
+      active[normaliseCardId(cardId)] = {
+        expiresAt,
+        label: (entry && entry.label) || "",
+      };
+    }
+  });
+  return active;
+}
+
+// Convenience wrapper for the common "just tell me which ids to skip" case.
+export async function getHiddenCardIds(redis) {
+  const map = await getHiddenCardsMap(redis);
+  return new Set(Object.keys(map));
+}
+
+// Writes the map back, pruned. TTL is set past the last expiry so the key
+// tidies itself up if the store is never touched again.
+export async function saveHiddenCardsMap(redis, map) {
+  const entries = Object.entries(map || {});
+  if (entries.length === 0) {
+    await redis.del(HIDDEN_CARDS_KEY);
+    return;
+  }
+  const latest = Math.max(...entries.map(([, e]) => Number(e.expiresAt) || 0));
+  const ttlSeconds = Math.max(Math.ceil((latest - Date.now()) / 1000) + 60, 60);
+  await redis.set(HIDDEN_CARDS_KEY, JSON.stringify(map), { ex: ttlSeconds });
+}
+
+// Finds every listing (all conditions) sharing a CardID. Pure CSV work, no
+// Redis, so this is free.
+export function findGroupsByCardId(groups, cardId) {
+  const target = normaliseCardId(cardId);
+  if (!target) return [];
+  return Array.from(groups.entries())
+    .filter(([, group]) => normaliseCardId(group.cardId) === target)
+    .map(([groupKey, group]) => ({ groupKey, group }));
+}
+
+// Accepts a pasted blob or an array of Card IDs and returns a clean, de-duped,
+// normalised list. Splits on commas, semicolons, newlines, tabs or spaces, so
+// pasting a column straight out of a spreadsheet works.
+export function parseCardIdList(input) {
+  const raw = Array.isArray(input) ? input.join("\n") : String(input || "");
+  const seen = new Set();
+  const ids = [];
+  raw
+    .split(/[\s,;]+/)
+    .map(normaliseCardId)
+    .filter(Boolean)
+    .forEach(id => {
+      if (!seen.has(id)) {
+        seen.add(id);
+        ids.push(id);
+      }
+    });
+  return ids;
+}
+
+// Groups every listing in the catalogue by normalised CardID, so a batch
+// lookup is one pass over the CSV instead of one pass per requested ID.
+export function indexGroupsByCardId(groups) {
+  const index = new Map();
+  groups.forEach((group, groupKey) => {
+    const id = normaliseCardId(group.cardId);
+    if (!id) return;
+    if (!index.has(id)) index.set(id, []);
+    index.get(id).push({ groupKey, group });
+  });
+  return index;
+}
