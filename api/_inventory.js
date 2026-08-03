@@ -152,7 +152,8 @@ export async function getActiveReservedMap(redis) {
   const map = {};
   if (keys.length === 0) return map;
 
-  const values = await Promise.all(keys.map(k => redis.get(k)));
+  // Single MGET rather than one GET per reservation key — same result, one request.
+  const values = await redis.mget(...keys);
   values.forEach(raw => {
     if (!raw) return;
     let data;
