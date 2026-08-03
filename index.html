@@ -1108,7 +1108,11 @@ async function loadProducts() {
     if (!res.ok) {
       throw new Error("Failed to load inventory");
     }
-    products = await res.json();
+    const data = await res.json();
+    // Backend may return either a bare array (older shape) or
+    // { products, featuredTitle } (current shape) — accept both so a
+    // mismatch between deployed files can't crash the whole page.
+    products = Array.isArray(data) ? data : (Array.isArray(data.products) ? data.products : []);
     statusTextEl.textContent = "All items have been updated.";
     renderCategoryFilter();
     renderSetFilter();
