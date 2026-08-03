@@ -15,6 +15,12 @@
     { "src": "api/confirm-order.js", "use": "@vercel/node" },
     { "src": "api/release-reservation.js", "use": "@vercel/node" },
     { "src": "api/reset-sold-counts.js", "use": "@vercel/node" },
+    {
+      "src": "api/hide-card.js",
+      "use": "@vercel/node",
+      "config": { "includeFiles": "ministore-inventory.csv" }
+    },
+    { "src": "api/store-settings.js", "use": "@vercel/node" },
     { "src": "api/validate-discount.js", "use": "@vercel/node" },
     { "src": "api/recent-sales.js", "use": "@vercel/node" },
     { "src": "index.html", "use": "@vercel/static" },
