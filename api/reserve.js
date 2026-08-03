@@ -2,7 +2,8 @@ import { Redis } from "@upstash/redis";
 import {
   loadInventoryGroups,
   getActiveReservedMap,
-  getHiddenCardIds,
+  getStoreState,
+  isListingReleased,
   normaliseCardId,
 } from "./_inventory.js";
 
@@ -46,9 +47,10 @@ export default async function handler(req, res) {
       });
     }
 
-    // A card pulled for auction must not be sellable here, even if a buyer had
-    // it sitting in their cart from before it was hidden.
-    const hiddenCardIds = await getHiddenCardIds(redis);
+    // One MGET covers both guards: cards pulled for auction, and listings not
+    // yet drip-released. Neither may be sold, even from a stale cart.
+    const { hiddenCardIds, drip } = await getStoreState(redis);
+    const now = Date.now();
 
     const unavailable = [];
     const enrichedItems = [];
@@ -60,7 +62,9 @@ export default async function handler(req, res) {
 
       const alreadyReserved = reservedMap[item.key] || 0;
       const isHidden = group && hiddenCardIds.has(normaliseCardId(group.cardId));
-      const available = isHidden ? 0 : Math.max(baseStock - sold - alreadyReserved, 0);
+      const isUnreleased = group && !isListingReleased(drip, item.key, now);
+      const available =
+        isHidden || isUnreleased ? 0 : Math.max(baseStock - sold - alreadyReserved, 0);
 
       if (item.quantity > available) {
         unavailable.push({
