@@ -2,6 +2,8 @@ import { Redis } from "@upstash/redis";
 
 const redis = Redis.fromEnv();
 
+const MAX_RECENT_SALES = 20;
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -27,10 +29,28 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Corrupted reservation data." });
     }
 
+    const items = data.items || [];
+
     await Promise.all(
-      (data.items || []).map(item => redis.incrby(`sold:${item.key}`, item.quantity))
+      items.map(item => redis.incrby(`sold:${item.key}`, item.quantity))
     );
     await redis.del(`reservation:${reservationId}`);
+
+    // Log each sold item to a recent-activity feed for the "recently sold"
+    // banner — item name only, never any buyer info. Capped so the list
+    // never grows unbounded.
+    try {
+      for (const item of items) {
+        await redis.lpush(
+          "recent_sales",
+          JSON.stringify({ name: item.name || item.key, timestamp: Date.now() })
+        );
+      }
+      await redis.ltrim("recent_sales", 0, MAX_RECENT_SALES - 1);
+    } catch (feedErr) {
+      // Never let the activity feed break a real order confirmation.
+      console.error("recent_sales logging failed:", feedErr);
+    }
 
     res.status(200).json({ ok: true });
   } catch (err) {
