@@ -3,6 +3,7 @@ import {
   getStoreSettings,
   saveStoreSettings,
   DEFAULT_FEATURED_TITLE,
+  DEFAULT_NEW_TITLE,
 } from "./_inventory.js";
 
 const redis = Redis.fromEnv();
@@ -23,7 +24,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { key, action, featuredTitle } = req.body || {};
+    const { key, action, featuredTitle, newTitle } = req.body || {};
     const adminKey = process.env.ADMIN_RESET_KEY;
 
     if (!adminKey) {
@@ -41,28 +42,38 @@ export default async function handler(req, res) {
         ok: true,
         settings,
         defaultFeaturedTitle: DEFAULT_FEATURED_TITLE,
+        defaultNewTitle: DEFAULT_NEW_TITLE,
       });
     }
 
     if (action === "reset") {
-      const settings = { featuredTitle: DEFAULT_FEATURED_TITLE };
+      const settings = { featuredTitle: DEFAULT_FEATURED_TITLE, newTitle: DEFAULT_NEW_TITLE };
       await saveStoreSettings(redis, settings);
       return res.status(200).json({ ok: true, settings, reset: true });
     }
 
     if (action === "set") {
-      const title = String(featuredTitle || "").trim();
+      const current = await getStoreSettings(redis);
+      const settings = { ...current };
 
-      if (!title) {
-        return res.status(400).json({ error: "Please enter a heading." });
-      }
-      if (title.length > MAX_TITLE_LENGTH) {
-        return res.status(400).json({
-          error: `Heading is too long (${title.length}). Maximum is ${MAX_TITLE_LENGTH} characters.`,
-        });
+      // Each heading is optional — only the ones supplied get changed.
+      for (const [field, value] of [
+        ["featuredTitle", featuredTitle],
+        ["newTitle", newTitle],
+      ]) {
+        if (value === undefined || value === null) continue;
+        const title = String(value).trim();
+        if (!title) {
+          return res.status(400).json({ error: "Headings can't be blank." });
+        }
+        if (title.length > MAX_TITLE_LENGTH) {
+          return res.status(400).json({
+            error: `Heading is too long (${title.length}). Maximum is ${MAX_TITLE_LENGTH} characters.`,
+          });
+        }
+        settings[field] = title;
       }
 
-      const settings = { featuredTitle: title };
       await saveStoreSettings(redis, settings);
       return res.status(200).json({ ok: true, settings });
     }
