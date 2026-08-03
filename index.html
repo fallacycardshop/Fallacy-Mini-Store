@@ -1356,8 +1356,14 @@ function buildProductCard(p) {
   return card;
 }
 
-function renderSection(headingText, matches) {
+// soldOutVisible controls how many sold-out cards show before the rest are
+// collapsed behind a button. The featured and newly-in rows pass 0, so their
+// sold-out cards are hidden entirely until the shopper asks for them — those
+// rows are meant to showcase what's buyable.
+function renderSection(headingText, matches, options = {}) {
   if (matches.length === 0) return;
+
+  const soldOutVisible = options.soldOutVisible === undefined ? 5 : options.soldOutVisible;
 
   const heading = document.createElement("h3");
   heading.className = "section-heading";
@@ -1369,8 +1375,8 @@ function renderSection(headingText, matches) {
 
   available.forEach(p => productListEl.appendChild(buildProductCard(p)));
 
-  const visibleSoldOut = soldOut.slice(0, 5);
-  const hiddenSoldOut = soldOut.slice(5);
+  const visibleSoldOut = soldOut.slice(0, soldOutVisible);
+  const hiddenSoldOut = soldOut.slice(soldOutVisible);
 
   visibleSoldOut.forEach(p => productListEl.appendChild(buildProductCard(p)));
 
@@ -1382,7 +1388,9 @@ function renderSection(headingText, matches) {
     const showMoreBtn = document.createElement("button");
     showMoreBtn.className = "btn btn-secondary";
     showMoreBtn.style.width = "100%";
-    showMoreBtn.textContent = `Show ${hiddenSoldOut.length} more sold out item${hiddenSoldOut.length === 1 ? "" : "s"}`;
+    // "more" only makes sense when some sold-out cards are already showing.
+    const moreWord = visibleSoldOut.length > 0 ? "more " : "";
+    showMoreBtn.textContent = `Show ${hiddenSoldOut.length} ${moreWord}sold out item${hiddenSoldOut.length === 1 ? "" : "s"}`;
     showMoreBtn.onclick = () => {
       hiddenWrap.classList.add("expanded");
       showMoreBtn.remove();
@@ -1422,8 +1430,8 @@ function renderProducts() {
   const inStockMatches = matches.filter(p => Number(p.stock || 0) > 0).length;
   resultsCounterEl.textContent = `${inStockMatches} card${inStockMatches === 1 ? "" : "s"} available`;
 
-  renderSection(newTitle, newMatches);
-  renderSection(featuredTitle, featuredMatches);
+  renderSection(newTitle, newMatches, { soldOutVisible: 0 });
+  renderSection(featuredTitle, featuredMatches, { soldOutVisible: 0 });
   renderSection("All Cards", otherMatches);
 
   if (featuredMatches.length === 0 && otherMatches.length === 0) {
