@@ -773,6 +773,10 @@ window.onerror = function (message, source, lineno, colno, error) {
 };
 
 let products = [];
+
+// Heading above the featured row. Overridden by the value from /api/products,
+// which the admin page can edit.
+let featuredTitle = "\u{1F525} Popular this week";
 let currentScreen = "products";
 
 // Tracks which product fields (name/condition/rarity/set/stock) are currently
@@ -1116,7 +1120,15 @@ async function loadProducts() {
     if (!res.ok) {
       throw new Error("Failed to load inventory");
     }
-    products = await res.json();
+    const payload = await res.json();
+    // Accepts both the current { products, featuredTitle } shape and the older
+    // bare array, so the shop keeps working if the API deploys out of step.
+    if (Array.isArray(payload)) {
+      products = payload;
+    } else {
+      products = payload.products || [];
+      if (payload.featuredTitle) featuredTitle = payload.featuredTitle;
+    }
     statusTextEl.textContent = "All items have been updated.";
     renderCategoryFilter();
     renderSetFilter();
@@ -1364,7 +1376,7 @@ function renderProducts() {
   const inStockMatches = matches.filter(p => Number(p.stock || 0) > 0).length;
   resultsCounterEl.textContent = `${inStockMatches} card${inStockMatches === 1 ? "" : "s"} available`;
 
-  renderSection("🔥 Popular this week", featuredMatches);
+  renderSection(featuredTitle, featuredMatches);
   renderSection("All Cards", otherMatches);
 
   if (featuredMatches.length === 0 && otherMatches.length === 0) {
