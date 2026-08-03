@@ -1,10 +1,5 @@
 import { Redis } from "@upstash/redis";
-import {
-  loadInventoryGroups,
-  getActiveReservedMap,
-  getHiddenCardIds,
-  normaliseCardId,
-} from "./_inventory.js";
+import { loadInventoryGroups, getActiveReservedMap } from "./_inventory.js";
 
 const redis = Redis.fromEnv();
 
@@ -29,45 +24,21 @@ export default async function handler(req, res) {
     const groups = loadInventoryGroups();
     const reservedMap = await getActiveReservedMap(redis);
 
-    const validItems = items.filter(item => item && item.key && item.quantity > 0);
-
-    // A card pulled for auction must not be sellable here, even if someone had
-    // it sitting in their cart from before it was hidden. Selling a card that
-    // then also sells at auction is the one outcome worth being strict about.
-    const hiddenCardIds = await getHiddenCardIds(redis);
-
-    // Fetch every sold counter we need in ONE MGET rather than looping with a
-    // separate awaited GET per cart item. Command count stays flat no matter
-    // how many lines are in the cart.
-    //
-    // No try/catch swallowing the failure here on purpose: if we can't read
-    // the sold counts we must not treat them as 0, because that would let
-    // someone reserve stock that has already been sold. A thrown error becomes
-    // a 500 and the buyer is told to try again — annoying, but never oversold.
-    const soldByKey = {};
-    if (validItems.length > 0) {
-      const soldValues = await redis.mget(...validItems.map(item => `sold:${item.key}`));
-      validItems.forEach((item, i) => {
-        soldByKey[item.key] = Number(soldValues[i]) || 0;
-      });
-    }
-
     const unavailable = [];
+    const enrichedItems = [];
 
-    for (const item of validItems) {
+    for (const item of items) {
+      if (!item || !item.key || !(item.quantity > 0)) continue;
+
       const group = groups.get(item.key);
-
-      if (group && hiddenCardIds.has(normaliseCardId(group.cardId))) {
-        unavailable.push({
-          key: item.key,
-          name: group.name,
-          available: 0,
-        });
-        continue;
-      }
-
       const baseStock = group ? group.baseStock : 0;
-      const sold = soldByKey[item.key] || 0;
+
+      let sold = 0;
+      try {
+        sold = Number(await redis.get(`sold:${item.key}`)) || 0;
+      } catch (e) {
+        console.error("Redis read failed for", item.key, e);
+      }
 
       const alreadyReserved = reservedMap[item.key] || 0;
       const available = Math.max(baseStock - sold - alreadyReserved, 0);
@@ -79,6 +50,12 @@ export default async function handler(req, res) {
           available,
         });
       }
+
+      enrichedItems.push({
+        key: item.key,
+        quantity: item.quantity,
+        name: group ? group.name : item.key, // resolved server-side, not trusted from the client
+      });
     }
 
     if (unavailable.length > 0) {
@@ -90,7 +67,7 @@ export default async function handler(req, res) {
 
     await redis.set(
       `reservation:${reservationId}`,
-      JSON.stringify({ items, createdAt: Date.now() }),
+      JSON.stringify({ items: enrichedItems, createdAt: Date.now() }),
       { ex: RESERVATION_TTL_SECONDS }
     );
 
