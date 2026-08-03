@@ -10,17 +10,31 @@ export default async function handler(req, res) {
 
     const groupEntries = Array.from(groups.entries());
 
+    // Fetch EVERY sold counter in a single MGET.
+    //
+    // This used to be one redis.get() per listing, which meant ~190 separate
+    // Redis round trips on every single page load. That burned through the
+    // Upstash request quota extremely quickly and caused intermittent
+    // failures. One MGET is one request, regardless of catalogue size.
+    const soldByKey = {};
+    if (groupEntries.length > 0) {
+      const soldKeys = groupEntries.map(([groupKey]) => `sold:${groupKey}`);
+      // If this read fails we must NOT carry on with sold = 0, because that
+      // would silently show every sold-out card as available and let people
+      // buy stock that doesn't exist. Better to fail loudly and show the
+      // "failed to load" message than to oversell.
+      const soldValues = await redis.mget(...soldKeys);
+      groupEntries.forEach(([groupKey], i) => {
+        soldByKey[groupKey] = Number(soldValues[i]) || 0;
+      });
+    }
+
     // Build every product's data first, without a final display "id" yet —
     // the id gets assigned afterward, once we know the actual display order
     // (featured cards first, everything else daily-shuffled).
     const unordered = await Promise.all(
       groupEntries.map(async ([groupKey, group]) => {
-        let sold = 0;
-        try {
-          sold = Number(await redis.get(`sold:${groupKey}`)) || 0;
-        } catch (kvErr) {
-          console.error("Redis read failed for", groupKey, kvErr);
-        }
+        const sold = soldByKey[groupKey] || 0;
 
         const reserved = reservedMap[groupKey] || 0;
         const trueStock = Math.max(group.baseStock - sold, 0);
