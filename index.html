@@ -103,20 +103,27 @@ body {
   white-space: nowrap;
 }
 
+/* Recent-sales ticker: sits inside the fixed footer, to the LEFT of the cart
+   button. flex:1 + min-width:0 lets it take the leftover space and truncate
+   with an ellipsis instead of pushing the cart button off screen. */
 .recent-sales-banner {
-  background: var(--pink-soft);
-  color: var(--pink-deep);
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding-right: 12px;
   font-size: 12px;
   font-weight: 600;
-  text-align: center;
-  padding: 7px 12px;
+  color: #fff;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .recent-sales-banner span {
-  display: inline-block;
+  display: block;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: opacity 0.3s ease;
 }
 
@@ -616,10 +623,6 @@ footer .btn { width: auto; flex-shrink: 0; }
   </div>
 </header>
 
-<div class="recent-sales-banner" id="recentSalesBanner" style="display:none;">
-  <span id="recentSalesText"></span>
-</div>
-
 <main>
 
   <!-- PRODUCT SCREEN -->
@@ -768,6 +771,9 @@ footer .btn { width: auto; flex-shrink: 0; }
 </main>
 
 <footer>
+  <div class="recent-sales-banner" id="recentSalesBanner" style="display:none;">
+    <span id="recentSalesText"></span>
+  </div>
   <button class="btn btn-secondary" id="cartButton">Cart (0)</button>
 </footer>
 
@@ -1852,7 +1858,10 @@ let recentSalesInterval = null;
 function showRecentSaleAt(index) {
   if (recentSales.length === 0) return;
   const sale = recentSales[index];
-  recentSalesTextEl.textContent = `🎉 Someone just grabbed ${sale.name}!`;
+  // Sales logged before the set name was recorded won't have one — fall back
+  // to just the card name rather than showing an empty bracket.
+  const setPart = sale.set ? ` · ${sale.set}` : "";
+  recentSalesTextEl.textContent = `🎉 Just sold: ${sale.name}${setPart}`;
 }
 
 function startRecentSalesRotation() {
@@ -1862,7 +1871,7 @@ function startRecentSalesRotation() {
     return;
   }
 
-  recentSalesBannerEl.style.display = "block";
+  recentSalesBannerEl.style.display = "flex";
   recentSalesIndex = 0;
   showRecentSaleAt(recentSalesIndex);
 
