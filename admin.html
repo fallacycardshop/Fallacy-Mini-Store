@@ -11,9 +11,13 @@
     font-family: 'Poppins', sans-serif;
     background: #fdf3f7;
     color: #2b2b2b;
+    /* Column, not row: with more than one panel the original row layout put
+       them side by side and they overlapped. Cards now stack and scroll. */
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
+    gap: 20px;
     min-height: 100vh;
     padding: 20px;
     box-sizing: border-box;
@@ -22,8 +26,9 @@
     background: #fff;
     border-radius: 16px;
     padding: 28px;
-    max-width: 400px;
+    max-width: 460px;
     width: 100%;
+    box-sizing: border-box;
     box-shadow: 0 4px 16px rgba(0,0,0,0.1);
   }
   h1 {
@@ -208,10 +213,25 @@ async function callHideApi(action, extra = {}) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ key, action, ...extra }),
   });
-  const data = await res.json();
+
+  // Read as text first. If the endpoint isn't deployed, the catch-all route
+  // returns the storefront HTML, and calling res.json() straight away would
+  // throw a misleading "Network error" instead of telling us what's wrong.
+  const raw = await res.text();
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    hideResultEl.textContent =
+      raw.trim().startsWith("<")
+        ? `The /api/hide-card endpoint isn't deployed (HTTP ${res.status}). Check that vercel.json lists api/hide-card.js under "builds", then redeploy.`
+        : `Unexpected response from the server (HTTP ${res.status}).`;
+    hideResultEl.className = "error";
+    return null;
+  }
 
   if (!res.ok) {
-    hideResultEl.textContent = data.error || "Something went wrong.";
+    hideResultEl.textContent = data.error || `Something went wrong (HTTP ${res.status}).`;
     hideResultEl.className = "error";
     return null;
   }
