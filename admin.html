@@ -134,6 +134,43 @@
   .pill-hidden { background: #fdeceb; color: #a5352c; }
   .pill-none { background: #f2f2f2; color: #666; }
 
+  .field-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #777;
+    margin-bottom: 5px;
+  }
+  .field-row { display: flex; gap: 10px; }
+  .field-row > div { flex: 1; }
+  .config-note {
+    font-size: 12px;
+    color: #777;
+    margin: 6px 0 14px;
+  }
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin: 14px 0;
+  }
+  .stat-box {
+    background: #faf5f8;
+    border-radius: 10px;
+    padding: 10px 8px;
+    text-align: center;
+  }
+  .stat-box strong { display: block; font-size: 20px; color: var(--plum, #a8305f); }
+  .stat-box span { font-size: 11px; color: #777; }
+  .checkbox-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
+  .checkbox-row input { width: auto; margin: 3px 0 0; }
+
   .hidden-list { margin-top: 14px; font-size: 13px; }
   .hidden-list div { padding: 6px 0; border-bottom: 1px solid #eee; }
 </style>
@@ -141,14 +178,76 @@
 <body>
 
 <div class="card">
+  <h1>Slow Release Scheduling</h1>
+  <p>
+    Upload all your new stock to the CSV at once, then release it gradually.
+    Scheduled cards stay completely hidden from the store until their release
+    time, then appear in the <strong>Newly in stock!</strong> row at the very top.
+    After their first day they drop into the normal rows and rotate with everything else.
+  </p>
+  <input type="password" id="dripPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
+  <button id="dripStatusButton">Load Current Status</button>
+
+  <div id="dripStatus"></div>
+
+  <div id="dripControls" style="display:none;">
+    <h3 style="margin-top:22px;font-size:15px;">Settings</h3>
+    <div class="field-row">
+      <div>
+        <label class="field-label">Cards per day</label>
+        <input type="number" id="dripPerDay" min="1" max="200" value="5">
+      </div>
+      <div>
+        <label class="field-label">Release time (SGT)</label>
+        <input type="time" id="dripTime" value="10:00">
+      </div>
+    </div>
+    <label class="field-label">Hours in the &ldquo;Newly in stock!&rdquo; row</label>
+    <input type="number" id="dripNewWindow" min="1" max="720" value="24">
+    <div class="checkbox-row">
+      <input type="checkbox" id="dripHoldNew" checked>
+      <label for="dripHoldNew">
+        Hold back any new CSV rows until I schedule them (recommended &mdash;
+        otherwise newly uploaded cards go live immediately)
+      </label>
+    </div>
+    <button id="dripSaveConfig">Save Settings</button>
+
+    <h3 style="margin-top:22px;font-size:15px;">Release New Stock</h3>
+    <div class="button-row">
+      <button id="dripPreviewButton" class="btn-neutral">Preview Schedule</button>
+      <button id="dripScheduleButton">Confirm Schedule</button>
+    </div>
+    <div class="button-row" style="margin-top:10px;">
+      <button id="dripRescheduleButton" class="btn-neutral">Re-spread Pending</button>
+      <button id="dripReleaseNowButton" class="btn-danger">Release All Now</button>
+    </div>
+  </div>
+
+  <div id="dripInit" style="display:none;">
+    <p class="config-note">
+      <strong>First-time setup required.</strong> Mark everything currently in your
+      CSV as already released, so only rows you add later get drip-scheduled.
+    </p>
+    <button id="dripInitButton">Set Current Inventory As Baseline</button>
+  </div>
+
+  <p id="dripResultText"></p>
+  <div id="dripList" class="hidden-list"></div>
+</div>
+
+<div class="card">
   <h1>Featured Section Heading</h1>
   <p>
-    The heading shown above the featured row on the store. Change it whenever you
-    like &mdash; &ldquo;New in!&rdquo;, &ldquo;Weekend picks&rdquo;, and so on. Emoji work fine.
-    Shoppers see it within a minute; no redeploy needed.
+    Headings for the two special rows on the store. Change them whenever you like
+    &mdash; &ldquo;New in!&rdquo;, &ldquo;Weekend picks&rdquo;, and so on. Emoji work fine.
+    Shoppers see changes within a minute; no redeploy needed.
   </p>
   <input type="password" id="settingsPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
+  <label class="field-label">Featured row heading</label>
   <input type="text" id="featuredTitleInput" placeholder="e.g. New in!" maxlength="60" autocomplete="off">
+  <label class="field-label">Newly-in-stock row heading</label>
+  <input type="text" id="newTitleInput" placeholder="e.g. ✨ Newly in stock!" maxlength="60" autocomplete="off">
   <div class="button-row">
     <button id="saveTitleButton">Save Heading</button>
     <button id="loadTitleButton" class="btn-neutral">Load Current</button>
@@ -204,6 +303,259 @@
 
 <script>
 // --------------------------------------------------------------------------
+// Slow release (drip) scheduling
+// --------------------------------------------------------------------------
+const dripPassphraseEl = document.getElementById("dripPassphrase");
+const dripStatusEl = document.getElementById("dripStatus");
+const dripControlsEl = document.getElementById("dripControls");
+const dripInitEl = document.getElementById("dripInit");
+const dripResultEl = document.getElementById("dripResultText");
+const dripListEl = document.getElementById("dripList");
+
+function fmtDateTime(ts) {
+  return new Date(ts).toLocaleString("en-SG", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+async function callDripApi(action, extra = {}) {
+  const key = dripPassphraseEl.value.trim();
+  if (!key) {
+    dripResultEl.textContent = "Please enter the passphrase.";
+    dripResultEl.className = "error";
+    return null;
+  }
+
+  const res = await fetch("/api/drip", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, action, ...extra }),
+  });
+
+  const raw = await res.text();
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    dripResultEl.textContent =
+      raw.trim().startsWith("<")
+        ? `The /api/drip endpoint isn't deployed (HTTP ${res.status}). Check that vercel.json lists api/drip.js under "builds", then redeploy.`
+        : `Unexpected response from the server (HTTP ${res.status}).`;
+    dripResultEl.className = "error";
+    return null;
+  }
+
+  if (!res.ok) {
+    dripResultEl.textContent = data.error || `Something went wrong (HTTP ${res.status}).`;
+    dripResultEl.className = "error";
+    return null;
+  }
+  return data;
+}
+
+function renderDripStatus(status) {
+  dripStatusEl.innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-box"><strong>${status.liveCount}</strong><span>live on store</span></div>
+      <div class="stat-box"><strong>${status.pendingCount}</strong><span>scheduled</span></div>
+      <div class="stat-box"><strong>${status.unscheduledCount}</strong><span>awaiting schedule</span></div>
+    </div>`;
+
+  // Reflect saved settings into the form
+  document.getElementById("dripPerDay").value = status.config.perDay;
+  document.getElementById("dripTime").value =
+    String(status.config.releaseHour).padStart(2, "0") + ":" +
+    String(status.config.releaseMinute).padStart(2, "0");
+  document.getElementById("dripNewWindow").value = status.config.newWindowHours;
+  document.getElementById("dripHoldNew").checked = Boolean(status.config.holdNewListings);
+
+  dripInitEl.style.display = status.initialized ? "none" : "block";
+  dripControlsEl.style.display = status.initialized ? "block" : "none";
+
+  const sections = [];
+
+  if (status.newlyIn.length) {
+    sections.push(`<div style="margin-top:14px;"><strong>In &ldquo;Newly in stock!&rdquo; right now (${status.newlyIn.length})</strong></div>` +
+      status.newlyIn.map(r => `<div><strong>${r.name}</strong>
+        <span class="muted">${r.set ? r.set + " · " : ""}${r.condition}</span><br>
+        <span class="muted">released ${fmtDateTime(r.releaseAt)}</span></div>`).join(""));
+  }
+
+  if (status.pending.length) {
+    sections.push(`<div style="margin-top:14px;"><strong>Scheduled, not yet visible (${status.pending.length})</strong></div>` +
+      status.pending.map(r => `<div><strong>${r.name}</strong>
+        <span class="muted">${r.set ? r.set + " · " : ""}${r.condition}</span><br>
+        <span class="muted">releases ${fmtDateTime(r.releaseAt)}</span></div>`).join(""));
+  }
+
+  if (status.unscheduled.length) {
+    sections.push(`<div style="margin-top:14px;"><strong>New CSV rows awaiting a schedule (${status.unscheduled.length})</strong></div>` +
+      status.unscheduled.slice(0, 40).map(r => `<div><strong>${r.name}</strong>
+        <span class="muted">${r.set ? r.set + " · " : ""}${r.condition}</span></div>`).join("") +
+      (status.unscheduled.length > 40 ? `<div class="muted">…and ${status.unscheduled.length - 40} more</div>` : ""));
+  }
+
+  dripListEl.innerHTML = sections.join("") ||
+    '<div class="muted" style="margin-top:14px;">Nothing scheduled or pending.</div>';
+}
+
+function readDripConfig() {
+  const [h, m] = (document.getElementById("dripTime").value || "10:00").split(":");
+  return {
+    perDay: Number(document.getElementById("dripPerDay").value) || 5,
+    releaseHour: Number(h) || 0,
+    releaseMinute: Number(m) || 0,
+    newWindowHours: Number(document.getElementById("dripNewWindow").value) || 24,
+    holdNewListings: document.getElementById("dripHoldNew").checked,
+    tzOffsetMinutes: 480,
+  };
+}
+
+async function refreshDrip(message) {
+  const data = await callDripApi("status");
+  if (!data) return;
+  renderDripStatus(data.status);
+  if (message) {
+    dripResultEl.textContent = message;
+    dripResultEl.className = "success";
+  }
+}
+
+document.getElementById("dripStatusButton").onclick = async () => {
+  dripResultEl.textContent = "Loading...";
+  dripResultEl.className = "";
+  try {
+    const data = await callDripApi("status");
+    if (!data) return;
+    renderDripStatus(data.status);
+    dripResultEl.textContent = data.status.initialized
+      ? "Loaded."
+      : "First-time setup needed — set your current inventory as the baseline below.";
+    dripResultEl.className = data.status.initialized ? "success" : "error";
+  } catch (err) {
+    dripResultEl.textContent = "Network error — please try again.";
+    dripResultEl.className = "error";
+  }
+};
+
+document.getElementById("dripInitButton").onclick = async () => {
+  if (!confirm("Mark every listing currently in the CSV as already released? Do this once, before uploading new stock.")) return;
+  dripResultEl.textContent = "Working...";
+  dripResultEl.className = "";
+  try {
+    const data = await callDripApi("initialize");
+    if (!data) return;
+    renderDripStatus(data.status);
+    dripResultEl.textContent = `Baseline set — ${data.baselineCount} existing listings marked as already released.`;
+    dripResultEl.className = "success";
+  } catch (err) {
+    dripResultEl.textContent = "Network error — please try again.";
+    dripResultEl.className = "error";
+  }
+};
+
+document.getElementById("dripSaveConfig").onclick = async () => {
+  dripResultEl.textContent = "Saving...";
+  dripResultEl.className = "";
+  try {
+    const data = await callDripApi("config", { config: readDripConfig() });
+    if (!data) return;
+    renderDripStatus(data.status);
+    dripResultEl.textContent = `Saved: ${data.config.perDay} cards/day at ${String(data.config.releaseHour).padStart(2, "0")}:${String(data.config.releaseMinute).padStart(2, "0")} SGT, new for ${data.config.newWindowHours}h. Use "Re-spread Pending" to apply to already-scheduled cards.`;
+    dripResultEl.className = "success";
+  } catch (err) {
+    dripResultEl.textContent = "Network error — please try again.";
+    dripResultEl.className = "error";
+  }
+};
+
+document.getElementById("dripPreviewButton").onclick = async () => {
+  dripResultEl.textContent = "Building preview...";
+  dripResultEl.className = "";
+  try {
+    const data = await callDripApi("preview");
+    if (!data) return;
+
+    if (!data.proposed.length) {
+      dripResultEl.textContent = "No new CSV rows are awaiting a schedule.";
+      dripResultEl.className = "success";
+      dripListEl.innerHTML = "";
+      return;
+    }
+
+    const byDay = {};
+    data.proposed.forEach(r => {
+      const day = fmtDateTime(r.releaseAt);
+      (byDay[day] = byDay[day] || []).push(r);
+    });
+
+    dripListEl.innerHTML =
+      `<div style="margin-top:14px;"><strong>Proposed: ${data.proposed.length} listings over ${data.days} day(s)</strong></div>` +
+      Object.entries(byDay).map(([day, rows]) => `
+        <div style="margin-top:10px;"><strong>${day}</strong>
+        ${rows.map(r => `<div class="muted">${r.name}${r.set ? " · " + r.set : ""} (${r.condition})</div>`).join("")}
+        </div>`).join("");
+
+    dripResultEl.textContent = "Preview only — nothing saved yet. Press Confirm Schedule to apply.";
+    dripResultEl.className = "success";
+  } catch (err) {
+    dripResultEl.textContent = "Network error — please try again.";
+    dripResultEl.className = "error";
+  }
+};
+
+document.getElementById("dripScheduleButton").onclick = async () => {
+  if (!confirm("Schedule all awaiting listings for gradual release?")) return;
+  dripResultEl.textContent = "Scheduling...";
+  dripResultEl.className = "";
+  try {
+    const data = await callDripApi("schedule");
+    if (!data) return;
+    renderDripStatus(data.status);
+    dripResultEl.textContent = data.scheduled
+      ? `Scheduled ${data.scheduled} listing(s) for gradual release.`
+      : "Nothing was awaiting a schedule.";
+    dripResultEl.className = "success";
+  } catch (err) {
+    dripResultEl.textContent = "Network error — please try again.";
+    dripResultEl.className = "error";
+  }
+};
+
+document.getElementById("dripRescheduleButton").onclick = async () => {
+  if (!confirm("Re-spread everything still pending using the current settings?")) return;
+  dripResultEl.textContent = "Rescheduling...";
+  dripResultEl.className = "";
+  try {
+    const data = await callDripApi("reschedule");
+    if (!data) return;
+    renderDripStatus(data.status);
+    dripResultEl.textContent = `Re-spread ${data.rescheduled} pending listing(s).`;
+    dripResultEl.className = "success";
+  } catch (err) {
+    dripResultEl.textContent = "Network error — please try again.";
+    dripResultEl.className = "error";
+  }
+};
+
+document.getElementById("dripReleaseNowButton").onclick = async () => {
+  if (!confirm("Release ALL pending listings to the store immediately?")) return;
+  dripResultEl.textContent = "Releasing...";
+  dripResultEl.className = "";
+  try {
+    const data = await callDripApi("releaseNow");
+    if (!data) return;
+    renderDripStatus(data.status);
+    dripResultEl.textContent = `Released ${data.released} listing(s) to the store.`;
+    dripResultEl.className = "success";
+  } catch (err) {
+    dripResultEl.textContent = "Network error — please try again.";
+    dripResultEl.className = "error";
+  }
+};
+
+// --------------------------------------------------------------------------
 // Featured heading
 // --------------------------------------------------------------------------
 const settingsPassphraseEl = document.getElementById("settingsPassphrase");
@@ -252,7 +604,8 @@ document.getElementById("loadTitleButton").onclick = async () => {
     const data = await callSettingsApi("get");
     if (!data) return;
     featuredTitleInputEl.value = data.settings.featuredTitle;
-    settingsResultEl.textContent = "Loaded the heading currently showing on the store.";
+    document.getElementById("newTitleInput").value = data.settings.newTitle || "";
+    settingsResultEl.textContent = "Loaded the headings currently showing on the store.";
     settingsResultEl.className = "success";
   } catch (err) {
     settingsResultEl.textContent = "Network error — please try again.";
@@ -262,8 +615,9 @@ document.getElementById("loadTitleButton").onclick = async () => {
 
 document.getElementById("saveTitleButton").onclick = async () => {
   const featuredTitle = featuredTitleInputEl.value.trim();
-  if (!featuredTitle) {
-    settingsResultEl.textContent = "Please enter a heading.";
+  const newTitle = document.getElementById("newTitleInput").value.trim();
+  if (!featuredTitle && !newTitle) {
+    settingsResultEl.textContent = "Please enter at least one heading.";
     settingsResultEl.className = "error";
     return;
   }
@@ -271,9 +625,12 @@ document.getElementById("saveTitleButton").onclick = async () => {
   settingsResultEl.textContent = "Saving...";
   settingsResultEl.className = "";
   try {
-    const data = await callSettingsApi("set", { featuredTitle });
+    const payload = {};
+    if (featuredTitle) payload.featuredTitle = featuredTitle;
+    if (newTitle) payload.newTitle = newTitle;
+    const data = await callSettingsApi("set", payload);
     if (!data) return;
-    settingsResultEl.textContent = `Saved. The store now shows "${data.settings.featuredTitle}".`;
+    settingsResultEl.textContent = `Saved. Featured: "${data.settings.featuredTitle}" · New: "${data.settings.newTitle}".`;
     settingsResultEl.className = "success";
   } catch (err) {
     settingsResultEl.textContent = "Network error — please try again.";
@@ -290,7 +647,8 @@ document.getElementById("resetTitleButton").onclick = async () => {
     const data = await callSettingsApi("reset");
     if (!data) return;
     featuredTitleInputEl.value = data.settings.featuredTitle;
-    settingsResultEl.textContent = `Restored the default heading.`;
+    document.getElementById("newTitleInput").value = data.settings.newTitle || "";
+    settingsResultEl.textContent = `Restored the default headings.`;
     settingsResultEl.className = "success";
   } catch (err) {
     settingsResultEl.textContent = "Network error — please try again.";
