@@ -185,6 +185,10 @@ export async function getActiveReservedMap(redis) {
 // ---------------------------------------------------------------------------
 
 export const HIDDEN_CARDS_KEY = "hidden:cards";
+export const STORE_SETTINGS_KEY = "store:settings";
+
+// Editable copy shown above the featured row. Falls back to this if unset.
+export const DEFAULT_FEATURED_TITLE = "\u{1F525} Popular this week";
 
 // CardIDs are compared case-insensitively and trimmed, so "abc123 " typed into
 // the admin box still matches "ABC123" in the CSV.
@@ -194,7 +198,12 @@ export function normaliseCardId(id) {
 
 // Returns { <normalisedCardId>: { expiresAt, label } } for cards still hidden.
 export async function getHiddenCardsMap(redis) {
-  const raw = await redis.get(HIDDEN_CARDS_KEY);
+  return parseHiddenCards(await redis.get(HIDDEN_CARDS_KEY));
+}
+
+// Pure parsing, split out so it can be reused by the batched MGET path below
+// without triggering a second Redis round trip.
+export function parseHiddenCards(raw) {
   if (!raw) return {};
 
   let data;
@@ -280,4 +289,52 @@ export function indexGroupsByCardId(groups) {
     index.get(id).push({ groupKey, group });
   });
   return index;
+}
+
+// ---------------------------------------------------------------------------
+// Store settings (currently just the featured-row heading).
+//
+// Deliberately a single JSON key so future settings cost nothing extra, and
+// deliberately fetched in the SAME MGET as the hidden-card list — reading both
+// costs one Redis command, so the editable heading adds zero overhead to a
+// page load.
+// ---------------------------------------------------------------------------
+
+export function parseStoreSettings(raw) {
+  const settings = { featuredTitle: DEFAULT_FEATURED_TITLE };
+  if (!raw) return settings;
+
+  let data;
+  try {
+    data = typeof raw === "string" ? JSON.parse(raw) : raw;
+  } catch (e) {
+    console.error("Corrupted store settings:", e);
+    return settings;
+  }
+  if (!data || typeof data !== "object") return settings;
+
+  if (typeof data.featuredTitle === "string" && data.featuredTitle.trim()) {
+    settings.featuredTitle = data.featuredTitle.trim();
+  }
+  return settings;
+}
+
+export async function getStoreSettings(redis) {
+  return parseStoreSettings(await redis.get(STORE_SETTINGS_KEY));
+}
+
+export async function saveStoreSettings(redis, settings) {
+  await redis.set(STORE_SETTINGS_KEY, JSON.stringify(settings || {}));
+}
+
+// One MGET returns everything the storefront needs beyond the CSV.
+export async function getStoreState(redis) {
+  const [hiddenRaw, settingsRaw] = await redis.mget(
+    HIDDEN_CARDS_KEY,
+    STORE_SETTINGS_KEY
+  );
+  return {
+    hiddenCardIds: new Set(Object.keys(parseHiddenCards(hiddenRaw))),
+    settings: parseStoreSettings(settingsRaw),
+  };
 }
