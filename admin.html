@@ -69,9 +69,102 @@
   }
   .success { color: #3a7d44; }
   .error { color: #c0392b; }
+  .muted { color: #777; font-weight: 400; }
+
+  .listing-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+    font-size: 13px;
+  }
+  .listing-table th,
+  .listing-table td {
+    text-align: left;
+    padding: 7px 8px;
+    border-bottom: 1px solid #eee;
+  }
+  .listing-table th { font-size: 11px; text-transform: uppercase; color: #888; }
+  .listing-table td.num { text-align: right; }
+
+  .status-banner {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .status-live { background: #eaf6ec; color: #2f6b3a; }
+  .status-hidden { background: #fdeceb; color: #a5352c; }
+  .status-none { background: #f2f2f2; color: #666; }
+
+  .button-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .button-row button { flex: 1; min-width: 130px; }
+  .btn-danger { background: #c0392b; }
+  .btn-neutral { background: #555; }
+
+  textarea {
+    width: 100%;
+    min-height: 90px;
+    padding: 12px;
+    margin-bottom: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+  }
+  .summary-line { margin-top: 12px; font-size: 14px; font-weight: 600; }
+  .result-block { margin-top: 14px; padding-top: 12px; border-top: 1px solid #eee; }
+  .result-block:first-child { border-top: none; }
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .pill-live { background: #eaf6ec; color: #2f6b3a; }
+  .pill-hidden { background: #fdeceb; color: #a5352c; }
+  .pill-none { background: #f2f2f2; color: #666; }
+
+  .hidden-list { margin-top: 14px; font-size: 13px; }
+  .hidden-list div { padding: 6px 0; border-bottom: 1px solid #eee; }
 </style>
 </head>
 <body>
+
+<div class="card">
+  <h1>Hide a Card for Auction</h1>
+  <p>
+    Paste one Card ID or a whole batch — separated by commas, spaces or new lines,
+    so a column copied straight out of a spreadsheet works. You'll see every condition
+    listed under each ID and how many are genuinely still available, then you can pull
+    the whole batch for a set number of hours so they don't compete with your auctions.
+    They come back <strong>automatically</strong> when the time is up — nothing to remember.
+  </p>
+  <input type="password" id="hidePassphrase" placeholder="Enter admin passphrase" autocomplete="off">
+  <textarea id="cardIdInput" placeholder="Card IDs — e.g.&#10;SV01-025&#10;SV02-114&#10;SV03-007"></textarea>
+  <button id="lookupButton">Check These Cards</button>
+
+  <div id="lookupResult"></div>
+
+  <div id="hideControls" style="display:none;">
+    <input type="number" id="hideHours" value="24" min="1" max="168" placeholder="Hours to hide">
+    <div class="button-row">
+      <button id="hideButton" class="btn-danger">Hide All From Store</button>
+      <button id="unhideButton" class="btn-neutral">Put All Back Now</button>
+    </div>
+  </div>
+
+  <p id="hideResultText"></p>
+
+  <button id="listHiddenButton" class="btn-neutral" style="margin-top:14px;">
+    Show Currently Hidden Cards
+  </button>
+  <div id="hiddenList" class="hidden-list"></div>
+</div>
 
 <div class="card">
   <h1>Reset Sold Counts</h1>
@@ -86,6 +179,187 @@
 </div>
 
 <script>
+// --------------------------------------------------------------------------
+// Hide-for-auction controls
+// --------------------------------------------------------------------------
+const hidePassphraseEl = document.getElementById("hidePassphrase");
+const cardIdInputEl = document.getElementById("cardIdInput");
+const lookupResultEl = document.getElementById("lookupResult");
+const hideControlsEl = document.getElementById("hideControls");
+const hideResultEl = document.getElementById("hideResultText");
+const hiddenListEl = document.getElementById("hiddenList");
+
+function formatWhen(ts) {
+  const d = new Date(ts);
+  const hoursLeft = Math.max(Math.round((ts - Date.now()) / 3600000), 0);
+  return `${d.toLocaleString()} (about ${hoursLeft}h from now)`;
+}
+
+async function callHideApi(action, extra = {}) {
+  const key = hidePassphraseEl.value.trim();
+  if (!key) {
+    hideResultEl.textContent = "Please enter the passphrase.";
+    hideResultEl.className = "error";
+    return null;
+  }
+
+  const res = await fetch("/api/hide-card", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, action, ...extra }),
+  });
+  const data = await res.json();
+
+  if (!res.ok) {
+    hideResultEl.textContent = data.error || "Something went wrong.";
+    hideResultEl.className = "error";
+    return null;
+  }
+  return data;
+}
+
+document.getElementById("lookupButton").onclick = async () => {
+  const cardIds = cardIdInputEl.value.trim();
+  if (!cardIds) {
+    hideResultEl.textContent = "Please enter at least one Card ID.";
+    hideResultEl.className = "error";
+    return;
+  }
+
+  lookupResultEl.innerHTML = "";
+  hideControlsEl.style.display = "none";
+  hideResultEl.textContent = "Checking...";
+  hideResultEl.className = "";
+
+  try {
+    const data = await callHideApi("lookup", { cardIds });
+    if (!data) return;
+
+    hideResultEl.textContent = "";
+
+    const { summary, results } = data;
+    const parts = [`${summary.found} of ${summary.requested} found in inventory`];
+    if (summary.notFound.length) parts.push(`${summary.notFound.length} unknown`);
+    if (summary.alreadyHidden.length) parts.push(`${summary.alreadyHidden.length} already hidden`);
+
+    const blocks = results.map(r => {
+      if (!r.found) {
+        return `<div class="result-block"><strong>${r.cardId}</strong>
+          <span class="pill pill-none">not in inventory</span></div>`;
+      }
+
+      let pill;
+      if (r.hiddenUntil) {
+        pill = `<span class="pill pill-hidden">hidden until ${formatWhen(r.hiddenUntil)}</span>`;
+      } else if (r.onStore) {
+        pill = '<span class="pill pill-live">live on store</span>';
+      } else {
+        pill = '<span class="pill pill-none">all sold</span>';
+      }
+
+      const rows = r.listings.map(l => `
+        <tr>
+          <td>${l.condition || "-"}</td>
+          <td class="num">${l.baseStock}</td>
+          <td class="num">${l.sold}</td>
+          <td class="num"><strong>${l.available}</strong></td>
+        </tr>
+      `).join("");
+
+      return `
+        <div class="result-block">
+          <strong>${r.name}</strong> <span class="muted">(${r.cardId})</span> ${pill}
+          <table class="listing-table">
+            <thead>
+              <tr><th>Condition</th><th class="num">Stock</th><th class="num">Sold</th><th class="num">Available</th></tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    }).join("");
+
+    lookupResultEl.innerHTML = `<p class="summary-line">${parts.join(" · ")}</p>${blocks}`;
+    hideControlsEl.style.display = "block";
+  } catch (err) {
+    hideResultEl.textContent = "Network error — please try again.";
+    hideResultEl.className = "error";
+  }
+};
+
+document.getElementById("hideButton").onclick = async () => {
+  const cardIds = cardIdInputEl.value.trim();
+  const hours = Number(document.getElementById("hideHours").value) || 24;
+  const count = cardIds.split(/[\s,;]+/).filter(Boolean).length;
+
+  if (!confirm(`Hide ${count} card ID(s) from the store for ${hours} hour(s)?`)) return;
+
+  hideResultEl.textContent = "Working...";
+  hideResultEl.className = "";
+
+  try {
+    const data = await callHideApi("hide", { cardIds, hours });
+    if (!data) return;
+
+    const listings = data.hidden.reduce((sum, h) => sum + h.listingCount, 0);
+    let msg = `Hid ${data.hidden.length} card ID(s) covering ${listings} listing(s). Back automatically at ${formatWhen(data.expiresAt)}.`;
+    if (data.notFound.length) {
+      msg += ` Not found in inventory: ${data.notFound.join(", ")}.`;
+    }
+    hideResultEl.textContent = msg;
+    hideResultEl.className = data.notFound.length ? "error" : "success";
+  } catch (err) {
+    hideResultEl.textContent = "Network error — please try again.";
+    hideResultEl.className = "error";
+  }
+};
+
+document.getElementById("unhideButton").onclick = async () => {
+  const cardIds = cardIdInputEl.value.trim();
+  hideResultEl.textContent = "Working...";
+  hideResultEl.className = "";
+
+  try {
+    const data = await callHideApi("unhide", { cardIds });
+    if (!data) return;
+
+    let msg = data.restored.length
+      ? `Restored ${data.restored.length} card ID(s) to the store.`
+      : "None of those were hidden.";
+    if (data.alreadyVisible.length && data.restored.length) {
+      msg += ` ${data.alreadyVisible.length} were already visible.`;
+    }
+    hideResultEl.textContent = msg;
+    hideResultEl.className = "success";
+  } catch (err) {
+    hideResultEl.textContent = "Network error — please try again.";
+    hideResultEl.className = "error";
+  }
+};
+
+document.getElementById("listHiddenButton").onclick = async () => {
+  hiddenListEl.innerHTML = "Loading...";
+  try {
+    const data = await callHideApi("list");
+    if (!data) {
+      hiddenListEl.innerHTML = "";
+      return;
+    }
+    if (!data.hidden.length) {
+      hiddenListEl.innerHTML = '<div class="muted">Nothing is hidden right now.</div>';
+      return;
+    }
+    hiddenListEl.innerHTML = data.hidden.map(h => `
+      <div><strong>${h.name}</strong> <span class="muted">(${h.cardId})</span><br>
+      <span class="muted">back at ${formatWhen(h.expiresAt)}</span></div>
+    `).join("");
+  } catch (err) {
+    hiddenListEl.innerHTML = '<span class="error">Network error — please try again.</span>';
+  }
+};
+
+// --------------------------------------------------------------------------
+// Reset sold counts (existing)
+// --------------------------------------------------------------------------
 document.getElementById("resetButton").onclick = async () => {
   const button = document.getElementById("resetButton");
   const resultEl = document.getElementById("resultText");
