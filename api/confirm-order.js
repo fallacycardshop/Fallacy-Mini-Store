@@ -1,4 +1,5 @@
 import { Redis } from "@upstash/redis";
+import { loadInventoryGroups } from "./_inventory.js";
 
 const redis = Redis.fromEnv();
 
@@ -37,16 +38,32 @@ export default async function handler(req, res) {
     await redis.del(`reservation:${reservationId}`);
 
     // Log each sold item to a recent-activity feed for the "recently sold"
-    // banner — item name only, never any buyer info. Capped so the list
-    // never grows unbounded.
+    // banner — card name and set only, never any buyer info. Capped so the
+    // list never grows unbounded.
+    //
+    // The set name is resolved from the CSV here, at sale time, so the banner
+    // needs no lookup when rendering and the record stays accurate even if the
+    // inventory file changes later.
     try {
-      for (const item of items) {
-        await redis.lpush(
-          "recent_sales",
-          JSON.stringify({ name: item.name || item.key, timestamp: Date.now() })
-        );
+      const groups = loadInventoryGroups();
+      const now = Date.now();
+
+      const entries = items.map(item => {
+        const group = groups.get(item.key);
+        return JSON.stringify({
+          key: item.key,
+          name: (group && group.name) || item.name || item.key,
+          set: (group && group.set) || "",
+          timestamp: now,
+        });
+      });
+
+      // ONE lpush for the whole order rather than one per item, per the
+      // command-budget rule in AGENTS.md.
+      if (entries.length > 0) {
+        await redis.lpush("recent_sales", ...entries);
+        await redis.ltrim("recent_sales", 0, MAX_RECENT_SALES - 1);
       }
-      await redis.ltrim("recent_sales", 0, MAX_RECENT_SALES - 1);
     } catch (feedErr) {
       // Never let the activity feed break a real order confirmation.
       console.error("recent_sales logging failed:", feedErr);
