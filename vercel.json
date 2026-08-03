@@ -12,7 +12,11 @@
       "use": "@vercel/node",
       "config": { "includeFiles": "ministore-inventory.csv" }
     },
-    { "src": "api/confirm-order.js", "use": "@vercel/node" },
+    {
+      "src": "api/confirm-order.js",
+      "use": "@vercel/node",
+      "config": { "includeFiles": "ministore-inventory.csv" }
+    },
     { "src": "api/release-reservation.js", "use": "@vercel/node" },
     { "src": "api/reset-sold-counts.js", "use": "@vercel/node" },
     {
