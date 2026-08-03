@@ -1,5 +1,12 @@
 import { Redis } from "@upstash/redis";
-import { loadInventoryGroups, getActiveReservedMap, seededShuffle, getTodaySeed } from "./_inventory.js";
+import {
+  loadInventoryGroups,
+  getActiveReservedMap,
+  getHiddenCardIds,
+  normaliseCardId,
+  seededShuffle,
+  getTodaySeed,
+} from "./_inventory.js";
 
 const redis = Redis.fromEnv();
 
@@ -8,7 +15,14 @@ export default async function handler(req, res) {
     const groups = loadInventoryGroups();
     const reservedMap = await getActiveReservedMap(redis);
 
-    const groupEntries = Array.from(groups.entries());
+    // One GET returns every temporarily hidden CardID (auction protection).
+    // Hidden listings are dropped entirely: they don't render, don't count
+    // toward "cards available", and can't be added to a cart.
+    const hiddenCardIds = await getHiddenCardIds(redis);
+
+    const groupEntries = Array.from(groups.entries()).filter(
+      ([, group]) => !hiddenCardIds.has(normaliseCardId(group.cardId))
+    );
 
     // Fetch EVERY sold counter in a single MGET.
     //
