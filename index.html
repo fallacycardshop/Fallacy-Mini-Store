@@ -103,6 +103,27 @@ body {
   white-space: nowrap;
 }
 
+.recent-sales-banner {
+  background: var(--pink-soft);
+  color: var(--pink-deep);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  padding: 7px 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.recent-sales-banner span {
+  display: inline-block;
+  transition: opacity 0.3s ease;
+}
+
+.recent-sales-banner span.fading {
+  opacity: 0;
+}
+
 main {
   padding: 16px;
   padding-left: calc(16px + var(--safe-left));
@@ -314,16 +335,6 @@ h2 {
 .product-actions {
   display: flex;
   align-items: flex-start;
-  flex-shrink: 0;
-  width: 116px; /* fixed so "Add to cart" and the +/- stepper are identical in size */
-}
-
-.product-actions > * {
-  width: 100%;
-}
-
-.product-actions .btn {
-  white-space: nowrap;
 }
 
 /* All buttons: real tap targets, no lag, no accidental text-selection while tapping */
@@ -431,31 +442,6 @@ h2 {
   min-width: 20px;
   text-align: center;
   font-weight: 600;
-}
-
-/* Quantity stepper shown on the product card once an item is in the cart.
-   Matches the "Add to cart" button exactly: same 116px width, same 44px height. */
-.product-actions .quantity-control {
-  width: 100%;
-  height: 44px;
-  gap: 0;
-  justify-content: space-between;
-  padding: 0 4px;
-  background: #fff;
-  border: 1px solid var(--pink-soft);
-  border-radius: 10px;
-}
-
-.product-actions .quantity-control button:disabled {
-  background: #eee;
-  color: #aaa;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.product-actions .card-qty-value {
-  flex: 1;
-  font-size: 16px;
 }
 
 .stock-warning {
@@ -594,6 +580,10 @@ footer .btn { width: auto; flex-shrink: 0; }
     <span class="top-bar-handle">@fallacycardshop</span>
   </div>
 </header>
+
+<div class="recent-sales-banner" id="recentSalesBanner" style="display:none;">
+  <span id="recentSalesText"></span>
+</div>
 
 <main>
 
@@ -773,10 +763,6 @@ window.onerror = function (message, source, lineno, colno, error) {
 };
 
 let products = [];
-
-// Heading above the featured row. Overridden by the value from /api/products,
-// which the admin page can edit.
-let featuredTitle = "\u{1F525} Popular this week";
 let currentScreen = "products";
 
 // Tracks which product fields (name/condition/rarity/set/stock) are currently
@@ -854,6 +840,8 @@ const statusTextEl = document.getElementById("statusText");
 const backToShopButtonEl = document.getElementById("backToShopButton");
 const backToCartButtonEl = document.getElementById("backToCartButton");
 const imageLightboxEl = document.getElementById("imageLightbox");
+const recentSalesBannerEl = document.getElementById("recentSalesBanner");
+const recentSalesTextEl = document.getElementById("recentSalesText");
 const lightboxImgEl = document.getElementById("lightboxImg");
 const paynowTimerEl = document.getElementById("paynowTimer");
 
@@ -901,13 +889,8 @@ async function sendOrderToBackend(order) {
     // (Data tab → Text to Columns → Delimited → Other: "|") to split into
     // A:C (Date, CardID, Condition). We use "|" instead of a tab character
     // because HTML email rendering collapses tabs into plain spaces.
-    // One row PER PHYSICAL CARD, not per cart line: buying 2 copies produces
-    // 2 identical rows, matching how the Excel sheet records individual sales.
     const block1_DateCardIdCondition = Object.values(order.cart)
-      .flatMap(({ product, quantity }) => {
-        const line = [dateStr, product.cardId || "", product.description || ""].join(" | ");
-        return Array.from({ length: Math.max(Number(quantity) || 0, 0) }, () => line);
-      })
+      .map(({ product }) => [dateStr, product.cardId || "", product.description || ""].join(" | "))
       .join("\n");
 
     // Block 2 → paste into column F, then Text to Columns to split into F:G (Buyer, Price).
@@ -921,19 +904,13 @@ async function sendOrderToBackend(order) {
     );
     const totalDiscount = Number(order.discountAmount || 0);
 
-    // Also one row per physical card, so this block stays line-for-line aligned
-    // with block 1 when both are pasted into the sheet. netUnitPrice is already
-    // the per-card price after its share of any discount, so repeating it per
-    // unit keeps the column summing to the correct order total.
     const block2_BuyerPrice = Object.values(order.cart)
-      .flatMap(({ product, quantity }) => {
+      .map(({ product, quantity }) => {
         const price = Number(product.price || 0);
-        const qty = Math.max(Number(quantity) || 0, 0);
-        const lineTotal = price * qty;
+        const lineTotal = price * quantity;
         const lineDiscountShare = rawSubtotal > 0 ? (lineTotal / rawSubtotal) * totalDiscount : 0;
-        const netUnitPrice = qty > 0 ? Math.max(lineTotal - lineDiscountShare, 0) / qty : price;
-        const line = [buyerDisplay, netUnitPrice.toFixed(2)].join(" | ");
-        return Array.from({ length: qty }, () => line);
+        const netUnitPrice = quantity > 0 ? Math.max(lineTotal - lineDiscountShare, 0) / quantity : price;
+        return [buyerDisplay, netUnitPrice.toFixed(2)].join(" | ");
       })
       .join("\n");
 
@@ -1131,15 +1108,7 @@ async function loadProducts() {
     if (!res.ok) {
       throw new Error("Failed to load inventory");
     }
-    const payload = await res.json();
-    // Accepts both the current { products, featuredTitle } shape and the older
-    // bare array, so the shop keeps working if the API deploys out of step.
-    if (Array.isArray(payload)) {
-      products = payload;
-    } else {
-      products = payload.products || [];
-      if (payload.featuredTitle) featuredTitle = payload.featuredTitle;
-    }
+    products = await res.json();
     statusTextEl.textContent = "All items have been updated.";
     renderCategoryFilter();
     renderSetFilter();
@@ -1218,61 +1187,11 @@ function renderSetFilter() {
   if (sets.includes(previousValue)) setFilterEl.value = previousValue;
 }
 
-function buildProductActionsHtml(stock, inCart) {
-  const remaining = stock - inCart;
-  if (stock <= 0) {
-    return '<button class="btn btn-primary" disabled>Sold out</button>';
-  }
-  if (inCart <= 0) {
-    return '<button class="btn btn-primary js-add-to-cart">Add to cart</button>';
-  }
-  return `
-    <div class="quantity-control">
-      <button class="qty-minus" aria-label="Remove one from cart">-</button>
-      <span class="card-qty-value">${inCart}</span>
-      <button class="qty-plus" aria-label="Add one to cart" ${remaining <= 0 ? "disabled" : ""}>+</button>
-    </div>
-  `;
-}
-
-function wireProductActions(card, p) {
-  const addBtn = card.querySelector(".js-add-to-cart");
-  if (addBtn) addBtn.onclick = () => addToCart(p);
-
-  const minus = card.querySelector(".product-actions .qty-minus");
-  const plus = card.querySelector(".product-actions .qty-plus");
-  if (minus) minus.onclick = () => changeQuantity(cartKeyFor(p), -1);
-  if (plus) plus.onclick = () => changeQuantity(cartKeyFor(p), 1);
-}
-
-function updateProductCardState(card) {
-  const p = card._product;
-  if (!p) return;
-  const stock = Number(p.stock || 0);
-  const inCart = getCartQuantity(cartKeyFor(p));
-
-  const stockLine = card.querySelector(".product-stock-line");
-  if (stockLine) {
-    stockLine.textContent = `Stock: ${stock}${inCart > 0 ? ` (${inCart} in your cart)` : ""}`;
-  }
-
-  const actions = card.querySelector(".product-actions");
-  if (!actions) return;
-  actions.innerHTML = buildProductActionsHtml(stock, inCart);
-  wireProductActions(card, p);
-}
-
-function refreshProductCards(id) {
-  document.querySelectorAll(".product-card").forEach(card => {
-    if (!card._product) return;
-    if (id && cartKeyFor(card._product) !== id) return;
-    updateProductCardState(card);
-  });
-}
-
 function buildProductCard(p) {
   const stock = Number(p.stock || 0);
   const inCart = getCartQuantity(cartKeyFor(p));
+  const remaining = stock - inCart;
+  const isMaxed = stock <= 0 || remaining <= 0;
 
   const card = document.createElement("div");
   card.className = "product-card";
@@ -1290,16 +1209,19 @@ function buildProductCard(p) {
       <div class="product-name${nameExpanded}">${p.name}</div>
       <div class="product-price">$${Number(p.price || 0).toFixed(2)}</div>
       <div class="product-stock-line${stockExpanded}">Stock: ${stock}${inCart > 0 ? ` (${inCart} in your cart)` : ""}</div>
-      <div class="product-desc${descExpanded}">${p.description || ""}</div>
+      <div class="product-desc${descExpanded}">Condition: ${p.description || ""}</div>
       <div class="product-meta${rarityExpanded}" data-field="rarity">Rarity: ${p.category || "Uncategorized"}</div>
-      <div class="product-meta${setExpanded}" data-field="set">${p.set || "N/A"}</div>
+      <div class="product-meta${setExpanded}" data-field="set">Set: ${p.set || "N/A"}</div>
     </div>
     <div class="product-actions">
-      ${buildProductActionsHtml(stock, inCart)}
+      <button class="btn btn-primary" ${isMaxed ? "disabled" : ""}>
+        ${stock <= 0 ? "Sold out" : isMaxed ? "Max in cart" : "Add to cart"}
+      </button>
     </div>
   `;
-  card._product = p;
-  wireProductActions(card, p);
+  if (!isMaxed) {
+    card.querySelector("button").onclick = () => addToCart(p);
+  }
   const productImgSrc = p.photo || 'https://via.placeholder.com/300x420?text=Card';
   card.querySelector("img").onclick = () => openLightbox(productImgSrc, p.name);
   card.querySelector(".product-name").onclick = (e) => {
@@ -1382,12 +1304,10 @@ function renderProducts() {
   const featuredMatches = matches.filter(p => p.featured);
   const otherMatches = matches.filter(p => !p.featured);
 
-  // Counter reflects what is actually buyable, so sold-out listings are excluded
-  // even though they are still rendered further down the page.
-  const inStockMatches = matches.filter(p => Number(p.stock || 0) > 0).length;
-  resultsCounterEl.textContent = `${inStockMatches} card${inStockMatches === 1 ? "" : "s"} available`;
+  const totalMatches = featuredMatches.length + otherMatches.length;
+  resultsCounterEl.textContent = `${totalMatches} card${totalMatches === 1 ? "" : "s"} available`;
 
-  renderSection(featuredTitle, featuredMatches);
+  renderSection("🔥 Popular this week", featuredMatches);
   renderSection("All Cards", otherMatches);
 
   if (featuredMatches.length === 0 && otherMatches.length === 0) {
@@ -1431,7 +1351,7 @@ function addToCart(product) {
   cart[id].quantity++;
   saveCart();
   updateCartBadge();
-  refreshProductCards(id);
+  renderProducts();
 }
 
 function updateCartBadge() {
@@ -1460,16 +1380,16 @@ function changeQuantity(id, delta) {
 
   saveCart();
   renderCart();
+  renderProducts();
   updateCartBadge();
-  refreshProductCards(id);
 }
 
 function removeItem(id) {
   delete cart[id];
   saveCart();
   renderCart();
+  renderProducts();
   updateCartBadge();
-  refreshProductCards(id);
 }
 
 function renderCart() {
@@ -1822,7 +1742,52 @@ document.addEventListener("click", (e) => {
   }
 });
 
+let recentSales = [];
+let recentSalesIndex = 0;
+let recentSalesInterval = null;
+
+function showRecentSaleAt(index) {
+  if (recentSales.length === 0) return;
+  const sale = recentSales[index];
+  recentSalesTextEl.textContent = `🎉 Someone just grabbed ${sale.name}!`;
+}
+
+function startRecentSalesRotation() {
+  if (recentSalesInterval) clearInterval(recentSalesInterval);
+  if (recentSales.length === 0) {
+    recentSalesBannerEl.style.display = "none";
+    return;
+  }
+
+  recentSalesBannerEl.style.display = "block";
+  recentSalesIndex = 0;
+  showRecentSaleAt(recentSalesIndex);
+
+  if (recentSales.length > 1) {
+    recentSalesInterval = setInterval(() => {
+      recentSalesTextEl.classList.add("fading");
+      setTimeout(() => {
+        recentSalesIndex = (recentSalesIndex + 1) % recentSales.length;
+        showRecentSaleAt(recentSalesIndex);
+        recentSalesTextEl.classList.remove("fading");
+      }, 300);
+    }, 4000);
+  }
+}
+
+async function loadRecentSales() {
+  try {
+    const res = await fetch("/api/recent-sales");
+    if (!res.ok) return;
+    recentSales = await res.json();
+    startRecentSalesRotation();
+  } catch (err) {
+    console.error("Failed to load recent sales:", err);
+  }
+}
+
 loadProducts();
+loadRecentSales();
 updateCartBadge();
 showProducts();
 
@@ -1830,28 +1795,12 @@ showProducts();
 // made by other buyers (someone else's reservation expiring, a sale going
 // through, etc.) show up without needing to navigate away and back.
 setInterval(() => {
-  // Only refresh when the shop screen is actually open AND the tab is
-  // visible. Polling every 20s in background tabs multiplied the load on
-  // the inventory API for no benefit — nobody is looking at it.
-  if (currentScreen === "products" && !document.hidden) {
+  if (currentScreen === "products") {
     loadProducts();
+    loadRecentSales();
   }
-}, 60000);
-
-// Refresh immediately when someone returns to the tab, so the longer poll
-// interval never means looking at stale stock.
-document.addEventListener("visibilitychange", () => {
-  if (!document.hidden && currentScreen === "products") {
-    loadProducts();
-  }
-});
+}, 20000);
 </script>
-
-<!-- Vercel Web Analytics (requires Web Analytics to be enabled in the Vercel dashboard) -->
-<script>
-  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
-</script>
-<script defer src="/_vercel/insights/script.js"></script>
 
 </body>
 </html>
