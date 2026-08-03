@@ -2,7 +2,7 @@ import { Redis } from "@upstash/redis";
 import {
   loadInventoryGroups,
   getActiveReservedMap,
-  getHiddenCardIds,
+  getStoreState,
   normaliseCardId,
   seededShuffle,
   getTodaySeed,
@@ -15,10 +15,10 @@ export default async function handler(req, res) {
     const groups = loadInventoryGroups();
     const reservedMap = await getActiveReservedMap(redis);
 
-    // One GET returns every temporarily hidden CardID (auction protection).
-    // Hidden listings are dropped entirely: they don't render, don't count
-    // toward "cards available", and can't be added to a cart.
-    const hiddenCardIds = await getHiddenCardIds(redis);
+    // ONE MGET returns both the hidden-card list (auction protection) and the
+    // store settings (editable featured heading). Same command count as before
+    // the heading existed.
+    const { hiddenCardIds, settings } = await getStoreState(redis);
 
     const groupEntries = Array.from(groups.entries()).filter(
       ([, group]) => !hiddenCardIds.has(normaliseCardId(group.cardId))
@@ -96,7 +96,13 @@ export default async function handler(req, res) {
       ...p,
     }));
 
-    res.status(200).json(products);
+    // Response is an object now so the editable featured heading can travel
+    // with the catalogue. The storefront also accepts the old bare-array shape,
+    // so an out-of-step deploy of either file won't break the shop.
+    res.status(200).json({
+      products,
+      featuredTitle: settings.featuredTitle,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load inventory." });
