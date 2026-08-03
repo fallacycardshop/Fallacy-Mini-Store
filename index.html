@@ -1807,11 +1807,28 @@ showProducts();
 // made by other buyers (someone else's reservation expiring, a sale going
 // through, etc.) show up without needing to navigate away and back.
 setInterval(() => {
-  if (currentScreen === "products") {
+  // Only refresh when the shop screen is actually open AND the tab is
+  // visible. Polling every 20s in background tabs multiplied the load on
+  // the inventory API for no benefit — nobody is looking at it.
+  if (currentScreen === "products" && !document.hidden) {
     loadProducts();
   }
-}, 20000);
+}, 60000);
+
+// Refresh immediately when someone returns to the tab, so the longer poll
+// interval never means looking at stale stock.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && currentScreen === "products") {
+    loadProducts();
+  }
+});
 </script>
+
+<!-- Vercel Web Analytics (requires Web Analytics to be enabled in the Vercel dashboard) -->
+<script>
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/insights/script.js"></script>
 
 </body>
 </html>
