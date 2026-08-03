@@ -301,7 +301,10 @@ export function indexGroupsByCardId(groups) {
 // ---------------------------------------------------------------------------
 
 export function parseStoreSettings(raw) {
-  const settings = { featuredTitle: DEFAULT_FEATURED_TITLE };
+  const settings = {
+    featuredTitle: DEFAULT_FEATURED_TITLE,
+    newTitle: DEFAULT_NEW_TITLE,
+  };
   if (!raw) return settings;
 
   let data;
@@ -316,6 +319,9 @@ export function parseStoreSettings(raw) {
   if (typeof data.featuredTitle === "string" && data.featuredTitle.trim()) {
     settings.featuredTitle = data.featuredTitle.trim();
   }
+  if (typeof data.newTitle === "string" && data.newTitle.trim()) {
+    settings.newTitle = data.newTitle.trim();
+  }
   return settings;
 }
 
@@ -327,14 +333,126 @@ export async function saveStoreSettings(redis, settings) {
   await redis.set(STORE_SETTINGS_KEY, JSON.stringify(settings || {}));
 }
 
-// One MGET returns everything the storefront needs beyond the CSV.
+// One MGET returns everything the storefront needs beyond the CSV:
+// hidden cards, editable headings, and the drip-release schedule.
+// Three keys, one Redis command.
 export async function getStoreState(redis) {
-  const [hiddenRaw, settingsRaw] = await redis.mget(
+  const [hiddenRaw, settingsRaw, dripRaw] = await redis.mget(
     HIDDEN_CARDS_KEY,
-    STORE_SETTINGS_KEY
+    STORE_SETTINGS_KEY,
+    DRIP_STATE_KEY
   );
   return {
     hiddenCardIds: new Set(Object.keys(parseHiddenCards(hiddenRaw))),
     settings: parseStoreSettings(settingsRaw),
+    drip: parseDripState(dripRaw),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Slow-release ("drip") scheduling.
+//
+// The whole schedule lives in ONE Redis key: a config object plus a map of
+// groupKey -> releaseAt (epoch ms). A listing whose releaseAt is in the future
+// is hidden from the store entirely; one released within the "new window" is
+// flagged isNew so it renders in the Newly In Stock row. After that window it
+// simply stops being flagged and falls into the normal sections — no second
+// job, no cleanup, nothing to run on a schedule.
+// ---------------------------------------------------------------------------
+
+export const DRIP_STATE_KEY = "drip:schedule";
+
+export const DEFAULT_NEW_TITLE = "\u{2728} Newly in stock!";
+
+export const DEFAULT_DRIP_CONFIG = {
+  enabled: true,
+  perDay: 5,              // listings released per day
+  releaseHour: 10,        // local time of day for each release
+  releaseMinute: 0,
+  tzOffsetMinutes: 480,   // SGT (UTC+8)
+  newWindowHours: 24,     // how long a released card stays in Newly In Stock
+  holdNewListings: true,  // unscheduled new CSV rows stay hidden until scheduled
+};
+
+export function parseDripState(raw) {
+  const state = {
+    initialized: false,
+    config: { ...DEFAULT_DRIP_CONFIG },
+    releases: {}, // groupKey -> releaseAt (epoch ms)
+  };
+  if (!raw) return state;
+
+  let data;
+  try {
+    data = typeof raw === "string" ? JSON.parse(raw) : raw;
+  } catch (e) {
+    console.error("Corrupted drip state:", e);
+    return state;
+  }
+  if (!data || typeof data !== "object") return state;
+
+  state.initialized = Boolean(data.initialized);
+  state.config = { ...DEFAULT_DRIP_CONFIG, ...(data.config || {}) };
+  if (data.releases && typeof data.releases === "object") {
+    Object.entries(data.releases).forEach(([groupKey, at]) => {
+      const ts = Number(at);
+      if (Number.isFinite(ts)) state.releases[groupKey] = ts;
+    });
+  }
+  return state;
+}
+
+export async function getDripState(redis) {
+  return parseDripState(await redis.get(DRIP_STATE_KEY));
+}
+
+export async function saveDripState(redis, state) {
+  await redis.set(DRIP_STATE_KEY, JSON.stringify(state || {}));
+}
+
+// Is this listing visible on the store right now?
+//
+// No entry means the listing predates the schedule. It stays visible unless
+// holdNewListings is on AND the schedule has been initialised — that guard
+// matters, because without it an empty schedule would hide the whole store.
+export function isListingReleased(state, groupKey, now = Date.now()) {
+  const releaseAt = state.releases[groupKey];
+  if (releaseAt === undefined) {
+    return !(state.initialized && state.config.holdNewListings);
+  }
+  return releaseAt <= now;
+}
+
+export function isListingNew(state, groupKey, now = Date.now()) {
+  const releaseAt = state.releases[groupKey];
+  if (releaseAt === undefined || releaseAt > now) return false;
+  const windowMs = Math.max(Number(state.config.newWindowHours) || 0, 0) * 3600000;
+  if (windowMs <= 0) return false;
+  return now - releaseAt < windowMs;
+}
+
+// The next release moment strictly in the future, in the configured local
+// timezone. dayOffset walks forward whole days from there.
+export function releaseSlotAt(config, dayOffset, now = Date.now()) {
+  const tz = Number(config.tzOffsetMinutes) || 0;
+  const localNow = now + tz * 60000;
+  const localMidnight = Math.floor(localNow / 86400000) * 86400000;
+  const timeOfDay =
+    ((Number(config.releaseHour) || 0) * 60 + (Number(config.releaseMinute) || 0)) * 60000;
+
+  let localSlot = localMidnight + timeOfDay;
+  if (localSlot <= localNow) localSlot += 86400000; // today's slot has passed
+
+  localSlot += Math.max(dayOffset, 0) * 86400000;
+  return localSlot - tz * 60000; // back to UTC epoch ms
+}
+
+// Assigns release times to the given groupKeys, perDay at a time, starting at
+// the next slot. Pure function — the caller decides whether to persist it.
+export function buildDripSchedule(groupKeys, config, now = Date.now()) {
+  const perDay = Math.max(Number(config.perDay) || 1, 1);
+  return groupKeys.map((groupKey, i) => ({
+    groupKey,
+    releaseAt: releaseSlotAt(config, Math.floor(i / perDay), now),
+  }));
 }
