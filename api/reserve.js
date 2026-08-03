@@ -1,5 +1,10 @@
 import { Redis } from "@upstash/redis";
-import { loadInventoryGroups, getActiveReservedMap } from "./_inventory.js";
+import {
+  loadInventoryGroups,
+  getActiveReservedMap,
+  getHiddenCardIds,
+  normaliseCardId,
+} from "./_inventory.js";
 
 const redis = Redis.fromEnv();
 
@@ -24,24 +29,38 @@ export default async function handler(req, res) {
     const groups = loadInventoryGroups();
     const reservedMap = await getActiveReservedMap(redis);
 
+    const validItems = items.filter(item => item && item.key && item.quantity > 0);
+
+    // Fetch every sold counter in ONE MGET rather than a separate awaited GET
+    // per cart item, so command count stays flat no matter how large the cart.
+    //
+    // Deliberately NOT wrapped in a try/catch that defaults to 0: if the sold
+    // counts can't be read we must not assume nothing has sold, because that
+    // would let someone reserve stock that is already gone. A thrown error
+    // becomes a 500 and the buyer retries — annoying, but never oversold.
+    const soldByKey = {};
+    if (validItems.length > 0) {
+      const soldValues = await redis.mget(...validItems.map(item => `sold:${item.key}`));
+      validItems.forEach((item, i) => {
+        soldByKey[item.key] = Number(soldValues[i]) || 0;
+      });
+    }
+
+    // A card pulled for auction must not be sellable here, even if a buyer had
+    // it sitting in their cart from before it was hidden.
+    const hiddenCardIds = await getHiddenCardIds(redis);
+
     const unavailable = [];
     const enrichedItems = [];
 
-    for (const item of items) {
-      if (!item || !item.key || !(item.quantity > 0)) continue;
-
+    for (const item of validItems) {
       const group = groups.get(item.key);
       const baseStock = group ? group.baseStock : 0;
-
-      let sold = 0;
-      try {
-        sold = Number(await redis.get(`sold:${item.key}`)) || 0;
-      } catch (e) {
-        console.error("Redis read failed for", item.key, e);
-      }
+      const sold = soldByKey[item.key] || 0;
 
       const alreadyReserved = reservedMap[item.key] || 0;
-      const available = Math.max(baseStock - sold - alreadyReserved, 0);
+      const isHidden = group && hiddenCardIds.has(normaliseCardId(group.cardId));
+      const available = isHidden ? 0 : Math.max(baseStock - sold - alreadyReserved, 0);
 
       if (item.quantity > available) {
         unavailable.push({
