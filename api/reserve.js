@@ -1,5 +1,10 @@
 import { Redis } from "@upstash/redis";
-import { loadInventoryGroups, getActiveReservedMap } from "./_inventory.js";
+import {
+  loadInventoryGroups,
+  getActiveReservedMap,
+  getHiddenCardIds,
+  normaliseCardId,
+} from "./_inventory.js";
 
 const redis = Redis.fromEnv();
 
@@ -26,6 +31,11 @@ export default async function handler(req, res) {
 
     const validItems = items.filter(item => item && item.key && item.quantity > 0);
 
+    // A card pulled for auction must not be sellable here, even if someone had
+    // it sitting in their cart from before it was hidden. Selling a card that
+    // then also sells at auction is the one outcome worth being strict about.
+    const hiddenCardIds = await getHiddenCardIds(redis);
+
     // Fetch every sold counter we need in ONE MGET rather than looping with a
     // separate awaited GET per cart item. Command count stays flat no matter
     // how many lines are in the cart.
@@ -46,6 +56,16 @@ export default async function handler(req, res) {
 
     for (const item of validItems) {
       const group = groups.get(item.key);
+
+      if (group && hiddenCardIds.has(normaliseCardId(group.cardId))) {
+        unavailable.push({
+          key: item.key,
+          name: group.name,
+          available: 0,
+        });
+        continue;
+      }
+
       const baseStock = group ? group.baseStock : 0;
       const sold = soldByKey[item.key] || 0;
 
