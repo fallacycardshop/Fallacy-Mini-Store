@@ -805,9 +805,10 @@ window.onerror = function (message, source, lineno, colno, error) {
 
 let products = [];
 
-// Heading above the featured row. Overridden by /api/products, which the
-// admin page can edit.
+// Headings above the featured and newly-in rows. Both overridden by
+// /api/products, which the admin page can edit.
 let featuredTitle = "🔥 Popular this week";
+let newTitle = "✨ Newly in stock!";
 let currentScreen = "products";
 
 // Tracks which product fields (name/condition/rarity/set/stock) are currently
@@ -1169,6 +1170,7 @@ async function loadProducts() {
     products = Array.isArray(data) ? data : (Array.isArray(data.products) ? data.products : []);
     // Editable featured heading, set from the admin page.
     if (!Array.isArray(data) && data.featuredTitle) featuredTitle = data.featuredTitle;
+    if (!Array.isArray(data) && data.newTitle) newTitle = data.newTitle;
     statusTextEl.textContent = "All items have been updated.";
     renderCategoryFilter();
     renderSetFilter();
@@ -1408,14 +1410,19 @@ function renderProducts() {
     return matchesSearch && matchesCategory && matchesSet;
   });
 
-  const featuredMatches = matches.filter(p => p.featured);
-  const otherMatches = matches.filter(p => !p.featured);
+  // Drip-released cards get their own row at the very top for their first day.
+  // They're excluded from the other two rows meanwhile; once isNew lapses they
+  // fall back into featured or All Cards automatically and join the rotation.
+  const newMatches = matches.filter(p => p.isNew);
+  const featuredMatches = matches.filter(p => p.featured && !p.isNew);
+  const otherMatches = matches.filter(p => !p.featured && !p.isNew);
 
   // Counter reflects what is actually buyable, so sold-out listings are excluded
   // even though they are still rendered further down the page.
   const inStockMatches = matches.filter(p => Number(p.stock || 0) > 0).length;
   resultsCounterEl.textContent = `${inStockMatches} card${inStockMatches === 1 ? "" : "s"} available`;
 
+  renderSection(newTitle, newMatches);
   renderSection(featuredTitle, featuredMatches);
   renderSection("All Cards", otherMatches);
 
