@@ -3,6 +3,8 @@ import {
   loadInventoryGroups,
   getActiveReservedMap,
   getStoreState,
+  isListingReleased,
+  isListingNew,
   normaliseCardId,
   seededShuffle,
   getTodaySeed,
@@ -18,10 +20,15 @@ export default async function handler(req, res) {
     // ONE MGET returns both the hidden-card list (auction protection) and the
     // store settings (editable featured heading). Same command count as before
     // the heading existed.
-    const { hiddenCardIds, settings } = await getStoreState(redis);
+    const { hiddenCardIds, settings, drip } = await getStoreState(redis);
+    const now = Date.now();
 
+    // Two filters, both free (no extra Redis): temporarily hidden cards, and
+    // listings whose drip release time hasn't arrived yet.
     const groupEntries = Array.from(groups.entries()).filter(
-      ([, group]) => !hiddenCardIds.has(normaliseCardId(group.cardId))
+      ([groupKey, group]) =>
+        !hiddenCardIds.has(normaliseCardId(group.cardId)) &&
+        isListingReleased(drip, groupKey, now)
     );
 
     // Fetch EVERY sold counter in a single MGET.
@@ -53,7 +60,12 @@ export default async function handler(req, res) {
         const reserved = reservedMap[groupKey] || 0;
         const trueStock = Math.max(group.baseStock - sold, 0);
 
+        // Flagged for the Newly In Stock row. Stops being true on its own once
+        // the window lapses, so nothing needs to move the card afterwards.
+        const isNew = isListingNew(drip, groupKey, now);
+
         return {
+          isNew,
           name: group.name,
           price: group.price,
           photo: group.photo,
@@ -102,6 +114,7 @@ export default async function handler(req, res) {
     res.status(200).json({
       products,
       featuredTitle: settings.featuredTitle,
+      newTitle: settings.newTitle,
     });
   } catch (err) {
     console.error(err);
