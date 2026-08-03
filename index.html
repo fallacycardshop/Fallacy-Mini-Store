@@ -901,8 +901,13 @@ async function sendOrderToBackend(order) {
     // (Data tab → Text to Columns → Delimited → Other: "|") to split into
     // A:C (Date, CardID, Condition). We use "|" instead of a tab character
     // because HTML email rendering collapses tabs into plain spaces.
+    // One row PER PHYSICAL CARD, not per cart line: buying 2 copies produces
+    // 2 identical rows, matching how the Excel sheet records individual sales.
     const block1_DateCardIdCondition = Object.values(order.cart)
-      .map(({ product }) => [dateStr, product.cardId || "", product.description || ""].join(" | "))
+      .flatMap(({ product, quantity }) => {
+        const line = [dateStr, product.cardId || "", product.description || ""].join(" | ");
+        return Array.from({ length: Math.max(Number(quantity) || 0, 0) }, () => line);
+      })
       .join("\n");
 
     // Block 2 → paste into column F, then Text to Columns to split into F:G (Buyer, Price).
@@ -916,13 +921,19 @@ async function sendOrderToBackend(order) {
     );
     const totalDiscount = Number(order.discountAmount || 0);
 
+    // Also one row per physical card, so this block stays line-for-line aligned
+    // with block 1 when both are pasted into the sheet. netUnitPrice is already
+    // the per-card price after its share of any discount, so repeating it per
+    // unit keeps the column summing to the correct order total.
     const block2_BuyerPrice = Object.values(order.cart)
-      .map(({ product, quantity }) => {
+      .flatMap(({ product, quantity }) => {
         const price = Number(product.price || 0);
-        const lineTotal = price * quantity;
+        const qty = Math.max(Number(quantity) || 0, 0);
+        const lineTotal = price * qty;
         const lineDiscountShare = rawSubtotal > 0 ? (lineTotal / rawSubtotal) * totalDiscount : 0;
-        const netUnitPrice = quantity > 0 ? Math.max(lineTotal - lineDiscountShare, 0) / quantity : price;
-        return [buyerDisplay, netUnitPrice.toFixed(2)].join(" | ");
+        const netUnitPrice = qty > 0 ? Math.max(lineTotal - lineDiscountShare, 0) / qty : price;
+        const line = [buyerDisplay, netUnitPrice.toFixed(2)].join(" | ");
+        return Array.from({ length: qty }, () => line);
       })
       .join("\n");
 
