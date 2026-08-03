@@ -141,6 +141,25 @@
 <body>
 
 <div class="card">
+  <h1>Featured Section Heading</h1>
+  <p>
+    The heading shown above the featured row on the store. Change it whenever you
+    like &mdash; &ldquo;New in!&rdquo;, &ldquo;Weekend picks&rdquo;, and so on. Emoji work fine.
+    Shoppers see it within a minute; no redeploy needed.
+  </p>
+  <input type="password" id="settingsPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
+  <input type="text" id="featuredTitleInput" placeholder="e.g. New in!" maxlength="60" autocomplete="off">
+  <div class="button-row">
+    <button id="saveTitleButton">Save Heading</button>
+    <button id="loadTitleButton" class="btn-neutral">Load Current</button>
+  </div>
+  <button id="resetTitleButton" class="btn-neutral" style="margin-top:10px;">
+    Restore Default
+  </button>
+  <p id="settingsResultText"></p>
+</div>
+
+<div class="card">
   <h1>Hide a Card for Auction</h1>
   <p>
     Paste one Card ID or a whole batch — separated by commas, spaces or new lines,
@@ -184,6 +203,101 @@
 </div>
 
 <script>
+// --------------------------------------------------------------------------
+// Featured heading
+// --------------------------------------------------------------------------
+const settingsPassphraseEl = document.getElementById("settingsPassphrase");
+const featuredTitleInputEl = document.getElementById("featuredTitleInput");
+const settingsResultEl = document.getElementById("settingsResultText");
+
+async function callSettingsApi(action, extra = {}) {
+  const key = settingsPassphraseEl.value.trim();
+  if (!key) {
+    settingsResultEl.textContent = "Please enter the passphrase.";
+    settingsResultEl.className = "error";
+    return null;
+  }
+
+  const res = await fetch("/api/store-settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, action, ...extra }),
+  });
+
+  const raw = await res.text();
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    settingsResultEl.textContent =
+      raw.trim().startsWith("<")
+        ? `The /api/store-settings endpoint isn't deployed (HTTP ${res.status}). Check that vercel.json lists api/store-settings.js under "builds", then redeploy.`
+        : `Unexpected response from the server (HTTP ${res.status}).`;
+    settingsResultEl.className = "error";
+    return null;
+  }
+
+  if (!res.ok) {
+    settingsResultEl.textContent = data.error || `Something went wrong (HTTP ${res.status}).`;
+    settingsResultEl.className = "error";
+    return null;
+  }
+  return data;
+}
+
+document.getElementById("loadTitleButton").onclick = async () => {
+  settingsResultEl.textContent = "Loading...";
+  settingsResultEl.className = "";
+  try {
+    const data = await callSettingsApi("get");
+    if (!data) return;
+    featuredTitleInputEl.value = data.settings.featuredTitle;
+    settingsResultEl.textContent = "Loaded the heading currently showing on the store.";
+    settingsResultEl.className = "success";
+  } catch (err) {
+    settingsResultEl.textContent = "Network error — please try again.";
+    settingsResultEl.className = "error";
+  }
+};
+
+document.getElementById("saveTitleButton").onclick = async () => {
+  const featuredTitle = featuredTitleInputEl.value.trim();
+  if (!featuredTitle) {
+    settingsResultEl.textContent = "Please enter a heading.";
+    settingsResultEl.className = "error";
+    return;
+  }
+
+  settingsResultEl.textContent = "Saving...";
+  settingsResultEl.className = "";
+  try {
+    const data = await callSettingsApi("set", { featuredTitle });
+    if (!data) return;
+    settingsResultEl.textContent = `Saved. The store now shows "${data.settings.featuredTitle}".`;
+    settingsResultEl.className = "success";
+  } catch (err) {
+    settingsResultEl.textContent = "Network error — please try again.";
+    settingsResultEl.className = "error";
+  }
+};
+
+document.getElementById("resetTitleButton").onclick = async () => {
+  if (!confirm("Restore the default heading?")) return;
+
+  settingsResultEl.textContent = "Working...";
+  settingsResultEl.className = "";
+  try {
+    const data = await callSettingsApi("reset");
+    if (!data) return;
+    featuredTitleInputEl.value = data.settings.featuredTitle;
+    settingsResultEl.textContent = `Restored the default heading.`;
+    settingsResultEl.className = "success";
+  } catch (err) {
+    settingsResultEl.textContent = "Network error — please try again.";
+    settingsResultEl.className = "error";
+  }
+};
+
 // --------------------------------------------------------------------------
 // Hide-for-auction controls
 // --------------------------------------------------------------------------
