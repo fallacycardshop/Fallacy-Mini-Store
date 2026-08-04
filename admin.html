@@ -171,11 +171,50 @@
   }
   .checkbox-row input { width: auto; margin: 3px 0 0; }
 
+  .order-block {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid #eee;
+  }
+  .order-block:first-child { border-top: none; }
+  .order-head { font-size: 14px; font-weight: 700; }
+  .order-meta { font-size: 12px; color: #777; margin: 3px 0 8px; }
+  .order-block pre {
+    background: #faf5f8;
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 6px 0;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+  }
+  .copy-btn {
+    font-size: 12px;
+    padding: 6px 10px;
+    min-height: 0;
+    width: auto;
+    margin: 0 0 4px;
+  }
+
   .hidden-list { margin-top: 14px; font-size: 13px; }
   .hidden-list div { padding: 6px 0; border-bottom: 1px solid #eee; }
 </style>
 </head>
 <body>
+
+<div class="card">
+  <h1>Recent Orders</h1>
+  <p>
+    Every confirmed order is saved here the moment stock is decremented &mdash;
+    independently of the notification email. If an email never arrives, the full
+    order is still recoverable from this list.
+  </p>
+  <input type="password" id="ordersPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
+  <button id="ordersLoadButton">Load Recent Orders</button>
+  <p id="ordersResultText"></p>
+  <div id="ordersList"></div>
+</div>
 
 <div class="card">
   <h1>Slow Release Scheduling</h1>
@@ -302,6 +341,109 @@
 </div>
 
 <script>
+// --------------------------------------------------------------------------
+// Recent orders (server-side backup)
+// --------------------------------------------------------------------------
+const ordersPassphraseEl = document.getElementById("ordersPassphrase");
+const ordersResultEl = document.getElementById("ordersResultText");
+const ordersListEl = document.getElementById("ordersList");
+
+function escapeHtml(value) {
+  return String(value === undefined || value === null ? "" : value)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+async function copyText(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+    const original = btn.textContent;
+    btn.textContent = "Copied";
+    setTimeout(() => { btn.textContent = original; }, 1500);
+  } catch (e) {
+    btn.textContent = "Press and hold to copy";
+  }
+}
+
+document.getElementById("ordersLoadButton").onclick = async () => {
+  const key = ordersPassphraseEl.value.trim();
+  if (!key) {
+    ordersResultEl.textContent = "Please enter the passphrase.";
+    ordersResultEl.className = "error";
+    return;
+  }
+
+  ordersResultEl.textContent = "Loading...";
+  ordersResultEl.className = "";
+  ordersListEl.innerHTML = "";
+
+  try {
+    const res = await fetch("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, limit: 25 }),
+    });
+
+    const raw = await res.text();
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      ordersResultEl.textContent =
+        raw.trim().startsWith("<")
+          ? `The /api/orders endpoint isn't deployed (HTTP ${res.status}). Check that vercel.json lists api/orders.js under "builds", then redeploy.`
+          : `Unexpected response from the server (HTTP ${res.status}).`;
+      ordersResultEl.className = "error";
+      return;
+    }
+
+    if (!res.ok) {
+      ordersResultEl.textContent = data.error || `Something went wrong (HTTP ${res.status}).`;
+      ordersResultEl.className = "error";
+      return;
+    }
+
+    if (!data.orders.length) {
+      ordersResultEl.textContent = "No stored orders yet. Orders placed from now on will appear here.";
+      ordersResultEl.className = "success";
+      return;
+    }
+
+    ordersResultEl.textContent = `Showing the ${data.orders.length} most recent order(s).`;
+    ordersResultEl.className = "success";
+
+    ordersListEl.innerHTML = data.orders.map((entry, i) => {
+      const r = entry.record || {};
+      const blockA = r["PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition"] || "";
+      const blockF = r["PASTE_INTO_COLUMNS_F_to_G_Buyer_Price"] || "";
+      return `
+        <div class="order-block">
+          <div class="order-head">#${escapeHtml(r.Order_ID)} — ${escapeHtml(r.Buyer_Name)} — ${escapeHtml(r.Total)}</div>
+          <div class="order-meta">
+            saved ${new Date(entry.savedAt).toLocaleString("en-SG", { dateStyle: "medium", timeStyle: "short" })}<br>
+            ${escapeHtml(r.Telegram_Username)} · ${escapeHtml(r.Phone)}<br>
+            ${escapeHtml(r.Address)}<br>
+            ${escapeHtml(r.Mail_Preference)} · discount ${escapeHtml(r.Discount_Code)} ${escapeHtml(r.Discount_Amount)}
+          </div>
+          <pre>${escapeHtml(r.Items_Readable)}</pre>
+          <button class="btn copy-btn" data-copy="${i}-a">Copy columns A–C</button>
+          <pre id="copy-${i}-a">${escapeHtml(blockA)}</pre>
+          <button class="btn copy-btn" data-copy="${i}-f">Copy columns F–G</button>
+          <pre id="copy-${i}-f">${escapeHtml(blockF)}</pre>
+        </div>`;
+    }).join("");
+
+    ordersListEl.querySelectorAll(".copy-btn").forEach(btn => {
+      btn.onclick = () => {
+        const target = document.getElementById("copy-" + btn.dataset.copy);
+        if (target) copyText(target.textContent, btn);
+      };
+    });
+  } catch (err) {
+    ordersResultEl.textContent = "Network error — please try again.";
+    ordersResultEl.className = "error";
+  }
+};
+
 // --------------------------------------------------------------------------
 // Slow release (drip) scheduling
 // --------------------------------------------------------------------------
