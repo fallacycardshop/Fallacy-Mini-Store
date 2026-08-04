@@ -278,7 +278,7 @@
 <div class="card">
   <h1>Featured Section Heading</h1>
   <p>
-    Headings for the two special rows on the store. Change them whenever you like
+    Headings for the two special rows on the store, plus the promo banner. Change them whenever you like
     &mdash; &ldquo;New in!&rdquo;, &ldquo;Weekend picks&rdquo;, and so on. Emoji work fine.
     Shoppers see changes within a minute; no redeploy needed.
   </p>
@@ -287,6 +287,12 @@
   <input type="text" id="featuredTitleInput" placeholder="e.g. New in!" maxlength="60" autocomplete="off">
   <label class="field-label">Newly-in-stock row heading</label>
   <input type="text" id="newTitleInput" placeholder="e.g. ✨ Newly in stock!" maxlength="60" autocomplete="off">
+  <label class="field-label">Promo banner (top of the shop &mdash; leave blank to hide)</label>
+  <textarea id="promoTextInput" maxlength="300" placeholder="e.g. Use code MINILAUNCH10 to get 10% off your total order (min. spend of $10 required). Promotion ends 15 Aug 2026 23:59."></textarea>
+  <div class="button-row">
+    <button id="savePromoButton">Save Promo Banner</button>
+    <button id="clearPromoButton" class="btn-danger">Clear Banner</button>
+  </div>
   <div class="button-row">
     <button id="saveTitleButton">Save Heading</button>
     <button id="loadTitleButton" class="btn-neutral">Load Current</button>
@@ -747,7 +753,8 @@ document.getElementById("loadTitleButton").onclick = async () => {
     if (!data) return;
     featuredTitleInputEl.value = data.settings.featuredTitle;
     document.getElementById("newTitleInput").value = data.settings.newTitle || "";
-    settingsResultEl.textContent = "Loaded the headings currently showing on the store.";
+    document.getElementById("promoTextInput").value = data.settings.promoText || "";
+    settingsResultEl.textContent = "Loaded the headings and promo currently showing on the store.";
     settingsResultEl.className = "success";
   } catch (err) {
     settingsResultEl.textContent = "Network error — please try again.";
@@ -780,6 +787,44 @@ document.getElementById("saveTitleButton").onclick = async () => {
   }
 };
 
+document.getElementById("savePromoButton").onclick = async () => {
+  const promoText = document.getElementById("promoTextInput").value.trim();
+  if (!promoText) {
+    settingsResultEl.textContent = 'Nothing to save — use "Clear Banner" to hide it.';
+    settingsResultEl.className = "error";
+    return;
+  }
+
+  settingsResultEl.textContent = "Saving...";
+  settingsResultEl.className = "";
+  try {
+    const data = await callSettingsApi("set", { promoText });
+    if (!data) return;
+    settingsResultEl.textContent = "Promo banner saved — shoppers see it within a minute.";
+    settingsResultEl.className = "success";
+  } catch (err) {
+    settingsResultEl.textContent = "Network error — please try again.";
+    settingsResultEl.className = "error";
+  }
+};
+
+document.getElementById("clearPromoButton").onclick = async () => {
+  if (!confirm("Hide the promo banner from the store?")) return;
+
+  settingsResultEl.textContent = "Working...";
+  settingsResultEl.className = "";
+  try {
+    const data = await callSettingsApi("set", { promoText: "" });
+    if (!data) return;
+    document.getElementById("promoTextInput").value = "";
+    settingsResultEl.textContent = "Promo banner hidden.";
+    settingsResultEl.className = "success";
+  } catch (err) {
+    settingsResultEl.textContent = "Network error — please try again.";
+    settingsResultEl.className = "error";
+  }
+};
+
 document.getElementById("resetTitleButton").onclick = async () => {
   if (!confirm("Restore the default heading?")) return;
 
@@ -790,7 +835,8 @@ document.getElementById("resetTitleButton").onclick = async () => {
     if (!data) return;
     featuredTitleInputEl.value = data.settings.featuredTitle;
     document.getElementById("newTitleInput").value = data.settings.newTitle || "";
-    settingsResultEl.textContent = `Restored the default headings.`;
+    document.getElementById("promoTextInput").value = "";
+    settingsResultEl.textContent = `Restored the default headings and cleared the promo banner.`;
     settingsResultEl.className = "success";
   } catch (err) {
     settingsResultEl.textContent = "Network error — please try again.";
