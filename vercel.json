@@ -25,6 +25,7 @@
       "config": { "includeFiles": "ministore-inventory.csv" }
     },
     { "src": "api/store-settings.js", "use": "@vercel/node" },
+    { "src": "api/orders.js", "use": "@vercel/node" },
     {
       "src": "api/drip.js",
       "use": "@vercel/node",
