@@ -115,6 +115,7 @@ export default async function handler(req, res) {
       products,
       featuredTitle: settings.featuredTitle,
       newTitle: settings.newTitle,
+      promoText: settings.promoText,
     });
   } catch (err) {
     console.error(err);
