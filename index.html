@@ -2127,14 +2127,58 @@ function showRecentSaleAt(index) {
   recentSalesTextEl.textContent = `🎉 Just sold: ${sale.name}${setPart}`;
 }
 
+// The ticker sits in the fixed footer, which an on-screen keyboard pushes up
+// over the field being typed into. Hiding it while a field has focus keeps the
+// checkout form usable — the cart button stays put, only the ticker goes.
+let keyboardLikelyOpen = false;
+
+function applyRecentSalesVisibility() {
+  const shouldShow = recentSales.length > 0 && !keyboardLikelyOpen;
+  recentSalesBannerEl.style.display = shouldShow ? "flex" : "none";
+}
+
+function setKeyboardOpen(isOpen) {
+  if (keyboardLikelyOpen === isOpen) return;
+  keyboardLikelyOpen = isOpen;
+  applyRecentSalesVisibility();
+}
+
+// Primary signal: any text field gaining focus. Works in every browser,
+// including the Telegram in-app webview.
+document.addEventListener("focusin", e => {
+  if (e.target && e.target.matches("input, textarea, select")) setKeyboardOpen(true);
+});
+
+document.addEventListener("focusout", e => {
+  if (e.target && e.target.matches("input, textarea, select")) {
+    // Small delay so moving between two fields doesn't flicker the ticker.
+    setTimeout(() => {
+      const active = document.activeElement;
+      if (!active || !active.matches("input, textarea, select")) setKeyboardOpen(false);
+    }, 120);
+  }
+});
+
+// Backup signal: the visual viewport shrinking is what a keyboard actually
+// does, and catches cases where focus tracking alone misses.
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", () => {
+    const shrunk = window.visualViewport.height < window.innerHeight * 0.75;
+    if (shrunk) setKeyboardOpen(true);
+    else if (!document.activeElement || !document.activeElement.matches("input, textarea, select")) {
+      setKeyboardOpen(false);
+    }
+  });
+}
+
 function startRecentSalesRotation() {
   if (recentSalesInterval) clearInterval(recentSalesInterval);
   if (recentSales.length === 0) {
-    recentSalesBannerEl.style.display = "none";
+    applyRecentSalesVisibility();
     return;
   }
 
-  recentSalesBannerEl.style.display = "flex";
+  applyRecentSalesVisibility();
   recentSalesIndex = 0;
   showRecentSaleAt(recentSalesIndex);
 
