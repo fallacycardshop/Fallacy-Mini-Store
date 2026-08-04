@@ -5,6 +5,8 @@ import {
   getStoreState,
   isListingReleased,
   isListingNew,
+  getEffectiveStock,
+  getLastReleaseMoment,
   normaliseCardId,
   seededShuffle,
   getTodaySeed,
@@ -58,7 +60,11 @@ export default async function handler(req, res) {
         const sold = soldByKey[groupKey] || 0;
 
         const reserved = reservedMap[groupKey] || 0;
-        const trueStock = Math.max(group.baseStock - sold, 0);
+
+        // Only the PUBLISHED portion of the CSV stock counts. A restock that
+        // hasn't reached its scheduled moment is invisible to shoppers.
+        const publishedStock = getEffectiveStock(drip, groupKey, group.baseStock, now);
+        const trueStock = Math.max(publishedStock - sold, 0);
 
         // Flagged for the Newly In Stock row. Stops being true on its own once
         // the window lapses, so nothing needs to move the card afterwards.
@@ -70,12 +76,12 @@ export default async function handler(req, res) {
           // (newest release first, CSV order within the same release) instead
           // of being shuffled like the rest of the catalogue.
           csvIndex,
-          releaseAt: drip.releases[groupKey] || 0,
+          releaseAt: getLastReleaseMoment(drip, groupKey, now) || 0,
           name: group.name,
           price: group.price,
           photo: group.photo,
           description: group.description,
-          stock: Math.max(group.baseStock - sold - reserved, 0),
+          stock: Math.max(publishedStock - sold - reserved, 0),
           trueStock, // ignores other buyers' in-progress reservations — only reflects genuine permanent sales
           category: group.category,
           set: group.set,
