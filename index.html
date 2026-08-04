@@ -1508,7 +1508,14 @@ function renderSection(headingText, matches, options = {}) {
   // cards stay in place rather than being pushed to the bottom and collapsed.
   // Used by Newly In Stock, where seeing a fresh drop already gone creates
   // urgency for the ones still available.
-  const preserveOrder = Boolean(options.preserveOrder);
+  //
+  // preserveOrderUpTo caps that: once MORE than this many sold-out cards are in
+  // the row, keeping them inline would bury the available ones, so the row
+  // falls back to the normal layout (available first, sold-out collapsed).
+  const soldOutCount = matches.filter(p => Number(p.stock || 0) <= 0).length;
+  const preserveLimit =
+    options.preserveOrderUpTo === undefined ? Infinity : options.preserveOrderUpTo;
+  const preserveOrder = Boolean(options.preserveOrder) && soldOutCount <= preserveLimit;
 
   const heading = document.createElement("h3");
   heading.className = "section-heading";
@@ -1664,7 +1671,12 @@ function renderProducts() {
   const inStockMatches = matches.filter(p => Number(p.stock || 0) > 0).length;
   resultsCounterEl.textContent = `${inStockMatches} item${inStockMatches === 1 ? "" : "s"} available`;
 
-  renderSection(newTitle, newMatches, { preserveOrder: true });
+  renderSection(newTitle, newMatches, {
+    preserveOrder: true,
+    preserveOrderUpTo: 3,
+    soldOutVisible: 3,
+    soldOutNoun: "newly added",
+  });
   renderSection(featuredTitle, featuredMatches, { soldOutVisible: 0, soldOutNoun: "featured" });
   renderSection("All Cards", otherMatches);
 
