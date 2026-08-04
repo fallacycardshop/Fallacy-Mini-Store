@@ -1652,7 +1652,7 @@ function renderProducts() {
   // Counter reflects what is actually buyable, so sold-out listings are excluded
   // even though they are still rendered further down the page.
   const inStockMatches = matches.filter(p => Number(p.stock || 0) > 0).length;
-  resultsCounterEl.textContent = `${inStockMatches} card${inStockMatches === 1 ? "" : "s"} available`;
+  resultsCounterEl.textContent = `${inStockMatches} item${inStockMatches === 1 ? "" : "s"} available`;
 
   renderSection(newTitle, newMatches, { soldOutVisible: 0, soldOutNoun: "newly added" });
   renderSection(featuredTitle, featuredMatches, { soldOutVisible: 0, soldOutNoun: "featured" });
