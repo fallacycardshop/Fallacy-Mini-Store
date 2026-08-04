@@ -97,27 +97,37 @@ export default async function handler(req, res) {
     }
     if (consolidated || healed) await saveDripState(redis, state);
 
-    // Freshly uploaded rows: no release time yet.
-    const unscheduledNew = Array.from(groups.keys()).filter(
-      groupKey => state.releases[groupKey] === undefined
-    );
+    // Computed as a FUNCTION, not a one-off snapshot: actions below mutate the
+    // state, and buildStatus() must reflect the result rather than the list as
+    // it stood when the request arrived. (A snapshot here previously left the
+    // "awaiting a schedule" list showing items that had just been scheduled.)
+    const computeUnscheduled = () => {
+      // Freshly uploaded rows: no release time yet.
+      const freshListings = Array.from(groups.keys()).filter(
+        groupKey => state.releases[groupKey] === undefined
+      );
 
-    // Restocks: CSV stock now exceeds what's published, with no increase
-    // already queued. Adding a duplicate CSV row and bumping the Stock column
-    // both land here, because loadInventoryGroups merges them into one total.
-    const unscheduledRestocks = Array.from(groups.entries())
-      .filter(([groupKey, group]) => {
-        if (state.releases[groupKey] === undefined) return false; // brand new, handled above
-        const entry = state.levels[groupKey];
-        if (!entry) return false;
-        if (entry.pendingAt !== null && entry.pendingAt > now) return false; // already queued
-        return group.baseStock > entry.published;
-      })
-      .map(([groupKey, group]) => ({
-        groupKey,
-        from: state.levels[groupKey].published,
-        to: group.baseStock,
-      }));
+      // Restocks: CSV stock now exceeds what's published, with no increase
+      // already queued. Adding a duplicate CSV row and bumping the Stock column
+      // both land here, because loadInventoryGroups merges them into one total.
+      const restocks = Array.from(groups.entries())
+        .filter(([groupKey, group]) => {
+          if (state.releases[groupKey] === undefined) return false; // brand new
+          const entry = state.levels[groupKey];
+          if (!entry) return false;
+          if (entry.pendingAt !== null && entry.pendingAt > now) return false; // queued
+          return group.baseStock > entry.published;
+        })
+        .map(([groupKey, group]) => ({
+          groupKey,
+          from: state.levels[groupKey].published,
+          to: group.baseStock,
+        }));
+
+      return { freshListings, restocks };
+    };
+
+    const { freshListings: unscheduledNew, restocks: unscheduledRestocks } = computeUnscheduled();
 
     // Scheduling treats both kinds as one queue in CSV order.
     // Queue order follows the CSV, using each listing's LAST row rather than its
@@ -136,6 +146,10 @@ export default async function handler(req, res) {
     ].sort((a, b) => rowIndexOf(a) - rowIndexOf(b));
 
     const buildStatus = () => {
+      // Recomputed here so the numbers reflect any mutation this request made.
+      const { freshListings, restocks } = computeUnscheduled();
+      const currentUnscheduledCount = freshListings.length + restocks.length;
+
       const pending = Object.entries(state.releases)
         .filter(([, at]) => at > now)
         .sort((a, b) => a[1] - b[1])
@@ -167,12 +181,12 @@ export default async function handler(req, res) {
         totalListings: groups.size,
         liveCount,
         pendingCount: pending.length + pendingRestocks.length,
-        unscheduledCount: unscheduled.length,
+        unscheduledCount: currentUnscheduledCount,
         pending: [...pending, ...pendingRestocks].sort((a, b) => a.releaseAt - b.releaseAt),
         newlyIn,
         unscheduled: [
-          ...unscheduledNew.map(describe),
-          ...unscheduledRestocks.map(r => ({
+          ...freshListings.map(describe),
+          ...restocks.map(r => ({
             ...describe(r.groupKey),
             isRestock: true,
             from: r.from,
