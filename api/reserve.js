@@ -4,6 +4,7 @@ import {
   getActiveReservedMap,
   getStoreState,
   isListingReleased,
+  getEffectiveStock,
   normaliseCardId,
 } from "./_inventory.js";
 
@@ -57,7 +58,8 @@ export default async function handler(req, res) {
 
     for (const item of validItems) {
       const group = groups.get(item.key);
-      const baseStock = group ? group.baseStock : 0;
+      // Published stock only — an unreleased restock can't be bought early.
+      const baseStock = group ? getEffectiveStock(drip, item.key, group.baseStock, now) : 0;
       const sold = soldByKey[item.key] || 0;
 
       const alreadyReserved = reservedMap[item.key] || 0;
