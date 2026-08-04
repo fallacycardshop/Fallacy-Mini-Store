@@ -1504,11 +1504,21 @@ function renderSection(headingText, matches, options = {}) {
   // Optional word inserted into the button, e.g. "sold out featured items", so
   // each row's button says what it will actually reveal.
   const soldOutNoun = options.soldOutNoun ? `${options.soldOutNoun} ` : "";
+  // preserveOrder renders the row exactly as the API ordered it — sold-out
+  // cards stay in place rather than being pushed to the bottom and collapsed.
+  // Used by Newly In Stock, where seeing a fresh drop already gone creates
+  // urgency for the ones still available.
+  const preserveOrder = Boolean(options.preserveOrder);
 
   const heading = document.createElement("h3");
   heading.className = "section-heading";
   heading.textContent = headingText;
   productListEl.appendChild(heading);
+
+  if (preserveOrder) {
+    matches.forEach(p => productListEl.appendChild(buildProductCard(p)));
+    return;
+  }
 
   const available = matches.filter(p => Number(p.stock || 0) > 0);
   const soldOut = matches.filter(p => Number(p.stock || 0) <= 0);
@@ -1654,7 +1664,7 @@ function renderProducts() {
   const inStockMatches = matches.filter(p => Number(p.stock || 0) > 0).length;
   resultsCounterEl.textContent = `${inStockMatches} item${inStockMatches === 1 ? "" : "s"} available`;
 
-  renderSection(newTitle, newMatches, { soldOutVisible: 0, soldOutNoun: "newly added" });
+  renderSection(newTitle, newMatches, { preserveOrder: true });
   renderSection(featuredTitle, featuredMatches, { soldOutVisible: 0, soldOutNoun: "featured" });
   renderSection("All Cards", otherMatches);
 
