@@ -54,7 +54,7 @@ export default async function handler(req, res) {
     // the id gets assigned afterward, once we know the actual display order
     // (featured cards first, everything else daily-shuffled).
     const unordered = await Promise.all(
-      groupEntries.map(async ([groupKey, group]) => {
+      groupEntries.map(async ([groupKey, group], csvIndex) => {
         const sold = soldByKey[groupKey] || 0;
 
         const reserved = reservedMap[groupKey] || 0;
@@ -66,6 +66,11 @@ export default async function handler(req, res) {
 
         return {
           isNew,
+          // Kept so the Newly In Stock row can be ordered deterministically
+          // (newest release first, CSV order within the same release) instead
+          // of being shuffled like the rest of the catalogue.
+          csvIndex,
+          releaseAt: drip.releases[groupKey] || 0,
           name: group.name,
           price: group.price,
           photo: group.photo,
@@ -102,8 +107,17 @@ export default async function handler(req, res) {
       return seededShuffle(Array.from(clusterMap.values()), seed).flat();
     };
 
-    const featured = unordered.filter(p => p.featured);
-    const others = unordered.filter(p => !p.featured);
+    // Newly-released listings are NOT shuffled. They only sit in their own row
+    // for a day, and a stable order reads as a genuine "what just landed" list:
+    // most recent release first, and CSV order within a single release batch.
+    const newlyIn = unordered
+      .filter(p => p.isNew)
+      .sort((a, b) => b.releaseAt - a.releaseAt || a.csvIndex - b.csvIndex);
+
+    // Everything below excludes newly-in listings, so nothing appears twice and
+    // the shuffled rows don't hold empty slots for cards rendered further up.
+    const featured = unordered.filter(p => p.featured && !p.isNew);
+    const others = unordered.filter(p => !p.featured && !p.isNew);
 
     // Featured gets its own daily shuffle, on a separate seed so it doesn't
     // mirror the All Cards ordering. Sold-out featured listings are shuffled
@@ -120,7 +134,7 @@ export default async function handler(req, res) {
 
     const shuffledOthers = shuffleClustered(others, getTodaySeed());
 
-    const products = [...shuffledFeatured, ...shuffledOthers].map((p, index) => ({
+    const products = [...newlyIn, ...shuffledFeatured, ...shuffledOthers].map((p, index) => ({
       id: index + 1,
       ...p,
     }));
