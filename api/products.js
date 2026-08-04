@@ -90,20 +90,37 @@ export default async function handler(req, res) {
     // individually would scatter them apart. Instead we cluster same-CardID
     // listings together first, then shuffle the clusters as whole units, so
     // different conditions of the same card always stay adjacent.
+    // Clusters same-CardID listings, shuffles the clusters as whole units with
+    // the given seed, then flattens back to a flat list.
+    const shuffleClustered = (list, seed) => {
+      const clusterMap = new Map();
+      list.forEach(p => {
+        const clusterKey = p.cardId || p.name;
+        if (!clusterMap.has(clusterKey)) clusterMap.set(clusterKey, []);
+        clusterMap.get(clusterKey).push(p);
+      });
+      return seededShuffle(Array.from(clusterMap.values()), seed).flat();
+    };
+
     const featured = unordered.filter(p => p.featured);
     const others = unordered.filter(p => !p.featured);
 
-    const clusterMap = new Map();
-    others.forEach(p => {
-      const clusterKey = p.cardId || p.name;
-      if (!clusterMap.has(clusterKey)) clusterMap.set(clusterKey, []);
-      clusterMap.get(clusterKey).push(p);
-    });
-    const clusters = Array.from(clusterMap.values());
-    const shuffledClusters = seededShuffle(clusters, getTodaySeed());
-    const shuffledOthers = shuffledClusters.flat();
+    // Featured gets its own daily shuffle, on a separate seed so it doesn't
+    // mirror the All Cards ordering. Sold-out featured listings are shuffled
+    // separately and appended after the available ones, so they always sit at
+    // the bottom of the row (where the storefront collapses them behind the
+    // "show more" button) instead of being scattered through it.
+    const featuredAvailable = featured.filter(p => Number(p.stock || 0) > 0);
+    const featuredSoldOut = featured.filter(p => Number(p.stock || 0) <= 0);
 
-    const products = [...featured, ...shuffledOthers].map((p, index) => ({
+    const shuffledFeatured = [
+      ...shuffleClustered(featuredAvailable, `featured-${getTodaySeed()}`),
+      ...shuffleClustered(featuredSoldOut, `featured-sold-${getTodaySeed()}`),
+    ];
+
+    const shuffledOthers = shuffleClustered(others, getTodaySeed());
+
+    const products = [...shuffledFeatured, ...shuffledOthers].map((p, index) => ({
       id: index + 1,
       ...p,
     }));
