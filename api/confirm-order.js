@@ -4,6 +4,7 @@ import { loadInventoryGroups } from "./_inventory.js";
 const redis = Redis.fromEnv();
 
 const MAX_RECENT_SALES = 20;
+const MAX_STORED_ORDERS = 300;
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -11,7 +12,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { reservationId } = req.body || {};
+    const { reservationId, record } = req.body || {};
     if (!reservationId) {
       return res.status(400).json({ error: "Missing reservationId" });
     }
@@ -36,6 +37,28 @@ export default async function handler(req, res) {
       items.map(item => redis.incrby(`sold:${item.key}`, item.quantity))
     );
     await redis.del(`reservation:${reservationId}`);
+
+    // AUTHORITATIVE ORDER BACKUP.
+    //
+    // Written in the same request that decrements stock, before anything can
+    // go wrong on the buyer's device. The notification email is a convenience
+    // on top of this — if FormSubmit fails, or the buyer closes the Telegram
+    // webview mid-request, the full order is still here and readable from the
+    // admin page. Two commands per order (never per page load).
+    try {
+      if (record && typeof record === "object") {
+        await redis.lpush(
+          "orders",
+          JSON.stringify({ savedAt: Date.now(), record })
+        );
+        await redis.ltrim("orders", 0, MAX_STORED_ORDERS - 1);
+      } else {
+        console.error("confirm-order: no order record supplied for", reservationId);
+      }
+    } catch (orderErr) {
+      // A backup failure must never void a paid order.
+      console.error("order backup failed:", orderErr);
+    }
 
     // Log each sold item to a recent-activity feed for the "recently sold"
     // banner — card name and set only, never any buyer info. Capped so the
