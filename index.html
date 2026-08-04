@@ -1020,14 +1020,16 @@ function buildOrderPayload(order) {
 
     // Also one row per physical card, so this block stays line-for-line aligned
     // with block 1 when both are pasted into the sheet.
-    const block2_BuyerPrice = Object.values(order.cart)
+    const block2_BuyerPriceOrderId = Object.values(order.cart)
       .flatMap(({ product, quantity }) => {
         const price = Number(product.price || 0);
         const qty = Math.max(Number(quantity) || 0, 0);
         const lineTotal = price * qty;
         const lineDiscountShare = rawSubtotal > 0 ? (lineTotal / rawSubtotal) * totalDiscount : 0;
         const netUnitPrice = qty > 0 ? Math.max(lineTotal - lineDiscountShare, 0) / qty : price;
-        const line = [buyerDisplay, netUnitPrice.toFixed(2)].join(" | ");
+        // Buyer and price are unchanged; the order ID is appended as a third
+        // column so every row can be traced back to its order.
+        const line = [buyerDisplay, netUnitPrice.toFixed(2), order.id].join(" | ");
         return Array.from({ length: qty }, () => line);
       })
       .join("\n");
@@ -1058,7 +1060,7 @@ function buildOrderPayload(order) {
         Total: order.total || "",
         Items_Readable: itemsSummary,
         "PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition": block1_DateCardIdCondition,
-        "PASTE_INTO_COLUMNS_F_to_G_Buyer_Price": block2_BuyerPrice,
+        "PASTE_INTO_COLUMNS_F_to_H_Buyer_Price_OrderID": block2_BuyerPriceOrderId,
     };
   }
 }
