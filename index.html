@@ -920,8 +920,10 @@ function formatDateDDMMYYYY(timestamp) {
   return `${dd}/${mm}/${yyyy}`;
 }
 
-async function sendOrderToBackend(order) {
-  try {
+// Builds the full order record. Used for BOTH the FormSubmit email and the
+// server-side backup, so the two can never drift apart.
+function buildOrderPayload(order) {
+  {
     const telegramUsernameDisplay = telegramUser ? (telegramUser.username || "(no username set)") : "not available";
     const telegramUserIdDisplay = telegramUser ? (telegramUser.id || "") : "";
 
@@ -976,13 +978,7 @@ async function sendOrderToBackend(order) {
       })
       .join("\n");
 
-    // Sent directly from the browser (not via our own backend) — FormSubmit
-    // sits behind Cloudflare, which blocks server-to-server requests but
-    // allows genuine browser requests like this one.
-    const res = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(ORDER_NOTIFY_EMAIL)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify({
+    return {
         _subject: `New order #${order.id} — ${order.name} — ${order.total || ""}`,
         _template: "table",
         Order_ID: order.id,
@@ -1002,15 +998,91 @@ async function sendOrderToBackend(order) {
         Items_Readable: itemsSummary,
         "PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition": block1_DateCardIdCondition,
         "PASTE_INTO_COLUMNS_F_to_G_Buyer_Price": block2_BuyerPrice,
-      }),
+    };
+  }
+}
+
+// Sent directly from the browser (not via our own backend) — FormSubmit sits
+// behind Cloudflare, which blocks server-to-server requests but allows genuine
+// browser requests like this one.
+//
+// This is now a CONVENIENCE only: the authoritative copy of every order is
+// written to Redis by /api/confirm-order at the moment the sale is recorded,
+// so an email failure can no longer lose an order.
+async function sendOrderToBackend(order) {
+  try {
+    const res = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(ORDER_NOTIFY_EMAIL)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify(buildOrderPayload(order)),
     });
     if (!res.ok) {
       console.error("Order logging failed:", await res.text());
+      return false;
     }
+    return true;
   } catch (err) {
-    // Never let a logging failure block the buyer's checkout flow.
+    // Never let a logging failure block the buyer's checkout flow, but DO
+    // report it so the caller can keep the order queued and retry.
     console.error("Order logging request failed:", err);
+    return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Order-notification queue
+//
+// An order is confirmed server-side (stock decremented) before the notification
+// email is sent. Previously the send was fired without awaiting it and the
+// buyer was immediately shown the success modal — which opens Telegram and
+// navigates away. In the Telegram in-app browser that tears down the page and
+// kills the in-flight request, so the order went through with no email.
+//
+// Orders are now queued in localStorage first, only removed once the send is
+// confirmed, and retried on the next page load. Nothing can be lost to a
+// closed tab or a dropped connection.
+// ---------------------------------------------------------------------------
+
+const NOTIFY_QUEUE_KEY = "fallacy_pending_order_notifications";
+
+function readNotifyQueue() {
+  try {
+    const raw = localStorage.getItem(NOTIFY_QUEUE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function writeNotifyQueue(queue) {
+  try {
+    localStorage.setItem(NOTIFY_QUEUE_KEY, JSON.stringify(queue));
+  } catch (e) {
+    console.error("Could not save the notification queue:", e);
+  }
+}
+
+function queueOrderNotification(order) {
+  const queue = readNotifyQueue();
+  if (!queue.some(o => o.id === order.id)) {
+    queue.push(order);
+    writeNotifyQueue(queue);
+  }
+}
+
+// Attempts every queued order, keeping any that fail for the next attempt.
+async function flushOrderNotifications() {
+  const queue = readNotifyQueue();
+  if (queue.length === 0) return true;
+
+  const stillPending = [];
+  for (const order of queue) {
+    const sent = await sendOrderToBackend(order);
+    if (!sent) stillPending.push(order);
+  }
+  writeNotifyQueue(stillPending);
+  return stillPending.length === 0;
 }
 
 const MAILING_FEE = 3;
@@ -1811,7 +1883,14 @@ paynowConfirmButtonEl.onclick = async () => {
     const confirmRes = await fetch("/api/confirm-order", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reservationId: pendingOrder.reservationId }),
+      // The order record travels WITH the confirmation, so it is stored
+      // server-side in the same request that decrements stock. If the buyer's
+      // device dies immediately afterwards, the order is still recoverable
+      // from the admin page.
+      body: JSON.stringify({
+        reservationId: pendingOrder.reservationId,
+        record: buildOrderPayload(pendingOrder),
+      }),
     });
     if (!confirmRes.ok) {
       const errData = await confirmRes.json().catch(() => ({}));
@@ -1827,7 +1906,14 @@ paynowConfirmButtonEl.onclick = async () => {
     return;
   }
 
-  sendOrderToBackend(pendingOrder);
+  // Queue BEFORE sending, so the order survives even if this page dies mid
+  // request. Awaited so the send completes before the success modal (which
+  // navigates to Telegram) can tear the page down.
+  queueOrderNotification(pendingOrder);
+  const notified = await flushOrderNotifications();
+  if (!notified) {
+    console.error("Order notification could not be sent yet — queued for retry.");
+  }
   pendingOrder = null;
 
   cart = {};
@@ -1844,6 +1930,8 @@ paynowConfirmButtonEl.onclick = async () => {
 };
 
 modalCloseButtonEl.onclick = () => {
+  // Last chance to clear the queue before we navigate to Telegram.
+  flushOrderNotifications();
   const telegramChatUrl = "https://t.me/fallacytcg";
   if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openTelegramLink) {
     window.Telegram.WebApp.openTelegramLink(telegramChatUrl);
@@ -1915,6 +2003,10 @@ async function loadRecentSales() {
 
 loadProducts();
 loadRecentSales();
+
+// Retry any order notification that never made it out — e.g. the buyer closed
+// the Telegram webview before the request finished on a previous visit.
+flushOrderNotifications();
 updateCartBadge();
 showProducts();
 
