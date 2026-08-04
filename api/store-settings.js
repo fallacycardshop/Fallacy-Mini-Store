@@ -9,6 +9,7 @@ import {
 const redis = Redis.fromEnv();
 
 const MAX_TITLE_LENGTH = 60;
+const MAX_PROMO_LENGTH = 300;
 
 // Actions:
 //   get   — read current settings (1 Redis command)
@@ -24,7 +25,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { key, action, featuredTitle, newTitle } = req.body || {};
+    const { key, action, featuredTitle, newTitle, promoText } = req.body || {};
     const adminKey = process.env.ADMIN_RESET_KEY;
 
     if (!adminKey) {
@@ -47,7 +48,11 @@ export default async function handler(req, res) {
     }
 
     if (action === "reset") {
-      const settings = { featuredTitle: DEFAULT_FEATURED_TITLE, newTitle: DEFAULT_NEW_TITLE };
+      const settings = {
+        featuredTitle: DEFAULT_FEATURED_TITLE,
+        newTitle: DEFAULT_NEW_TITLE,
+        promoText: "",
+      };
       await saveStoreSettings(redis, settings);
       return res.status(200).json({ ok: true, settings, reset: true });
     }
@@ -72,6 +77,18 @@ export default async function handler(req, res) {
           });
         }
         settings[field] = title;
+      }
+
+      // Promo text is handled separately from the headings because blank is a
+      // legitimate value — it's how the banner gets switched off.
+      if (promoText !== undefined && promoText !== null) {
+        const promo = String(promoText).trim();
+        if (promo.length > MAX_PROMO_LENGTH) {
+          return res.status(400).json({
+            error: `Promo text is too long (${promo.length}). Maximum is ${MAX_PROMO_LENGTH} characters.`,
+          });
+        }
+        settings.promoText = promo;
       }
 
       await saveStoreSettings(redis, settings);
