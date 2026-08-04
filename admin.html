@@ -261,6 +261,11 @@
     <button id="dripSaveConfig">Save Settings</button>
 
     <h3 style="margin-top:22px;font-size:15px;">Release New Stock</h3>
+    <label class="field-label">
+      Start the first batch at (optional &mdash; SGT). Leave blank to use the next
+      daily release time. Useful for starting later today once that time has passed.
+    </label>
+    <input type="datetime-local" id="dripStartAt">
     <div class="button-row">
       <button id="dripPreviewButton" class="btn-neutral">Preview Schedule</button>
       <button id="dripScheduleButton">Confirm Schedule</button>
@@ -561,6 +566,12 @@ function renderDripStatus(status) {
     '<div class="muted" style="margin-top:14px;">Nothing scheduled or pending.</div>';
 }
 
+// Blank means "use the next daily slot". The value is a local wall-clock time
+// and is interpreted as SGT server-side.
+function readDripStartAt() {
+  return document.getElementById("dripStartAt").value || null;
+}
+
 function readDripConfig() {
   const [h, m] = (document.getElementById("dripTime").value || "10:00").split(":");
   return {
@@ -635,7 +646,7 @@ document.getElementById("dripPreviewButton").onclick = async () => {
   dripResultEl.textContent = "Building preview...";
   dripResultEl.className = "";
   try {
-    const data = await callDripApi("preview");
+    const data = await callDripApi("preview", { startAt: readDripStartAt() });
     if (!data) return;
 
     if (!data.proposed.length) {
@@ -658,8 +669,10 @@ document.getElementById("dripPreviewButton").onclick = async () => {
         ${rows.map(r => `<div class="muted">${r.name}${r.set ? " · " + r.set : ""} (${r.condition})</div>`).join("")}
         </div>`).join("");
 
-    dripResultEl.textContent = "Preview only — nothing saved yet. Press Confirm Schedule to apply.";
-    dripResultEl.className = "success";
+    dripResultEl.textContent = data.startRejected
+      ? "That start time is in the past, so the next daily release time was used instead. Preview only — nothing saved yet."
+      : "Preview only — nothing saved yet. Press Confirm Schedule to apply.";
+    dripResultEl.className = data.startRejected ? "error" : "success";
   } catch (err) {
     dripResultEl.textContent = "Network error — please try again.";
     dripResultEl.className = "error";
@@ -671,13 +684,16 @@ document.getElementById("dripScheduleButton").onclick = async () => {
   dripResultEl.textContent = "Scheduling...";
   dripResultEl.className = "";
   try {
-    const data = await callDripApi("schedule");
+    const data = await callDripApi("schedule", { startAt: readDripStartAt() });
     if (!data) return;
     renderDripStatus(data.status);
-    dripResultEl.textContent = data.scheduled
+    let msg = data.scheduled
       ? `Scheduled ${data.scheduled} listing(s) for gradual release.`
       : "Nothing was awaiting a schedule.";
-    dripResultEl.className = "success";
+    if (data.startRejected) msg += " (Start time was in the past, so the next daily slot was used.)";
+    else if (data.firstSlotAt) msg += ` First batch: ${fmtDateTime(data.firstSlotAt)}.`;
+    dripResultEl.textContent = msg;
+    dripResultEl.className = data.startRejected ? "error" : "success";
   } catch (err) {
     dripResultEl.textContent = "Network error — please try again.";
     dripResultEl.className = "error";
@@ -689,7 +705,7 @@ document.getElementById("dripRescheduleButton").onclick = async () => {
   dripResultEl.textContent = "Rescheduling...";
   dripResultEl.className = "";
   try {
-    const data = await callDripApi("reschedule");
+    const data = await callDripApi("reschedule", { startAt: readDripStartAt() });
     if (!data) return;
     renderDripStatus(data.status);
     dripResultEl.textContent = `Re-spread ${data.rescheduled} pending listing(s).`;
