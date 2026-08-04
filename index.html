@@ -2132,15 +2132,26 @@ function showRecentSaleAt(index) {
 // checkout form usable — the cart button stays put, only the ticker goes.
 let keyboardLikelyOpen = false;
 
+const footerEl = document.querySelector("footer");
+
 function applyRecentSalesVisibility() {
   const shouldShow = recentSales.length > 0 && !keyboardLikelyOpen;
   recentSalesBannerEl.style.display = shouldShow ? "flex" : "none";
 }
 
+// The whole fixed footer is hidden while typing, not just the ticker — on a
+// phone the keyboard pushes the footer up over the field being filled in, and
+// the cart button covers it just as much as the ticker did. It comes straight
+// back as soon as the field loses focus.
+function applyKeyboardUi() {
+  if (footerEl) footerEl.style.display = keyboardLikelyOpen ? "none" : "flex";
+  applyRecentSalesVisibility();
+}
+
 function setKeyboardOpen(isOpen) {
   if (keyboardLikelyOpen === isOpen) return;
   keyboardLikelyOpen = isOpen;
-  applyRecentSalesVisibility();
+  applyKeyboardUi();
 }
 
 // Primary signal: any text field gaining focus. Works in every browser,
