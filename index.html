@@ -1529,8 +1529,7 @@ function renderSection(headingText, matches, options = {}) {
     showMoreBtn.className = "btn btn-secondary";
     showMoreBtn.style.width = "100%";
     // "more" only makes sense when some sold-out cards are already showing.
-    const moreWord = visibleSoldOut.length > 0 ? "more " : "";
-    showMoreBtn.textContent = `Show ${hiddenSoldOut.length} ${moreWord}sold out ${soldOutNoun}item${hiddenSoldOut.length === 1 ? "" : "s"}`;
+    showMoreBtn.textContent = `Show ${hiddenSoldOut.length} more sold out ${soldOutNoun}item${hiddenSoldOut.length === 1 ? "" : "s"}`;
     showMoreBtn.onclick = () => {
       hiddenWrap.classList.add("expanded");
       showMoreBtn.remove();
