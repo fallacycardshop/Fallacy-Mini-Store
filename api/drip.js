@@ -6,6 +6,7 @@ import {
   buildDripSchedule,
   isListingReleased,
   isListingNew,
+  getEffectiveStock,
   DEFAULT_DRIP_CONFIG,
 } from "./_inventory.js";
 
@@ -53,12 +54,69 @@ export default async function handler(req, res) {
         set: group ? group.set || "" : "",
         condition: group ? group.description || "" : "",
         stock: group ? group.baseStock : 0,
+        publishedStock: group ? getEffectiveStock(state, groupKey, group.baseStock, now) : 0,
       };
     };
 
-    // Listings in the CSV with no release time yet — i.e. freshly uploaded rows.
-    const unscheduled = Array.from(groups.keys()).filter(
+    // Housekeeping: fold any restock whose moment has passed into the published
+    // figure, so `pending` only ever holds genuinely future increases. Done here
+    // (an admin write path) rather than on the storefront read path.
+    let consolidated = false;
+    Object.entries(state.levels).forEach(([groupKey, entry]) => {
+      if (entry.pendingAt !== null && entry.pendingAt <= now && entry.pendingStock !== null) {
+        entry.published = entry.pendingStock;
+        entry.pendingStock = null;
+        entry.pendingAt = null;
+        consolidated = true;
+      }
+    });
+
+    // Self-healing: any already-released listing with no level entry (state
+    // written before restock tracking existed) starts tracking at its current
+    // CSV stock, so nothing is retroactively hidden.
+    let healed = false;
+    if (state.initialized) {
+      Array.from(groups.entries()).forEach(([groupKey, group]) => {
+        if (state.releases[groupKey] !== undefined && !state.levels[groupKey]) {
+          state.levels[groupKey] = {
+            published: group.baseStock,
+            pendingStock: null,
+            pendingAt: null,
+          };
+          healed = true;
+        }
+      });
+    }
+    if (consolidated || healed) await saveDripState(redis, state);
+
+    // Freshly uploaded rows: no release time yet.
+    const unscheduledNew = Array.from(groups.keys()).filter(
       groupKey => state.releases[groupKey] === undefined
+    );
+
+    // Restocks: CSV stock now exceeds what's published, with no increase
+    // already queued. Adding a duplicate CSV row and bumping the Stock column
+    // both land here, because loadInventoryGroups merges them into one total.
+    const unscheduledRestocks = Array.from(groups.entries())
+      .filter(([groupKey, group]) => {
+        if (state.releases[groupKey] === undefined) return false; // brand new, handled above
+        const entry = state.levels[groupKey];
+        if (!entry) return false;
+        if (entry.pendingAt !== null && entry.pendingAt > now) return false; // already queued
+        return group.baseStock > entry.published;
+      })
+      .map(([groupKey, group]) => ({
+        groupKey,
+        from: state.levels[groupKey].published,
+        to: group.baseStock,
+      }));
+
+    // Scheduling treats both kinds as one queue in CSV order.
+    const unscheduled = [
+      ...unscheduledNew,
+      ...unscheduledRestocks.map(r => r.groupKey),
+    ].sort(
+      (a, b) => Array.from(groups.keys()).indexOf(a) - Array.from(groups.keys()).indexOf(b)
     );
 
     const buildStatus = () => {
@@ -76,16 +134,35 @@ export default async function handler(req, res) {
         isListingReleased(state, groupKey, now)
       ).length;
 
+      const pendingRestocks = Object.entries(state.levels)
+        .filter(([, e]) => e.pendingAt !== null && e.pendingAt > now)
+        .sort((a, b) => a[1].pendingAt - b[1].pendingAt)
+        .map(([groupKey, e]) => ({
+          ...describe(groupKey),
+          releaseAt: e.pendingAt,
+          from: e.published,
+          to: e.pendingStock,
+          isRestock: true,
+        }));
+
       return {
         initialized: state.initialized,
         config: state.config,
         totalListings: groups.size,
         liveCount,
-        pendingCount: pending.length,
+        pendingCount: pending.length + pendingRestocks.length,
         unscheduledCount: unscheduled.length,
-        pending,
+        pending: [...pending, ...pendingRestocks].sort((a, b) => a.releaseAt - b.releaseAt),
         newlyIn,
-        unscheduled: unscheduled.map(describe),
+        unscheduled: [
+          ...unscheduledNew.map(describe),
+          ...unscheduledRestocks.map(r => ({
+            ...describe(r.groupKey),
+            isRestock: true,
+            from: r.from,
+            to: r.to,
+          })),
+        ],
       };
     };
 
@@ -100,11 +177,18 @@ export default async function handler(req, res) {
     // scan would treat your entire existing catalogue as new stock.
     if (action === "initialize") {
       const releases = { ...state.releases };
-      Array.from(groups.keys()).forEach(groupKey => {
+      Array.from(groups.entries()).forEach(([groupKey, group]) => {
         if (releases[groupKey] === undefined) {
           // Backdated well past the new-window so nothing shows as "new".
           releases[groupKey] = now - 365 * 86400000;
         }
+        // Current CSV stock becomes the published baseline, so only later
+        // increases count as restocks.
+        state.levels[groupKey] = {
+          published: group.baseStock,
+          pendingStock: null,
+          pendingAt: null,
+        };
       });
       state.releases = releases;
       state.initialized = true;
@@ -160,8 +244,23 @@ export default async function handler(req, res) {
       if (unscheduled.length === 0) {
         return res.status(200).json({ ok: true, scheduled: 0, status: buildStatus() });
       }
+      const restockKeys = new Set(unscheduledRestocks.map(r => r.groupKey));
       buildDripSchedule(unscheduled, state.config, now).forEach(entry => {
-        state.releases[entry.groupKey] = entry.releaseAt;
+        const group = groups.get(entry.groupKey);
+        if (restockKeys.has(entry.groupKey)) {
+          // Existing listing: queue the stock increase, leave it visible at its
+          // current published level until then.
+          state.levels[entry.groupKey].pendingStock = group.baseStock;
+          state.levels[entry.groupKey].pendingAt = entry.releaseAt;
+        } else {
+          // Brand-new listing: hidden entirely until its moment.
+          state.releases[entry.groupKey] = entry.releaseAt;
+          state.levels[entry.groupKey] = {
+            published: group.baseStock,
+            pendingStock: null,
+            pendingAt: null,
+          };
+        }
       });
       state.initialized = true;
       await saveDripState(redis, state);
@@ -176,13 +275,23 @@ export default async function handler(req, res) {
     // Re-spreads everything still pending using the current settings, so
     // changing cards/day or the release time takes effect on the queue.
     if (action === "reschedule") {
-      const pendingKeys = Object.entries(state.releases)
-        .filter(([, at]) => at > now)
+      const pendingKeys = [
+        ...Object.entries(state.releases).filter(([, at]) => at > now).map(([k, at]) => [k, at]),
+        ...Object.entries(state.levels)
+          .filter(([, e]) => e.pendingAt !== null && e.pendingAt > now)
+          .map(([k, e]) => [k, e.pendingAt]),
+      ]
         .sort((a, b) => a[1] - b[1])
         .map(([groupKey]) => groupKey);
 
       buildDripSchedule(pendingKeys, state.config, now).forEach(entry => {
-        state.releases[entry.groupKey] = entry.releaseAt;
+        if (state.releases[entry.groupKey] !== undefined && state.releases[entry.groupKey] > now) {
+          state.releases[entry.groupKey] = entry.releaseAt;
+        }
+        const level = state.levels[entry.groupKey];
+        if (level && level.pendingAt !== null && level.pendingAt > now) {
+          level.pendingAt = entry.releaseAt;
+        }
       });
       await saveDripState(redis, state);
       return res.status(200).json({
@@ -197,12 +306,25 @@ export default async function handler(req, res) {
       const targets =
         Array.isArray(groupKeys) && groupKeys.length > 0
           ? groupKeys
-          : Object.entries(state.releases)
-              .filter(([, at]) => at > now)
-              .map(([groupKey]) => groupKey);
+          : [
+              ...Object.entries(state.releases).filter(([, at]) => at > now).map(([k]) => k),
+              ...Object.entries(state.levels)
+                .filter(([, e]) => e.pendingAt !== null && e.pendingAt > now)
+                .map(([k]) => k),
+            ];
 
       targets.forEach(groupKey => {
-        state.releases[groupKey] = now;
+        if (state.releases[groupKey] !== undefined && state.releases[groupKey] > now) {
+          state.releases[groupKey] = now;
+        }
+        const level = state.levels[groupKey];
+        if (level && level.pendingAt !== null && level.pendingAt > now) {
+          level.published = level.pendingStock;
+          level.pendingStock = null;
+          level.pendingAt = null;
+          // Counts as new from this moment.
+          state.releases[groupKey] = now;
+        }
       });
       await saveDripState(redis, state);
       return res.status(200).json({
