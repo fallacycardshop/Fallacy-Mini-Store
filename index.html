@@ -489,26 +489,56 @@ h2 {
 /* Promo strip at the top of the shop. Hidden entirely when the admin promo
    text is blank, so switching it off leaves no empty gap. */
 .promo-banner {
-  background: linear-gradient(135deg, var(--pink-deep, #a8305f), #c2557f);
-  color: #fff;
+  background: linear-gradient(135deg, #fdeef4, #fbe4ef);
+  color: var(--pink-deep, #a8305f);
+  border: 1px solid #f6d3e2;
   border-radius: 12px;
   padding: 12px 14px;
   margin-bottom: 14px;
   font-size: 13px;
   font-weight: 600;
-  line-height: 1.45;
+  line-height: 1.6;
   text-align: center;
-  box-shadow: 0 2px 8px rgba(168, 48, 95, 0.25);
+  box-shadow: 0 1px 4px rgba(168, 48, 95, 0.08);
 }
 
-.promo-banner strong,
+/* Tap-to-copy discount code. Sized generously so it's an easy target on a
+   phone, and styled as an obvious chip rather than plain text. */
 .promo-banner .promo-code {
   display: inline-block;
-  background: rgba(255, 255, 255, 0.22);
+  background: #fff;
+  border: 1px dashed #e29ebd;
   border-radius: 6px;
-  padding: 1px 7px;
+  padding: 3px 9px;
+  margin: 0 1px;
   letter-spacing: 0.5px;
   font-weight: 700;
+  cursor: pointer;
+  user-select: all;
+  -webkit-user-select: all;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.promo-banner .promo-code:active {
+  transform: scale(0.96);
+  background: #fdeef4;
+}
+
+.promo-banner .promo-code.copied {
+  background: #eaf6ec;
+  border-color: #8fc79c;
+  color: #2f6b3a;
+}
+
+.promo-copy-hint {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  font-style: italic;
+  opacity: 0.75;
 }
 
 .stock-warning {
@@ -655,7 +685,6 @@ footer .btn { width: auto; flex-shrink: 0; }
     <div class="promo-banner" id="promoBanner" style="display:none;">
       <span id="promoText"></span>
     </div>
-    <p class="stock-note">Stock will be refreshed weekly.</p>
     <p class="stock-note">Note: All photos are for reference only and do not reflect actual condition stated.</p>
     <p id="statusText" class="status-text">Loading inventory…</p>
 
@@ -1522,10 +1551,76 @@ function renderPromoBanner() {
   promoTextEl.textContent = promoText;
   const highlighted = promoTextEl.innerHTML.replace(
     /\b([A-Z][A-Z0-9]{4,19})\b/g,
-    '<span class="promo-code">$1</span>'
+    '<span class="promo-code" role="button" tabindex="0">$1</span>'
   );
   promoTextEl.innerHTML = highlighted;
+
+  const codeEls = promoTextEl.querySelectorAll(".promo-code");
+  codeEls.forEach(el => {
+    el.onclick = () => copyPromoCode(el);
+  });
+
+  // Only worth telling people it's tappable if there's actually a code.
+  if (codeEls.length > 0 && !promoBannerEl.querySelector(".promo-copy-hint")) {
+    const hint = document.createElement("span");
+    hint.className = "promo-copy-hint";
+    hint.textContent = "Tap the code to copy it";
+    promoBannerEl.appendChild(hint);
+  }
+
   promoBannerEl.style.display = "block";
+}
+
+// Clipboard access needs a secure context and isn't available in every in-app
+// browser (the Telegram webview among them), so fall back to selecting the
+// text and using execCommand. If even that fails, the code stays selected so
+// it can be copied manually — user-select: all makes one tap select it whole.
+async function copyPromoCode(el) {
+  const code = el.textContent.trim();
+  let copied = false;
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(code);
+      copied = true;
+    }
+  } catch (e) {
+    copied = false;
+  }
+
+  if (!copied) {
+    try {
+      const temp = document.createElement("textarea");
+      temp.value = code;
+      temp.setAttribute("readonly", "");
+      temp.style.position = "fixed";
+      temp.style.opacity = "0";
+      document.body.appendChild(temp);
+      temp.select();
+      temp.setSelectionRange(0, code.length);
+      copied = document.execCommand("copy");
+      document.body.removeChild(temp);
+    } catch (e) {
+      copied = false;
+    }
+  }
+
+  if (copied) {
+    const original = el.textContent;
+    el.classList.add("copied");
+    el.textContent = "Copied!";
+    setTimeout(() => {
+      el.textContent = original;
+      el.classList.remove("copied");
+    }, 1500);
+  } else {
+    // Leave it selected so a long-press copy is one step away.
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
 }
 
 function renderProducts() {
