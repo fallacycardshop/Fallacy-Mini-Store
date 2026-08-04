@@ -387,6 +387,7 @@ export function parseDripState(raw) {
     initialized: false,
     config: { ...DEFAULT_DRIP_CONFIG },
     releases: {}, // groupKey -> releaseAt (epoch ms)
+    levels: {},   // groupKey -> { published, pendingStock, pendingAt }
   };
   if (!raw) return state;
 
@@ -407,7 +408,53 @@ export function parseDripState(raw) {
       if (Number.isFinite(ts)) state.releases[groupKey] = ts;
     });
   }
+  if (data.levels && typeof data.levels === "object") {
+    Object.entries(data.levels).forEach(([groupKey, entry]) => {
+      if (!entry || typeof entry !== "object") return;
+      const num = v => (v === undefined || v === null || !Number.isFinite(Number(v)) ? null : Number(v));
+      state.levels[groupKey] = {
+        published: Number(entry.published) || 0,
+        pendingStock: num(entry.pendingStock),
+        pendingAt: num(entry.pendingAt),
+      };
+    });
+  }
   return state;
+}
+
+// How much of a listing's CSV stock is actually published right now.
+//
+// Restocks are drip-scheduled the same way new listings are: the CSV holds the
+// true total, while `published` holds how much of it shoppers can currently
+// see. A scheduled increase sits in pendingStock/pendingAt and takes effect on
+// its own once that moment passes — no write needed to activate it.
+//
+// A listing with no level entry isn't tracked (it predates this feature, or the
+// baseline hasn't been set), so its full CSV stock is published as before.
+export function getEffectiveStock(state, groupKey, csvStock, now = Date.now()) {
+  const entry = state.levels[groupKey];
+  if (!entry) return csvStock;
+
+  let effective = entry.published;
+  if (entry.pendingAt !== null && entry.pendingAt <= now && entry.pendingStock !== null) {
+    effective = entry.pendingStock;
+  }
+  // Never publish more than the CSV says — lowering the CSV figure still works.
+  return Math.max(Math.min(effective, csvStock), 0);
+}
+
+// The most recent moment this listing gained stock: either its first release or
+// a restock that has since landed. Drives the Newly In Stock flag, so a restock
+// puts an existing card back in that row.
+export function getLastReleaseMoment(state, groupKey, now = Date.now()) {
+  const first = state.releases[groupKey];
+  let last = first === undefined ? null : first;
+
+  const entry = state.levels[groupKey];
+  if (entry && entry.pendingAt !== null && entry.pendingAt <= now) {
+    last = last === null ? entry.pendingAt : Math.max(last, entry.pendingAt);
+  }
+  return last;
 }
 
 export async function getDripState(redis) {
@@ -432,8 +479,8 @@ export function isListingReleased(state, groupKey, now = Date.now()) {
 }
 
 export function isListingNew(state, groupKey, now = Date.now()) {
-  const releaseAt = state.releases[groupKey];
-  if (releaseAt === undefined || releaseAt > now) return false;
+  const releaseAt = getLastReleaseMoment(state, groupKey, now);
+  if (releaseAt === null || releaseAt > now) return false;
   const windowMs = Math.max(Number(state.config.newWindowHours) || 0, 0) * 3600000;
   if (windowMs <= 0) return false;
   return now - releaseAt < windowMs;
