@@ -486,6 +486,31 @@ h2 {
   font-size: 16px;
 }
 
+/* Promo strip at the top of the shop. Hidden entirely when the admin promo
+   text is blank, so switching it off leaves no empty gap. */
+.promo-banner {
+  background: linear-gradient(135deg, var(--pink-deep, #a8305f), #c2557f);
+  color: #fff;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(168, 48, 95, 0.25);
+}
+
+.promo-banner strong,
+.promo-banner .promo-code {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+  padding: 1px 7px;
+  letter-spacing: 0.5px;
+  font-weight: 700;
+}
+
 .stock-warning {
   font-size: 11px;
   color: #c0392b;
@@ -627,6 +652,9 @@ footer .btn { width: auto; flex-shrink: 0; }
 
   <!-- PRODUCT SCREEN -->
   <section id="productsScreen">
+    <div class="promo-banner" id="promoBanner" style="display:none;">
+      <span id="promoText"></span>
+    </div>
     <p class="stock-note">Stock will be refreshed weekly.</p>
     <p class="stock-note">Note: All photos are for reference only and do not reflect actual condition stated.</p>
     <p id="statusText" class="status-text">Loading inventory…</p>
@@ -809,6 +837,8 @@ let products = [];
 // /api/products, which the admin page can edit.
 let featuredTitle = "🔥 Popular this week";
 let newTitle = "✨ Newly in stock!";
+// Promo strip copy, editable from the admin page. Blank hides the strip.
+let promoText = "";
 let currentScreen = "products";
 
 // Tracks which product fields (name/condition/rarity/set/stock) are currently
@@ -875,6 +905,8 @@ const totalBoxEl = document.getElementById("totalBox");
 const checkoutSectionEl = document.getElementById("checkoutSection");
 const searchInputEl = document.getElementById("searchInput");
 const resultsCounterEl = document.getElementById("resultsCounter");
+const promoBannerEl = document.getElementById("promoBanner");
+const promoTextEl = document.getElementById("promoText");
 const categoryFilterEl = document.getElementById("categoryFilter");
 const setFilterEl = document.getElementById("setFilter");
 const checkoutButtonEl = document.getElementById("checkoutButton");
@@ -1243,6 +1275,10 @@ async function loadProducts() {
     // Editable featured heading, set from the admin page.
     if (!Array.isArray(data) && data.featuredTitle) featuredTitle = data.featuredTitle;
     if (!Array.isArray(data) && data.newTitle) newTitle = data.newTitle;
+    if (!Array.isArray(data)) {
+      promoText = typeof data.promoText === "string" ? data.promoText : "";
+      renderPromoBanner();
+    }
     statusTextEl.textContent = "All items have been updated.";
     renderCategoryFilter();
     renderSetFilter();
@@ -1471,6 +1507,25 @@ function renderSection(headingText, matches, options = {}) {
     productListEl.appendChild(showMoreBtn);
     productListEl.appendChild(hiddenWrap);
   }
+}
+
+function renderPromoBanner() {
+  if (!promoText) {
+    promoBannerEl.style.display = "none";
+    promoTextEl.textContent = "";
+    return;
+  }
+
+  // textContent first (never innerHTML — the copy is admin-supplied but this
+  // keeps it impossible for a stray angle bracket to break the page), then a
+  // single safe pass to highlight any ALL-CAPS discount code.
+  promoTextEl.textContent = promoText;
+  const highlighted = promoTextEl.innerHTML.replace(
+    /\b([A-Z][A-Z0-9]{4,19})\b/g,
+    '<span class="promo-code">$1</span>'
+  );
+  promoTextEl.innerHTML = highlighted;
+  promoBannerEl.style.display = "block";
 }
 
 function renderProducts() {
@@ -1730,6 +1785,13 @@ applyDiscountButtonEl.onclick = async () => {
       appliedDiscount = null;
       discountCodeInputEl.value = "";
       discountErrorTextEl.textContent = `A minimum spend of $${data.minimumRequired} is required to use this code.`;
+      discountErrorTextEl.style.display = "block";
+    } else if (data.reason === "expired") {
+      // A real code that has simply ended reads better than "invalid" — the
+      // buyer typed it correctly and shouldn't be left wondering.
+      appliedDiscount = null;
+      discountCodeInputEl.value = "";
+      discountErrorTextEl.textContent = "This promotion has ended.";
       discountErrorTextEl.style.display = "block";
     } else {
       appliedDiscount = null;
