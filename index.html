@@ -1501,6 +1501,9 @@ function renderSection(headingText, matches, options = {}) {
   if (matches.length === 0) return;
 
   const soldOutVisible = options.soldOutVisible === undefined ? 5 : options.soldOutVisible;
+  // Optional word inserted into the button, e.g. "sold out featured items", so
+  // each row's button says what it will actually reveal.
+  const soldOutNoun = options.soldOutNoun ? `${options.soldOutNoun} ` : "";
 
   const heading = document.createElement("h3");
   heading.className = "section-heading";
@@ -1527,7 +1530,7 @@ function renderSection(headingText, matches, options = {}) {
     showMoreBtn.style.width = "100%";
     // "more" only makes sense when some sold-out cards are already showing.
     const moreWord = visibleSoldOut.length > 0 ? "more " : "";
-    showMoreBtn.textContent = `Show ${hiddenSoldOut.length} ${moreWord}sold out item${hiddenSoldOut.length === 1 ? "" : "s"}`;
+    showMoreBtn.textContent = `Show ${hiddenSoldOut.length} ${moreWord}sold out ${soldOutNoun}item${hiddenSoldOut.length === 1 ? "" : "s"}`;
     showMoreBtn.onclick = () => {
       hiddenWrap.classList.add("expanded");
       showMoreBtn.remove();
@@ -1652,8 +1655,8 @@ function renderProducts() {
   const inStockMatches = matches.filter(p => Number(p.stock || 0) > 0).length;
   resultsCounterEl.textContent = `${inStockMatches} card${inStockMatches === 1 ? "" : "s"} available`;
 
-  renderSection(newTitle, newMatches, { soldOutVisible: 0 });
-  renderSection(featuredTitle, featuredMatches, { soldOutVisible: 0 });
+  renderSection(newTitle, newMatches, { soldOutVisible: 0, soldOutNoun: "newly added" });
+  renderSection(featuredTitle, featuredMatches, { soldOutVisible: 0, soldOutNoun: "featured" });
   renderSection("All Cards", otherMatches);
 
   if (featuredMatches.length === 0 && otherMatches.length === 0) {
