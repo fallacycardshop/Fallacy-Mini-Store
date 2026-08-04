@@ -62,6 +62,7 @@
     font-family: inherit;
     font-weight: 600;
     cursor: pointer;
+    margin-bottom: 10px;
   }
   button:disabled {
     background: #e0e0e0;
@@ -102,8 +103,15 @@
   .status-hidden { background: #fdeceb; color: #a5352c; }
   .status-none { background: #f2f2f2; color: #666; }
 
-  .button-row { display: flex; gap: 10px; flex-wrap: wrap; }
-  .button-row button { flex: 1; min-width: 130px; }
+  /* Vertical breathing room: buttons carry their own bottom margin, and rows
+     of buttons get row-gap too so wrapped buttons don't touch. */
+  .button-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .button-row button { flex: 1; min-width: 130px; margin-bottom: 0; }
   .btn-danger { background: #c0392b; }
   .btn-neutral { background: #555; }
 
@@ -257,7 +265,7 @@
       <button id="dripPreviewButton" class="btn-neutral">Preview Schedule</button>
       <button id="dripScheduleButton">Confirm Schedule</button>
     </div>
-    <div class="button-row" style="margin-top:10px;">
+    <div class="button-row">
       <button id="dripRescheduleButton" class="btn-neutral">Re-spread Pending</button>
       <button id="dripReleaseNowButton" class="btn-danger">Release All Now</button>
     </div>
@@ -297,7 +305,7 @@
     <button id="saveTitleButton">Save Heading</button>
     <button id="loadTitleButton" class="btn-neutral">Load Current</button>
   </div>
-  <button id="resetTitleButton" class="btn-neutral" style="margin-top:10px;">
+  <button id="resetTitleButton" class="btn-neutral">
     Restore Default
   </button>
   <p id="settingsResultText"></p>
@@ -328,7 +336,7 @@
 
   <p id="hideResultText"></p>
 
-  <button id="listHiddenButton" class="btn-neutral" style="margin-top:14px;">
+  <button id="listHiddenButton" class="btn-neutral">
     Show Currently Hidden Cards
   </button>
   <div id="hiddenList" class="hidden-list"></div>
