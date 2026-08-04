@@ -63,7 +63,26 @@ Any background refresh must:
 - pair with a `visibilitychange` listener so returning to the tab refreshes
   immediately, keeping data fresh without frequent polling.
 
-## 5. Prefer computing over storing
+## 5. New per-request state joins the existing MGET
+
+`/api/products` fetches hidden cards, store settings and the drip schedule in a
+single `MGET` via `getStoreState()`. Anything new the storefront needs goes into
+that same call, not a separate round trip. Adding the editable headings and the
+whole drip-release system cost **zero** extra commands per page load because of
+this.
+
+## 6. Orders are recorded server-side before anything else can fail
+
+The full order record is posted with the confirmation request and written to the
+`orders` Redis list in the same call that decrements stock. The FormSubmit email
+is a convenience layer on top.
+
+This exists because of a real incident: the email was sent fire-and-forget after
+confirmation, and the success modal immediately navigated to Telegram — tearing
+down the page and killing the in-flight request. Stock moved, no email arrived,
+and the order was unrecoverable. Never make the email the sole record of a sale.
+
+## 7. Prefer computing over storing
 
 Anything derivable from `ministore-inventory.csv` at request time (price,
 condition, set, rarity, base stock, featured flag, display order) must be
@@ -72,8 +91,17 @@ runtime:
 
 - `sold:<CardID>::<Condition>` — permanent sale counters
 - `reservation:<id>` — in-progress checkouts, TTL-expiring
+- `hidden:cards` — one JSON object: all auction-hidden CardIDs + expiry
+- `store:settings` — one JSON object: editable row headings
+- `drip:schedule` — one JSON object: drip config + groupKey → releaseAt
+- `recent_sales` — capped list for the footer ticker
+- `orders` — capped list: authoritative order backups
 
-## 6. Stock key format is load-bearing
+Note that each multi-item feature uses **one** key holding a JSON object, not
+one key per item. That is deliberate: one key per hidden card or per scheduled
+release would mean a lookup per listing on every page load.
+
+## 8. Stock key format is load-bearing
 
 Group keys are `` `${CardID}::${Condition}` ``. Sold counters in Redis are
 keyed off this exact string. **Changing a CardID or Condition value in the
@@ -83,6 +111,20 @@ migrated to match.
 
 ---
 
+## vercel.json uses legacy explicit `builds`
+
+Every new function MUST be registered in `vercel.json` or it will not deploy.
+The catch-all route then returns storefront HTML and callers fail with a
+confusing JSON parse error rather than a clean 404 — this has caused several
+false debugging trails. Any function that reads the CSV also needs
+`"config": { "includeFiles": "ministore-inventory.csv" }`.
+
+## Work from the deployed version, not from memory
+
+Changes have been made from more than one machine. Before editing a file, fetch
+the current version from GitHub `main` and patch that. Re-uploading an older
+copy has silently destroyed a feature before.
+
 ## Before shipping a change to `api/`
 
 - [ ] Count the Redis commands per request. Does it scale with catalogue size?
@@ -90,3 +132,5 @@ migrated to match.
 - [ ] Does a Redis failure error out rather than defaulting to optimistic stock?
 - [ ] Did any CSV `CardID` or `Condition` value change? If so, migrate `sold:` keys.
 - [ ] Check the Upstash console command count after deploying.
+- [ ] Is the function registered in `vercel.json`, with `includeFiles` if it reads the CSV?
+- [ ] Did you patch the current `main` version rather than an older copy?
