@@ -120,12 +120,20 @@ export default async function handler(req, res) {
       }));
 
     // Scheduling treats both kinds as one queue in CSV order.
+    // Queue order follows the CSV, using each listing's LAST row rather than its
+    // first. A restock row appended at the bottom therefore releases last, in
+    // the order it was added, instead of jumping the queue because the original
+    // row for that card sits near the top of the file.
+    const rowIndexOf = groupKey => {
+      const group = groups.get(groupKey);
+      if (!group) return Number.MAX_SAFE_INTEGER;
+      return group.lastRowIndex !== undefined ? group.lastRowIndex : 0;
+    };
+
     const unscheduled = [
       ...unscheduledNew,
       ...unscheduledRestocks.map(r => r.groupKey),
-    ].sort(
-      (a, b) => Array.from(groups.keys()).indexOf(a) - Array.from(groups.keys()).indexOf(b)
-    );
+    ].sort((a, b) => rowIndexOf(a) - rowIndexOf(b));
 
     const buildStatus = () => {
       const pending = Object.entries(state.releases)
