@@ -502,12 +502,42 @@ export function releaseSlotAt(config, dayOffset, now = Date.now()) {
   return localSlot - tz * 60000; // back to UTC epoch ms
 }
 
-// Assigns release times to the given groupKeys, perDay at a time, starting at
-// the next slot. Pure function — the caller decides whether to persist it.
-export function buildDripSchedule(groupKeys, config, now = Date.now()) {
+// Parses "YYYY-MM-DDTHH:MM" as a wall-clock time in the configured timezone
+// (SGT by default) and returns epoch ms. Returns null if unparseable.
+export function parseLocalDateTime(text, config) {
+  const match = String(text || "").trim().match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/
+  );
+  if (!match) return null;
+  const [, y, mo, d, h, mi] = match;
+  const tz = Number(config.tzOffsetMinutes) || 0;
+  return Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), 0, 0) - tz * 60000;
+}
+
+// Assigns release times to the given groupKeys, perDay at a time.
+//
+// firstSlotAt optionally overrides the FIRST day's moment — used to start a
+// drip later today when the daily slot has already passed, or to delay the
+// start to a chosen date. Subsequent days revert to the configured daily time,
+// counted forward from that first slot.
+//
+// Pure function — the caller decides whether to persist it.
+export function buildDripSchedule(groupKeys, config, now = Date.now(), firstSlotAt = null) {
   const perDay = Math.max(Number(config.perDay) || 1, 1);
-  return groupKeys.map((groupKey, i) => ({
-    groupKey,
-    releaseAt: releaseSlotAt(config, Math.floor(i / perDay), now),
-  }));
+  const validFirst = Number.isFinite(Number(firstSlotAt)) && Number(firstSlotAt) > now
+    ? Number(firstSlotAt)
+    : null;
+
+  return groupKeys.map((groupKey, i) => {
+    const day = Math.floor(i / perDay);
+    let releaseAt;
+    if (validFirst !== null) {
+      releaseAt = day === 0
+        ? validFirst
+        : releaseSlotAt(config, day - 1, validFirst);
+    } else {
+      releaseAt = releaseSlotAt(config, day, now);
+    }
+    return { groupKey, releaseAt };
+  });
 }
