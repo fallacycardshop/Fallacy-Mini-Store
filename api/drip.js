@@ -4,6 +4,7 @@ import {
   getDripState,
   saveDripState,
   buildDripSchedule,
+  parseLocalDateTime,
   isListingReleased,
   isListingNew,
   getEffectiveStock,
@@ -31,7 +32,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { key, action, config, groupKeys } = req.body || {};
+    const { key, action, config, groupKeys, startAt } = req.body || {};
     const adminKey = process.env.ADMIN_RESET_KEY;
 
     if (!adminKey) {
@@ -45,6 +46,13 @@ export default async function handler(req, res) {
     const state = await getDripState(redis);
     const groups = loadInventoryGroups();
     const now = Date.now();
+
+    // Optional one-off override for the FIRST release moment, e.g. "start this
+    // batch at 18:00 today" when the usual 12:00 slot has already passed.
+    // Ignored if it isn't in the future — a past start would publish instantly.
+    const requestedStart = startAt ? parseLocalDateTime(startAt, state.config) : null;
+    const firstSlotAt = requestedStart !== null && requestedStart > now ? requestedStart : null;
+    const startRejected = Boolean(startAt) && firstSlotAt === null;
 
     const describe = groupKey => {
       const group = groups.get(groupKey);
@@ -227,7 +235,7 @@ export default async function handler(req, res) {
 
     // ------------------------------------------------------------- preview --
     if (action === "preview") {
-      const proposed = buildDripSchedule(unscheduled, state.config, now).map(entry => ({
+      const proposed = buildDripSchedule(unscheduled, state.config, now, firstSlotAt).map(entry => ({
         ...describe(entry.groupKey),
         releaseAt: entry.releaseAt,
       }));
@@ -236,6 +244,8 @@ export default async function handler(req, res) {
         proposed,
         perDay: state.config.perDay,
         days: Math.ceil(proposed.length / Math.max(state.config.perDay, 1)),
+        firstSlotAt,
+        startRejected,
       });
     }
 
@@ -245,7 +255,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, scheduled: 0, status: buildStatus() });
       }
       const restockKeys = new Set(unscheduledRestocks.map(r => r.groupKey));
-      buildDripSchedule(unscheduled, state.config, now).forEach(entry => {
+      buildDripSchedule(unscheduled, state.config, now, firstSlotAt).forEach(entry => {
         const group = groups.get(entry.groupKey);
         if (restockKeys.has(entry.groupKey)) {
           // Existing listing: queue the stock increase, leave it visible at its
@@ -267,6 +277,8 @@ export default async function handler(req, res) {
       return res.status(200).json({
         ok: true,
         scheduled: unscheduled.length,
+        firstSlotAt,
+        startRejected,
         status: buildStatus(),
       });
     }
@@ -284,7 +296,7 @@ export default async function handler(req, res) {
         .sort((a, b) => a[1] - b[1])
         .map(([groupKey]) => groupKey);
 
-      buildDripSchedule(pendingKeys, state.config, now).forEach(entry => {
+      buildDripSchedule(pendingKeys, state.config, now, firstSlotAt).forEach(entry => {
         if (state.releases[entry.groupKey] !== undefined && state.releases[entry.groupKey] > now) {
           state.releases[entry.groupKey] = entry.releaseAt;
         }
@@ -297,6 +309,8 @@ export default async function handler(req, res) {
       return res.status(200).json({
         ok: true,
         rescheduled: pendingKeys.length,
+        firstSlotAt,
+        startRejected,
         status: buildStatus(),
       });
     }
