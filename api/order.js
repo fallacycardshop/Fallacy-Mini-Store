@@ -1,120 +1,50 @@
-import crypto from "crypto";
+import { Redis } from "@upstash/redis";
 
-// Validates Telegram Mini App initData against your bot token.
-// Returns true if valid, false if invalid or missing/unconfigured.
-function validateTelegramInitData(initData, botToken) {
-  if (!initData || !botToken) return false;
+const redis = Redis.fromEnv();
 
-  try {
-    const params = new URLSearchParams(initData);
-    const hash = params.get("hash");
-    params.delete("hash");
+const DEFAULT_LIMIT = 25;
+const MAX_LIMIT = 100;
 
-    const dataCheckArr = [];
-    for (const [key, value] of params.entries()) {
-      dataCheckArr.push(`${key}=${value}`);
-    }
-    dataCheckArr.sort();
-    const dataCheckString = dataCheckArr.join("\n");
-
-    const secretKey = crypto
-      .createHmac("sha256", "WebAppData")
-      .update(botToken)
-      .digest();
-
-    const computedHash = crypto
-      .createHmac("sha256", secretKey)
-      .update(dataCheckString)
-      .digest("hex");
-
-    return computedHash === hash;
-  } catch (err) {
-    console.error("initData validation error:", err);
-    return false;
-  }
-}
-
+// Reads back the server-side order backup written by /api/confirm-order.
+//
+// This exists so no order can ever be lost to a failed notification email:
+// the record is saved at the moment stock is decremented, and can be retrieved
+// here regardless of what happened on the buyer's device afterwards.
+//
+// Redis cost: one LRANGE per call. Admin-only, never called by the storefront.
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
-    const { order, telegramUser, initData } = req.body || {};
+    const { key, limit } = req.body || {};
+    const adminKey = process.env.ADMIN_RESET_KEY;
 
-    if (!order || !order.cart || !order.name || !order.phone || !order.address) {
-      return res.status(400).json({ error: "Missing required order fields" });
+    if (!adminKey) {
+      console.error("ADMIN_RESET_KEY is not set in Vercel env vars");
+      return res.status(500).json({ error: "Admin actions are not configured yet." });
+    }
+    if (!key || key !== adminKey) {
+      return res.status(401).json({ error: "Incorrect passphrase." });
     }
 
-    // Optional but recommended: validate the Telegram data actually came from
-    // Telegram, not a spoofed client. Set TELEGRAM_BOT_TOKEN in Vercel env vars
-    // to enable this. If unset, we skip validation and mark the user as unverified.
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const isVerified = botToken
-      ? validateTelegramInitData(initData, botToken)
-      : false;
+    const count = Math.min(Math.max(Number(limit) || DEFAULT_LIMIT, 1), MAX_LIMIT);
+    const raw = await redis.lrange("orders", 0, count - 1);
 
-    // Flatten cart object { id: { product, quantity } } into a line-item array.
-    const items = Object.values(order.cart).map(({ product, quantity }) => ({
-      name: product.name,
-      category: product.category || "",
-      quantity,
-      unitPrice: Number(product.price || 0),
-      lineTotal: Number(product.price || 0) * quantity,
-    }));
+    const orders = (raw || [])
+      .map(entry => {
+        try {
+          return typeof entry === "string" ? JSON.parse(entry) : entry;
+        } catch (e) {
+          return null;
+        }
+      })
+      .filter(Boolean);
 
-    const telegramUsernameDisplay =
-      telegramUser && isVerified ? telegramUser.username || "(no username set)" : "unverified";
-    const telegramUserIdDisplay = telegramUser && isVerified ? telegramUser.id || "" : "";
-
-    const itemsSummary = items
-      .map(
-        (item) =>
-          `${item.name} (${item.category}) x${item.quantity} @ $${item.unitPrice.toFixed(2)} = $${item.lineTotal.toFixed(2)}`
-      )
-      .join("\n");
-
-    // FormSubmit.co needs no API key or account setup — it just needs the
-    // destination email address in the URL itself. We reuse RESEND_TO_EMAIL
-    // here since it's already set correctly in Vercel.
-    const toEmail = process.env.RESEND_TO_EMAIL;
-
-    if (!toEmail) {
-      console.error("RESEND_TO_EMAIL is not set in Vercel env vars");
-      return res.status(500).json({ error: "Order notifications are not configured yet." });
-    }
-
-    const emailRes = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(toEmail)}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        _subject: `New order #${order.id} — ${order.name} — ${order.total || ""}`,
-        _template: "table",
-        Order_ID: order.id,
-        Buyer_Name: order.name,
-        Phone: order.phone,
-        Address: order.address,
-        Telegram_Username: telegramUsernameDisplay,
-        Telegram_User_ID: telegramUserIdDisplay,
-        Subtotal: order.subtotal || "",
-        Shipping: order.shipping || "",
-        Total: order.total || "",
-        Items: itemsSummary,
-      }),
-    });
-
-    if (!emailRes.ok) {
-      const text = await emailRes.text();
-      console.error("FormSubmit request failed:", emailRes.status, text);
-      return res.status(502).json({ error: "Failed to send order notification email." });
-    }
-
-    res.status(200).json({ ok: true });
+    return res.status(200).json({ ok: true, orders });
   } catch (err) {
-    console.error("Order handler error:", err);
-    res.status(500).json({ error: "Unexpected server error." });
+    console.error("orders error:", err);
+    res.status(500).json({ error: "Failed to read stored orders." });
   }
 }
