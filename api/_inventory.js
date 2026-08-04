@@ -190,6 +190,9 @@ export const STORE_SETTINGS_KEY = "store:settings";
 // Editable copy shown above the featured row. Falls back to this if unset.
 export const DEFAULT_FEATURED_TITLE = "\u{1F525} Popular this week";
 
+// Promo strip above the product grid. Empty string = hidden.
+export const DEFAULT_PROMO_TEXT = "";
+
 // CardIDs are compared case-insensitively and trimmed, so "abc123 " typed into
 // the admin box still matches "ABC123" in the CSV.
 export function normaliseCardId(id) {
@@ -304,6 +307,7 @@ export function parseStoreSettings(raw) {
   const settings = {
     featuredTitle: DEFAULT_FEATURED_TITLE,
     newTitle: DEFAULT_NEW_TITLE,
+    promoText: DEFAULT_PROMO_TEXT,
   };
   if (!raw) return settings;
 
@@ -321,6 +325,10 @@ export function parseStoreSettings(raw) {
   }
   if (typeof data.newTitle === "string" && data.newTitle.trim()) {
     settings.newTitle = data.newTitle.trim();
+  }
+  // Promo text is allowed to be blank — that's how the banner is switched off.
+  if (typeof data.promoText === "string") {
+    settings.promoText = data.promoText.trim();
   }
   return settings;
 }
