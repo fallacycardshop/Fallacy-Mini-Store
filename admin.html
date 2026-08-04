@@ -428,7 +428,12 @@ document.getElementById("ordersLoadButton").onclick = async () => {
     ordersListEl.innerHTML = data.orders.map((entry, i) => {
       const r = entry.record || {};
       const blockA = r["PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition"] || "";
-      const blockF = r["PASTE_INTO_COLUMNS_F_to_G_Buyer_Price"] || "";
+      // New three-column format, falling back to the old two-column key so
+      // orders stored before this change still display.
+      const blockF =
+        r["PASTE_INTO_COLUMNS_F_to_H_Buyer_Price_OrderID"] ||
+        r["PASTE_INTO_COLUMNS_F_to_G_Buyer_Price"] ||
+        "";
       return `
         <div class="order-block">
           <div class="order-head">#${escapeHtml(r.Order_ID)} — ${escapeHtml(r.Buyer_Name)} — ${escapeHtml(r.Total)}</div>
@@ -441,7 +446,7 @@ document.getElementById("ordersLoadButton").onclick = async () => {
           <pre>${escapeHtml(r.Items_Readable)}</pre>
           <button class="btn copy-btn" data-copy="${i}-a">Copy columns A–C</button>
           <pre id="copy-${i}-a">${escapeHtml(blockA)}</pre>
-          <button class="btn copy-btn" data-copy="${i}-f">Copy columns F–G</button>
+          <button class="btn copy-btn" data-copy="${i}-f">Copy columns F–H</button>
           <pre id="copy-${i}-f">${escapeHtml(blockF)}</pre>
         </div>`;
     }).join("");
