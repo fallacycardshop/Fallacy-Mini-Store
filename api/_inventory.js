@@ -72,13 +72,21 @@ export function loadInventoryGroups() {
     const rowIsFeatured = ["y", "yes", "true", "1"].includes(featuredRaw);
 
     if (groups.has(groupKey)) {
-      groups.get(groupKey).baseStock += stockValue;
+      const existing = groups.get(groupKey);
+      existing.baseStock += stockValue;
       // If ANY duplicate row for this card+condition is marked Featured,
       // the whole merged listing is featured — regardless of row order.
-      if (rowIsFeatured) groups.get(groupKey).featured = true;
+      if (rowIsFeatured) existing.featured = true;
+      // Track the LAST row this listing appeared on. Drip scheduling orders by
+      // this, so a restock row appended to the bottom of the CSV is queued at
+      // the bottom — where you put it — rather than inheriting the position of
+      // the original row higher up the file.
+      existing.lastRowIndex = index;
     } else {
       groups.set(groupKey, {
         cardId,
+        firstRowIndex: index,
+        lastRowIndex: index,
         name: row.Name || "",
         price: Number(row.Price || 0),
         photo: row.Photo || "",
