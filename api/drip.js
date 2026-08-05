@@ -150,15 +150,22 @@ export default async function handler(req, res) {
       const { freshListings, restocks } = computeUnscheduled();
       const currentUnscheduledCount = freshListings.length + restocks.length;
 
+      // Every listing in one day's batch shares an identical releaseAt, so
+      // sorting by time alone leaves ties resolved by Redis key order. CSV
+      // position is the tie-breaker, matching the order they'll actually be
+      // presented in.
+      const byTimeThenCsv = (a, b) =>
+        a.releaseAt - b.releaseAt || rowIndexOf(a.groupKey) - rowIndexOf(b.groupKey);
+
       const pending = Object.entries(state.releases)
         .filter(([, at]) => at > now)
-        .sort((a, b) => a[1] - b[1])
-        .map(([groupKey, at]) => ({ ...describe(groupKey), releaseAt: at }));
+        .map(([groupKey, at]) => ({ ...describe(groupKey), releaseAt: at }))
+        .sort(byTimeThenCsv);
 
       const newlyIn = Object.keys(state.releases)
         .filter(groupKey => isListingNew(state, groupKey, now))
         .map(groupKey => ({ ...describe(groupKey), releaseAt: state.releases[groupKey] }))
-        .sort((a, b) => b.releaseAt - a.releaseAt);
+        .sort((a, b) => b.releaseAt - a.releaseAt || rowIndexOf(a.groupKey) - rowIndexOf(b.groupKey));
 
       const liveCount = Array.from(groups.keys()).filter(groupKey =>
         isListingReleased(state, groupKey, now)
@@ -166,14 +173,14 @@ export default async function handler(req, res) {
 
       const pendingRestocks = Object.entries(state.levels)
         .filter(([, e]) => e.pendingAt !== null && e.pendingAt > now)
-        .sort((a, b) => a[1].pendingAt - b[1].pendingAt)
         .map(([groupKey, e]) => ({
           ...describe(groupKey),
           releaseAt: e.pendingAt,
           from: e.published,
           to: e.pendingStock,
           isRestock: true,
-        }));
+        }))
+        .sort(byTimeThenCsv);
 
       return {
         initialized: state.initialized,
@@ -182,7 +189,7 @@ export default async function handler(req, res) {
         liveCount,
         pendingCount: pending.length + pendingRestocks.length,
         unscheduledCount: currentUnscheduledCount,
-        pending: [...pending, ...pendingRestocks].sort((a, b) => a.releaseAt - b.releaseAt),
+        pending: [...pending, ...pendingRestocks].sort(byTimeThenCsv),
         newlyIn,
         unscheduled: [
           ...freshListings.map(describe),
