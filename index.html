@@ -783,11 +783,11 @@ footer .btn { width: auto; flex-shrink: 0; }
           <div style="display:flex;flex-direction:column;gap:6px;">
             <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;">
               <input type="radio" name="mailPreference" value="hold" id="mailPrefHold" checked style="width:18px;height:18px;">
-              Hold the package with us (mailing fee paid upfront)
+              Hold my package (mailing fee paid upfront)
             </label>
             <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;">
               <input type="radio" name="mailPreference" value="immediate" id="mailPrefImmediate" style="width:18px;height:18px;">
-              Mail out immediately
+              Mail out now
             </label>
           </div>
         </div>
@@ -2039,7 +2039,12 @@ checkoutButtonEl.onclick = async () => {
     addressLine = document.getElementById("addressLineInput").value.trim();
     unitNumber = document.getElementById("unitNumberInput").value.trim();
     postalCode = document.getElementById("postalCodeInput").value.trim();
-    mailPreference = getMailPreference();
+    // Stored as readable text, so the notification email, the Recent Orders
+    // panel and the generated confirmation/receipt images all show the same
+    // wording the buyer saw. The radio VALUES stay "hold"/"immediate" because
+    // updateTotals keys the mailing fee off them.
+    mailPreference =
+      getMailPreference() === "immediate" ? "Mail out now" : "Hold my package";
 
     if (!name || !phone || !addressLine || !postalCode) {
       alert("Please fill in Name, Phone, Address Line, and Postal Code.");
