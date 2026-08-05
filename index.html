@@ -1706,6 +1706,35 @@ function cartKeyFor(product) {
   return product.stockKey || product.name;
 }
 
+// ---------------------------------------------------------------------------
+// Funnel tracking (Vercel Web Analytics custom events)
+//
+// Fires: view_product_list -> add_to_cart -> view_cart -> begin_checkout ->
+//        payment_shown -> purchase
+//
+// Each step tells you where buyers drop off. Never sends personal data — only
+// counts and coarse values, so nothing identifying leaves the browser. Wrapped
+// so a blocked analytics script can never break the shop.
+// ---------------------------------------------------------------------------
+function trackEvent(name, data) {
+  try {
+    if (typeof window.va === "function") {
+      window.va("event", { name, ...(data || {}) });
+    }
+  } catch (e) {
+    // Analytics must never interfere with a sale.
+  }
+}
+
+// order.total is a display string like "$25.00"; events want a number.
+function orderTotalValue(order) {
+  return Number(String((order && order.total) || "").replace(/[^0-9.]/g, "")) || 0;
+}
+
+function cartItemCount() {
+  return Object.values(cart).reduce((sum, { quantity }) => sum + quantity, 0);
+}
+
 function addToCart(product) {
   const id = cartKeyFor(product);
   const stock = Number(product.stock || 0);
@@ -1724,6 +1753,12 @@ function addToCart(product) {
   saveCart();
   updateCartBadge();
   refreshProductCards(id);
+
+  trackEvent("add_to_cart", {
+    card: product.name,
+    set: product.set || "",
+    price: Number(product.price || 0),
+  });
 }
 
 function updateCartBadge() {
@@ -1853,6 +1888,7 @@ function showProducts() {
 }
 
 function showCart() {
+  trackEvent("view_cart", { items: cartItemCount() });
   currentScreen = "cart";
   productsScreenEl.style.display = "none";
   cartScreenEl.style.display = "block";
@@ -1954,6 +1990,14 @@ checkoutButtonEl.onclick = async () => {
   const telegramUsername = telegramUsernameInputEl.value.trim();
   const hasHold = holdCheckboxEl.checked;
 
+  // Fired before validation, so abandoned attempts are visible too — a gap
+  // between this and payment_shown means the form itself is losing people.
+  trackEvent("begin_checkout", {
+    items: cartItemCount(),
+    hold: hasHold ? "yes" : "no",
+    discount: appliedDiscount ? "yes" : "no",
+  });
+
   if (!telegramUsername) {
     alert("Please enter your Telegram username.");
     return;
@@ -2047,6 +2091,13 @@ checkoutButtonEl.onclick = async () => {
   }
 
   order.reservationId = reservationId;
+
+  // Stock reserved and the PayNow QR is on screen. Anyone lost between here and
+  // "purchase" is hesitating at payment, not at the form.
+  trackEvent("payment_shown", {
+    items: cartItemCount(),
+    total: orderTotalValue(order),
+  });
   pendingOrder = order;
   saveLastOrder(order);
   paynowAmountEl.textContent = total;
@@ -2077,6 +2128,9 @@ paynowConfirmButtonEl.onclick = async () => {
     });
     if (!confirmRes.ok) {
       const errData = await confirmRes.json().catch(() => ({}));
+      // Worth watching: a buyer who paid attention all the way here and then
+      // lost their reservation is the most expensive kind of drop-off.
+      trackEvent("checkout_failed", { reason: "reservation_expired" });
       alert(errData.error || "Your reservation has expired. Please try again.");
       pendingOrder = null;
       loadProducts();
@@ -2088,6 +2142,13 @@ paynowConfirmButtonEl.onclick = async () => {
     alert("Something went wrong confirming your order. Please try again, or message us directly if this keeps happening.");
     return;
   }
+
+  // Order is confirmed server-side at this point — the sale is real.
+  trackEvent("purchase", {
+    items: cartItemCount(),
+    total: orderTotalValue(pendingOrder),
+    discount: pendingOrder.discountCode ? "yes" : "no",
+  });
 
   // Queue BEFORE sending, so the order survives even if this page dies mid
   // request. Awaited so the send completes before the success modal (which
