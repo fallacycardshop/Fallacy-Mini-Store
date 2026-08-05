@@ -205,11 +205,48 @@
     margin: 0 0 4px;
   }
 
+  .funnel-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .funnel-step .label { flex: 0 0 120px; font-size: 12px; font-weight: 600; }
+  .funnel-bar-wrap { flex: 1; background: #f2eef1; border-radius: 6px; overflow: hidden; height: 24px; }
+  .funnel-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #d1447b, #e8809f);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 7px;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    min-width: 26px;
+    box-sizing: border-box;
+  }
+  .funnel-rate { flex: 0 0 58px; text-align: right; font-size: 12px; color: #777; }
+  .funnel-headline { font-size: 14px; font-weight: 700; margin: 16px 0 10px; }
+
   .hidden-list { margin-top: 14px; font-size: 13px; }
   .hidden-list div { padding: 6px 0; border-bottom: 1px solid #eee; }
 </style>
 </head>
 <body>
+
+<div class="card">
+  <h1>Sales Funnel</h1>
+  <p>
+    Where shoppers drop off, counted server-side (no Pro plan needed). The gaps
+    between steps are the useful part: cart&nbsp;&rarr;&nbsp;checkout shows form
+    friction, payment&nbsp;&rarr;&nbsp;purchase shows hesitation at PayNow.
+  </p>
+  <input type="password" id="funnelPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
+  <button id="funnelLoadButton">Load Funnel Report</button>
+  <p id="funnelResultText"></p>
+  <div id="funnelReport"></div>
+</div>
 
 <div class="card">
   <h1>Recent Orders</h1>
@@ -360,6 +397,105 @@
 </div>
 
 <script>
+// --------------------------------------------------------------------------
+// Sales funnel report
+// --------------------------------------------------------------------------
+const funnelResultEl = document.getElementById("funnelResultText");
+const funnelReportEl = document.getElementById("funnelReport");
+
+document.getElementById("funnelLoadButton").onclick = async () => {
+  const key = document.getElementById("funnelPassphrase").value.trim();
+  if (!key) {
+    funnelResultEl.textContent = "Please enter the passphrase.";
+    funnelResultEl.className = "error";
+    return;
+  }
+
+  funnelResultEl.textContent = "Loading...";
+  funnelResultEl.className = "";
+  funnelReportEl.innerHTML = "";
+
+  try {
+    const res = await fetch("/api/track", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, action: "report" }),
+    });
+
+    const raw = await res.text();
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      funnelResultEl.textContent =
+        raw.trim().startsWith("<")
+          ? `The /api/track endpoint isn't deployed (HTTP ${res.status}). Check that vercel.json lists api/track.js under "builds", then redeploy.`
+          : `Unexpected response from the server (HTTP ${res.status}).`;
+      funnelResultEl.className = "error";
+      return;
+    }
+
+    if (!res.ok) {
+      funnelResultEl.textContent = data.error || `Something went wrong (HTTP ${res.status}).`;
+      funnelResultEl.className = "error";
+      return;
+    }
+
+    const t = data.totals;
+    const steps = [
+      ["Visits", t.page_view],
+      ["Added to cart", t.add_to_cart],
+      ["Opened cart", t.view_cart],
+      ["Started checkout", t.begin_checkout],
+      ["Reached PayNow", t.payment_shown],
+      ["Purchased", t.purchase],
+    ];
+    const top = Math.max(...steps.map(s => s[1]), 1);
+
+    const bars = steps.map(([label, count], i) => {
+      const pct = Math.round((count / top) * 100);
+      // Rate is measured against the previous step, which is where the drop-off
+      // actually happens — not against the top of the funnel.
+      const prev = i === 0 ? null : steps[i - 1][1];
+      const rate = prev ? (prev > 0 ? Math.round((count / prev) * 100) + "%" : "—") : "";
+      return `
+        <div class="funnel-step">
+          <span class="label">${label}</span>
+          <span class="funnel-bar-wrap"><span class="funnel-bar" style="width:${Math.max(pct, 3)}%">${count}</span></span>
+          <span class="funnel-rate">${rate}</span>
+        </div>`;
+    }).join("");
+
+    const conversion = t.page_view > 0 ? ((t.purchase / t.page_view) * 100).toFixed(1) : "0.0";
+    const rows = data.days
+      .filter(d => d.page_view || d.purchase || d.add_to_cart)
+      .map(d => `
+        <tr>
+          <td>${d.date}</td>
+          <td class="num">${d.page_view}</td>
+          <td class="num">${d.add_to_cart}</td>
+          <td class="num">${d.begin_checkout}</td>
+          <td class="num"><strong>${d.purchase}</strong></td>
+          <td class="num">${d.revenue ? "$" + d.revenue.toFixed(2) : "—"}</td>
+        </tr>`).join("");
+
+    funnelReportEl.innerHTML = `
+      <div class="funnel-headline">Last ${data.reportDays} days · ${conversion}% of visits became orders${t.revenue ? ` · $${t.revenue.toFixed(2)} taken` : ""}</div>
+      ${bars}
+      ${t.checkout_failed ? `<p class="muted" style="font-size:12px;">${t.checkout_failed} checkout(s) failed on an expired reservation.</p>` : ""}
+      <div class="funnel-headline">By day</div>
+      <table class="listing-table">
+        <thead><tr><th>Date</th><th class="num">Visits</th><th class="num">Carts</th><th class="num">Checkouts</th><th class="num">Orders</th><th class="num">Revenue</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="6" class="muted">No data yet.</td></tr>'}</tbody>
+      </table>`;
+
+    funnelResultEl.textContent = "";
+  } catch (err) {
+    funnelResultEl.textContent = "Network error — please try again.";
+    funnelResultEl.className = "error";
+  }
+};
+
 // --------------------------------------------------------------------------
 // Recent orders (server-side backup)
 // --------------------------------------------------------------------------
