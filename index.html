@@ -1682,7 +1682,10 @@ function renderProducts() {
   renderSection(featuredTitle, featuredMatches, { soldOutVisible: 0, soldOutNoun: "featured" });
   renderSection("All Cards", otherMatches);
 
-  if (featuredMatches.length === 0 && otherMatches.length === 0) {
+  // Must include newMatches: this overwrites the whole list, so omitting the
+  // Newly In Stock row meant a filter matching only newly-released cards wiped
+  // the results it had just rendered and claimed nothing was found.
+  if (newMatches.length === 0 && featuredMatches.length === 0 && otherMatches.length === 0) {
     productListEl.innerHTML =
       '<p style="text-align:center;color:#777;">No products found.</p>';
   }
