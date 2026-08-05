@@ -56,7 +56,7 @@ export default async function handler(req, res) {
     // the id gets assigned afterward, once we know the actual display order
     // (featured cards first, everything else daily-shuffled).
     const unordered = await Promise.all(
-      groupEntries.map(async ([groupKey, group], csvIndex) => {
+      groupEntries.map(async ([groupKey, group], catalogueIndex) => {
         const sold = soldByKey[groupKey] || 0;
 
         const reserved = reservedMap[groupKey] || 0;
@@ -75,7 +75,11 @@ export default async function handler(req, res) {
           // Kept so the Newly In Stock row can be ordered deterministically
           // (newest release first, CSV order within the same release) instead
           // of being shuffled like the rest of the catalogue.
-          csvIndex,
+          // The listing's LAST row in the CSV, matching how drip.js orders the
+          // release queue. Using the catalogue position instead would put a
+          // restock at its original row's position, so the storefront order
+          // would disagree with the admin preview.
+          csvIndex: group.lastRowIndex !== undefined ? group.lastRowIndex : catalogueIndex,
           releaseAt: getLastReleaseMoment(drip, groupKey, now) || 0,
           name: group.name,
           price: group.price,
