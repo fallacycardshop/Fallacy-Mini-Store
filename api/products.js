@@ -120,9 +120,13 @@ export default async function handler(req, res) {
     // Newly-released listings are NOT shuffled. They only sit in their own row
     // for a day, and a stable order reads as a genuine "what just landed" list:
     // most recent release first, and CSV order within a single release batch.
+    // Ordered PURELY by CSV position — release time is deliberately not part of
+    // the sort. The row only ever holds a window's worth of cards, and mixing
+    // release times in meant anything republished or restocked jumped above
+    // everything released earlier, no matter where it sits in the CSV.
     const newlyIn = unordered
       .filter(p => p.isNew)
-      .sort((a, b) => b.releaseAt - a.releaseAt || a.csvIndex - b.csvIndex);
+      .sort((a, b) => a.csvIndex - b.csvIndex);
 
     // Everything below excludes newly-in listings, so nothing appears twice and
     // the shuffled rows don't hold empty slots for cards rendered further up.
