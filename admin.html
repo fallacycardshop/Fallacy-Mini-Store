@@ -312,6 +312,17 @@
       <button id="dripReleaseNowButton" class="btn-danger">Release All Now</button>
     </div>
 
+    <h3 style="margin-top:22px;font-size:15px;">Align Expiry Times</h3>
+    <p class="config-note">
+      Puts every card currently in the &ldquo;Newly in stock!&rdquo; row on the same
+      release time so they all expire together. Uses the <strong>earliest</strong>
+      time in the row, so nothing gets its stay extended.
+    </p>
+    <div class="button-row">
+      <button id="alignEarliestButton" class="btn-neutral">Align to Earliest</button>
+      <button id="alignLatestButton" class="btn-neutral">Align to Latest</button>
+    </div>
+
     <h3 style="margin-top:22px;font-size:15px;">Publish Stock Now</h3>
     <p class="config-note">
       Push a card&rsquo;s current CSV stock live immediately, skipping the queue.
@@ -873,6 +884,37 @@ document.getElementById("dripRescheduleButton").onclick = async () => {
     dripResultEl.className = "error";
   }
 };
+
+async function alignNewWindow(mode) {
+  const label = mode === "latest" ? "latest" : "earliest";
+  if (!confirm(`Put every card in the Newly in stock row on the ${label} release time, so they all expire together?`)) return;
+
+  dripResultEl.textContent = "Aligning...";
+  dripResultEl.className = "";
+
+  try {
+    const data = await callDripApi("alignNewWindow", { mode });
+    if (!data) return;
+    renderDripStatus(data.status);
+
+    if (data.message) {
+      dripResultEl.textContent = data.message;
+      dripResultEl.className = "error";
+      return;
+    }
+
+    dripResultEl.textContent = data.aligned
+      ? `Aligned ${data.aligned} of ${data.totalInRow} card(s). All now expire ${fmtDateTime(data.expiresAt)}.`
+      : `All ${data.totalInRow} card(s) already shared the same time — expiring ${fmtDateTime(data.expiresAt)}.`;
+    dripResultEl.className = "success";
+  } catch (err) {
+    dripResultEl.textContent = "Network error — please try again.";
+    dripResultEl.className = "error";
+  }
+}
+
+document.getElementById("alignEarliestButton").onclick = () => alignNewWindow("earliest");
+document.getElementById("alignLatestButton").onclick = () => alignNewWindow("latest");
 
 document.getElementById("publishNowButton").onclick = async () => {
   const cardId = document.getElementById("publishCardId").value.trim();
