@@ -1197,6 +1197,12 @@ document.getElementById("lookupButton").onclick = async () => {
       let pill;
       if (r.hiddenUntil) {
         pill = `<span class="pill pill-hidden">hidden until ${formatWhen(r.hiddenUntil)}</span>`;
+      } else if (r.scheduled && !r.onStore) {
+        // Scheduled by the drip but not released yet — previously reported as
+        // "live on store", which was wrong and misleading.
+        pill = `<span class="pill pill-none">scheduled${
+          r.nextReleaseAt ? ` &mdash; releases ${formatWhen(r.nextReleaseAt)}` : ", not released"
+        }</span>`;
       } else if (r.onStore) {
         pill = '<span class="pill pill-live">live on store</span>';
       } else {
@@ -1206,7 +1212,9 @@ document.getElementById("lookupButton").onclick = async () => {
       const rows = r.listings.map(l => `
         <tr>
           <td>${l.condition || "-"}</td>
-          <td class="num">${l.baseStock}</td>
+          <td class="num">${l.publishedStock !== undefined && l.publishedStock !== l.baseStock
+            ? `${l.publishedStock} <span class="muted">/ ${l.baseStock}</span>`
+            : l.baseStock}</td>
           <td class="num">${l.sold}</td>
           <td class="num"><strong>${l.available}</strong></td>
         </tr>
@@ -1217,7 +1225,7 @@ document.getElementById("lookupButton").onclick = async () => {
           <strong>${r.name}</strong> <span class="muted">(${r.cardId})</span> ${pill}
           <table class="listing-table">
             <thead>
-              <tr><th>Condition</th><th class="num">Stock</th><th class="num">Sold</th><th class="num">Available</th></tr>
+              <tr><th>Condition</th><th class="num">Live / CSV</th><th class="num">Sold</th><th class="num">Available</th></tr>
             </thead>
             <tbody>${rows}</tbody>
           </table>
