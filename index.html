@@ -1717,12 +1717,30 @@ function cartKeyFor(product) {
 // so a blocked analytics script can never break the shop.
 // ---------------------------------------------------------------------------
 function trackEvent(name, data) {
+  // Vercel custom events (Pro plans only — harmless no-op otherwise).
   try {
     if (typeof window.va === "function") {
       window.va("event", { name, ...(data || {}) });
     }
   } catch (e) {
     // Analytics must never interfere with a sale.
+  }
+
+  // Our own counter, which works on any plan. One Redis HINCRBY per event.
+  // keepalive lets the request survive the page navigating away — important for
+  // the purchase event, which fires just before we open Telegram.
+  try {
+    fetch("/api/track", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event: name,
+        revenue: data && data.total ? data.total : undefined,
+      }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch (e) {
+    // Ignored on purpose — tracking must never block a sale.
   }
 }
 
@@ -2302,6 +2320,10 @@ async function loadRecentSales() {
 
 loadProducts();
 loadRecentSales();
+
+// Counted once per page load (not on the 60s refresh), giving the funnel a
+// top-of-funnel number to measure the other steps against.
+trackEvent("page_view");
 
 // Retry any order notification that never made it out — e.g. the buyer closed
 // the Telegram webview before the request finished on a previous visit.
