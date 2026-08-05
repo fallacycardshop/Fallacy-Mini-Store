@@ -8,6 +8,7 @@ import {
   isListingReleased,
   isListingNew,
   getEffectiveStock,
+  normaliseCardId,
   DEFAULT_DRIP_CONFIG,
 } from "./_inventory.js";
 
@@ -32,7 +33,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { key, action, config, groupKeys, startAt } = req.body || {};
+    const { key, action, config, groupKeys, startAt, cardId, keepNew } = req.body || {};
     const adminKey = process.env.ADMIN_RESET_KEY;
 
     if (!adminKey) {
@@ -72,9 +73,19 @@ export default async function handler(req, res) {
     let consolidated = false;
     Object.entries(state.levels).forEach(([groupKey, entry]) => {
       if (entry.pendingAt !== null && entry.pendingAt <= now && entry.pendingStock !== null) {
+        const landedAt = entry.pendingAt;
         entry.published = entry.pendingStock;
         entry.pendingStock = null;
         entry.pendingAt = null;
+
+        // CRITICAL: carry the restock's moment onto the listing's release time.
+        // getLastReleaseMoment() reads pendingAt to know when stock landed, so
+        // clearing it without this made the card fall back to its ORIGINAL
+        // release date — instantly ejecting a just-restocked card from the
+        // Newly In Stock row the moment any admin action ran.
+        if (!state.releases[groupKey] || state.releases[groupKey] < landedAt) {
+          state.releases[groupKey] = landedAt;
+        }
         consolidated = true;
       }
     });
@@ -377,6 +388,69 @@ export default async function handler(req, res) {
       return res.status(200).json({
         ok: true,
         released: targets.length,
+        status: buildStatus(),
+      });
+    }
+
+    // ---------------------------------------------------------- publishNow --
+    // Manual override: push a listing's CURRENT CSV stock live immediately,
+    // skipping the drip queue entirely. For correcting a number after a card
+    // has already dripped out, or listing extra copies straight away.
+    //
+    // keepNew (default true) also stamps the release moment as now, so the card
+    // returns to the Newly In Stock row. Pass false to top up stock quietly
+    // without pushing it back to the top of the shop.
+    if (action === "publishNow") {
+      const wantedId = normaliseCardId(cardId);
+      const targets = [];
+
+      if (Array.isArray(groupKeys) && groupKeys.length > 0) {
+        groupKeys.forEach(k => { if (groups.has(k)) targets.push(k); });
+      } else if (wantedId) {
+        // A Card ID covers every condition of that card.
+        Array.from(groups.entries()).forEach(([groupKey, group]) => {
+          if (normaliseCardId(group.cardId) === wantedId) targets.push(groupKey);
+        });
+      }
+
+      if (targets.length === 0) {
+        return res.status(404).json({
+          error: "No listing found for that Card ID.",
+        });
+      }
+
+      const updated = targets.map(groupKey => {
+        const group = groups.get(groupKey);
+        const before = state.levels[groupKey] ? state.levels[groupKey].published : null;
+
+        state.levels[groupKey] = {
+          published: group.baseStock,
+          pendingStock: null,
+          pendingAt: null,
+        };
+
+        // Make sure it's actually released — this doubles as "publish a card
+        // that's still sitting in the queue".
+        if (state.releases[groupKey] === undefined || state.releases[groupKey] > now) {
+          state.releases[groupKey] = now;
+        } else if (keepNew !== false) {
+          state.releases[groupKey] = now;
+        }
+
+        return {
+          ...describe(groupKey),
+          from: before,
+          to: group.baseStock,
+        };
+      });
+
+      state.initialized = true;
+      await saveDripState(redis, state);
+
+      return res.status(200).json({
+        ok: true,
+        updated,
+        keptNew: keepNew !== false,
         status: buildStatus(),
       });
     }
