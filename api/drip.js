@@ -309,14 +309,18 @@ export default async function handler(req, res) {
     // Re-spreads everything still pending using the current settings, so
     // changing cards/day or the release time takes effect on the queue.
     if (action === "reschedule") {
+      // Re-sorted by CSV position, NOT by the existing release times. Sorting by
+      // the current times would just preserve whatever order was applied when
+      // they were first scheduled, which makes it impossible to correct an
+      // order after the fact. Re-spread now genuinely re-reads the CSV.
       const pendingKeys = [
-        ...Object.entries(state.releases).filter(([, at]) => at > now).map(([k, at]) => [k, at]),
-        ...Object.entries(state.levels)
-          .filter(([, e]) => e.pendingAt !== null && e.pendingAt > now)
-          .map(([k, e]) => [k, e.pendingAt]),
+        ...Object.keys(state.releases).filter(k => state.releases[k] > now),
+        ...Object.keys(state.levels).filter(
+          k => state.levels[k].pendingAt !== null && state.levels[k].pendingAt > now
+        ),
       ]
-        .sort((a, b) => a[1] - b[1])
-        .map(([groupKey]) => groupKey);
+        .filter((k, i, arr) => arr.indexOf(k) === i) // a key can be in both lists
+        .sort((a, b) => rowIndexOf(a) - rowIndexOf(b));
 
       buildDripSchedule(pendingKeys, state.config, now, firstSlotAt).forEach(entry => {
         if (state.releases[entry.groupKey] !== undefined && state.releases[entry.groupKey] > now) {
