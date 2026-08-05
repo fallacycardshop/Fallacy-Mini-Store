@@ -311,6 +311,21 @@
       <button id="dripRescheduleButton" class="btn-neutral">Re-spread Pending</button>
       <button id="dripReleaseNowButton" class="btn-danger">Release All Now</button>
     </div>
+
+    <h3 style="margin-top:22px;font-size:15px;">Publish Stock Now</h3>
+    <p class="config-note">
+      Push a card&rsquo;s current CSV stock live immediately, skipping the queue.
+      Use after editing the Stock column when you don&rsquo;t want to wait for a
+      scheduled release. Covers every condition of that Card ID.
+    </p>
+    <input type="text" id="publishCardId" placeholder="Card ID (e.g. SV9109)" autocomplete="off">
+    <div class="checkbox-row">
+      <input type="checkbox" id="publishKeepNew" checked>
+      <label for="publishKeepNew">
+        Also put it back in the &ldquo;Newly in stock!&rdquo; row
+      </label>
+    </div>
+    <button id="publishNowButton">Publish Stock Now</button>
   </div>
 
   <div id="dripInit" style="display:none;">
@@ -845,6 +860,38 @@ document.getElementById("dripRescheduleButton").onclick = async () => {
     if (!data) return;
     renderDripStatus(data.status);
     dripResultEl.textContent = `Re-spread ${data.rescheduled} pending listing(s).`;
+    dripResultEl.className = "success";
+  } catch (err) {
+    dripResultEl.textContent = "Network error — please try again.";
+    dripResultEl.className = "error";
+  }
+};
+
+document.getElementById("publishNowButton").onclick = async () => {
+  const cardId = document.getElementById("publishCardId").value.trim();
+  const keepNew = document.getElementById("publishKeepNew").checked;
+
+  if (!cardId) {
+    dripResultEl.textContent = "Please enter a Card ID.";
+    dripResultEl.className = "error";
+    return;
+  }
+  if (!confirm(`Publish the current CSV stock for ${cardId} immediately?`)) return;
+
+  dripResultEl.textContent = "Publishing...";
+  dripResultEl.className = "";
+
+  try {
+    const data = await callDripApi("publishNow", { cardId, keepNew });
+    if (!data) return;
+    renderDripStatus(data.status);
+
+    const lines = data.updated
+      .map(u => `${u.name} (${u.condition}): ${u.from === null ? "?" : u.from} \u2192 ${u.to}`)
+      .join("; ");
+    dripResultEl.textContent =
+      `Published ${data.updated.length} listing(s) — ${lines}.` +
+      (data.keptNew ? " Back in the Newly in stock row." : "");
     dripResultEl.className = "success";
   } catch (err) {
     dripResultEl.textContent = "Network error — please try again.";
