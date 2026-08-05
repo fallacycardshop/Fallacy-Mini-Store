@@ -33,7 +33,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { key, action, config, groupKeys, startAt, cardId, keepNew } = req.body || {};
+    const { key, action, config, groupKeys, startAt, cardId, keepNew, alignToBatch } = req.body || {};
     const adminKey = process.env.ADMIN_RESET_KEY;
 
     if (!adminKey) {
@@ -419,6 +419,23 @@ export default async function handler(req, res) {
         });
       }
 
+      // Timestamp shared by everything published in this action. When
+      // alignToBatch is on (the default) it matches the newest release already
+      // sitting in the Newly In Stock row, so the reinstated card joins that
+      // batch instead of jumping ahead of it. Identical timestamps mean the row
+      // falls back to its CSV tie-breaker, giving true CSV order.
+      let publishAt = now;
+      if (keepNew !== false && alignToBatch !== false) {
+        let newestInRow = 0;
+        Array.from(groups.keys()).forEach(groupKey => {
+          if (isListingNew(state, groupKey, now)) {
+            const at = state.releases[groupKey] || 0;
+            if (at > newestInRow) newestInRow = at;
+          }
+        });
+        if (newestInRow > 0) publishAt = newestInRow;
+      }
+
       const updated = targets.map(groupKey => {
         const group = groups.get(groupKey);
         const before = state.levels[groupKey] ? state.levels[groupKey].published : null;
@@ -432,9 +449,9 @@ export default async function handler(req, res) {
         // Make sure it's actually released — this doubles as "publish a card
         // that's still sitting in the queue".
         if (state.releases[groupKey] === undefined || state.releases[groupKey] > now) {
-          state.releases[groupKey] = now;
+          state.releases[groupKey] = publishAt;
         } else if (keepNew !== false) {
-          state.releases[groupKey] = now;
+          state.releases[groupKey] = publishAt;
         }
 
         return {
@@ -451,6 +468,8 @@ export default async function handler(req, res) {
         ok: true,
         updated,
         keptNew: keepNew !== false,
+        publishAt,
+        alignedToBatch: keepNew !== false && alignToBatch !== false && publishAt !== now,
         status: buildStatus(),
       });
     }
