@@ -393,6 +393,57 @@ export default async function handler(req, res) {
       });
     }
 
+    // ------------------------------------------------------- alignNewWindow --
+    // Normalises every card currently in the Newly In Stock row onto ONE
+    // release timestamp, so they all expire together.
+    //
+    // Defaults to the EARLIEST timestamp in the row: aligning to the latest
+    // would extend cards that were due to expire, quietly keeping stale stock
+    // in a row that's meant to mean "just landed". Pass mode: "latest" to
+    // extend instead.
+    if (action === "alignNewWindow") {
+      const inRow = Array.from(groups.keys()).filter(groupKey =>
+        isListingNew(state, groupKey, now)
+      );
+
+      if (inRow.length === 0) {
+        return res.status(200).json({
+          ok: true,
+          aligned: 0,
+          message: "Nothing is in the Newly in stock row right now.",
+          status: buildStatus(),
+        });
+      }
+
+      const stamps = inRow.map(groupKey => state.releases[groupKey] || 0).filter(Boolean);
+      const target =
+        req.body && req.body.mode === "latest"
+          ? Math.max(...stamps)
+          : Math.min(...stamps);
+
+      const changed = [];
+      inRow.forEach(groupKey => {
+        const before = state.releases[groupKey] || 0;
+        if (before !== target) {
+          state.releases[groupKey] = target;
+          changed.push({ ...describe(groupKey), from: before, to: target });
+        }
+      });
+
+      if (changed.length > 0) await saveDripState(redis, state);
+
+      const windowMs = Math.max(Number(state.config.newWindowHours) || 0, 0) * 3600000;
+      return res.status(200).json({
+        ok: true,
+        aligned: changed.length,
+        totalInRow: inRow.length,
+        releaseAt: target,
+        expiresAt: target + windowMs,
+        changed,
+        status: buildStatus(),
+      });
+    }
+
     // ---------------------------------------------------------- publishNow --
     // Manual override: push a listing's CURRENT CSV stock live immediately,
     // skipping the drip queue entirely. For correcting a number after a card
