@@ -176,7 +176,8 @@ export default async function handler(req, res) {
       const newlyIn = Object.keys(state.releases)
         .filter(groupKey => isListingNew(state, groupKey, now))
         .map(groupKey => ({ ...describe(groupKey), releaseAt: state.releases[groupKey] }))
-        .sort((a, b) => b.releaseAt - a.releaseAt || rowIndexOf(a.groupKey) - rowIndexOf(b.groupKey));
+        // Matches the storefront: CSV order, not release order.
+        .sort((a, b) => rowIndexOf(a.groupKey) - rowIndexOf(b.groupKey));
 
       const liveCount = Array.from(groups.keys()).filter(groupKey =>
         isListingReleased(state, groupKey, now)
