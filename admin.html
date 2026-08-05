@@ -325,6 +325,13 @@
         Also put it back in the &ldquo;Newly in stock!&rdquo; row
       </label>
     </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="publishAlignBatch" checked>
+      <label for="publishAlignBatch">
+        Slot it into the current batch so the row stays in CSV order
+        (untick to put it at the very top instead)
+      </label>
+    </div>
     <button id="publishNowButton">Publish Stock Now</button>
   </div>
 
@@ -882,7 +889,8 @@ document.getElementById("publishNowButton").onclick = async () => {
   dripResultEl.className = "";
 
   try {
-    const data = await callDripApi("publishNow", { cardId, keepNew });
+    const alignToBatch = document.getElementById("publishAlignBatch").checked;
+    const data = await callDripApi("publishNow", { cardId, keepNew, alignToBatch });
     if (!data) return;
     renderDripStatus(data.status);
 
@@ -891,7 +899,11 @@ document.getElementById("publishNowButton").onclick = async () => {
       .join("; ");
     dripResultEl.textContent =
       `Published ${data.updated.length} listing(s) — ${lines}.` +
-      (data.keptNew ? " Back in the Newly in stock row." : "");
+      (data.keptNew
+        ? data.alignedToBatch
+          ? " Back in the Newly in stock row, in CSV order with the current batch."
+          : " Back at the top of the Newly in stock row."
+        : "");
     dripResultEl.className = "success";
   } catch (err) {
     dripResultEl.textContent = "Network error — please try again.";
