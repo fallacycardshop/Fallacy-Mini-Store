@@ -1730,7 +1730,9 @@ function trackEvent(name, data) {
   // keepalive lets the request survive the page navigating away — important for
   // the purchase event, which fires just before we open Telegram.
   try {
-    fetch("/api/track", {
+    // Funnel counters live on the recent-sales endpoint (Hobby plan caps the
+    // project at 12 serverless functions, so the two share one).
+    fetch("/api/recent-sales", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
