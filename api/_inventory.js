@@ -82,6 +82,21 @@ export function loadInventoryGroups() {
       // the bottom — where you put it — rather than inheriting the position of
       // the original row higher up the file.
       existing.lastRowIndex = index;
+
+      // LATEST ROW WINS for the descriptive fields. Re-listing a card at a new
+      // price means the newer row is the current one, so a later row overrides
+      // the earlier values rather than being ignored. Stock is the exception —
+      // that accumulates, because duplicate rows are additional copies.
+      const latestPrice = Number(row.Price || 0);
+      if (row.Price !== undefined && row.Price !== "" && latestPrice > 0) {
+        existing.price = latestPrice;
+      }
+      if (row.Photo) existing.photo = row.Photo;
+      if (row.Name) existing.name = row.Name;
+      if (row.Set) existing.set = row.Set;
+      if (row.Category || row.Rarity) {
+        existing.category = row.Category || row.Rarity;
+      }
     } else {
       groups.set(groupKey, {
         cardId,
