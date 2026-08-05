@@ -416,7 +416,7 @@ document.getElementById("funnelLoadButton").onclick = async () => {
   funnelReportEl.innerHTML = "";
 
   try {
-    const res = await fetch("/api/track", {
+    const res = await fetch("/api/recent-sales", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key, action: "report" }),
@@ -429,7 +429,7 @@ document.getElementById("funnelLoadButton").onclick = async () => {
     } catch (e) {
       funnelResultEl.textContent =
         raw.trim().startsWith("<")
-          ? `The /api/track endpoint isn't deployed (HTTP ${res.status}). Check that vercel.json lists api/track.js under "builds", then redeploy.`
+          ? `The /api/recent-sales endpoint isn't deployed (HTTP ${res.status}). Check that vercel.json lists api/recent-sales.js under "builds", then redeploy.`
           : `Unexpected response from the server (HTTP ${res.status}).`;
       funnelResultEl.className = "error";
       return;
