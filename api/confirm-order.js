@@ -17,10 +17,28 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing reservationId" });
     }
 
-    const raw = await redis.get(`reservation:${reservationId}`);
+    // ATOMIC CLAIM. GETDEL fetches and deletes in a single operation, so only
+    // ONE request can ever obtain the reservation.
+    //
+    // This previously used GET ... then DEL later. A buyer double-tapping the
+    // confirm button sent two requests that BOTH passed the GET before either
+    // reached the DEL — so the sold counters were incremented twice for a
+    // single order and two order records were written. GETDEL makes the second
+    // request find nothing and fail cleanly.
+    let raw;
+    try {
+      raw = await redis.getdel(`reservation:${reservationId}`);
+    } catch (e) {
+      // Older Redis without GETDEL: fall back to a delete-first claim, which is
+      // still atomic enough — DEL returns 1 only for the request that removed it.
+      const existing = await redis.get(`reservation:${reservationId}`);
+      const removed = await redis.del(`reservation:${reservationId}`);
+      raw = removed ? existing : null;
+    }
+
     if (!raw) {
-      // Either it expired (5.5 min passed) or was already confirmed/released.
-      return res.status(410).json({ error: "Your reservation has expired. Please try again." });
+      // Expired, already confirmed, or a duplicate submission.
+      return res.status(410).json({ error: "This order has already been confirmed." });
     }
 
     let data;
@@ -33,10 +51,11 @@ export default async function handler(req, res) {
 
     const items = data.items || [];
 
+    // The reservation is already claimed and removed above, so reaching this
+    // point means this request is the sole owner of the order.
     await Promise.all(
       items.map(item => redis.incrby(`sold:${item.key}`, item.quantity))
     );
-    await redis.del(`reservation:${reservationId}`);
 
     // AUTHORITATIVE ORDER BACKUP.
     //
