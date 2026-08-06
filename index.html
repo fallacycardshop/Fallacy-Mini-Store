@@ -2133,13 +2133,25 @@ checkoutButtonEl.onclick = async () => {
   startPaynowTimer();
 };
 
+// Guards against a double-tap. The whole handler is async, so without this a
+// second tap starts a second confirmation before the first has finished and
+// cleared pendingOrder — which is exactly how one order was recorded twice.
+let isConfirmingOrder = false;
+
 paynowConfirmButtonEl.onclick = async () => {
+  if (isConfirmingOrder) return;
+
   clearPaynowTimer();
 
   if (!pendingOrder) {
     showCart();
     return;
   }
+
+  isConfirmingOrder = true;
+  const confirmLabel = paynowConfirmButtonEl.textContent;
+  paynowConfirmButtonEl.disabled = true;
+  paynowConfirmButtonEl.textContent = "Confirming…";
 
   try {
     const confirmRes = await fetch("/api/confirm-order", {
@@ -2161,6 +2173,9 @@ paynowConfirmButtonEl.onclick = async () => {
       trackEvent("checkout_failed", { reason: "reservation_expired" });
       alert(errData.error || "Your reservation has expired. Please try again.");
       pendingOrder = null;
+      isConfirmingOrder = false;
+      paynowConfirmButtonEl.disabled = false;
+      paynowConfirmButtonEl.textContent = confirmLabel;
       loadProducts();
       showCart();
       return;
@@ -2199,6 +2214,12 @@ paynowConfirmButtonEl.onclick = async () => {
   discountErrorTextEl.style.display = "none";
   updateCheckoutFieldsVisibility();
   modalBackdropEl.style.display = "flex";
+
+  // Order complete. Re-enable for the NEXT order, but only now that
+  // pendingOrder is null — a further tap can't resubmit this one.
+  isConfirmingOrder = false;
+  paynowConfirmButtonEl.disabled = false;
+  paynowConfirmButtonEl.textContent = confirmLabel;
 };
 
 modalCloseButtonEl.onclick = () => {
