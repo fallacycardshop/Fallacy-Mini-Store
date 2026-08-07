@@ -179,6 +179,27 @@
   }
   .checkbox-row input { width: auto; margin: 3px 0 0; }
 
+  /* Input and button share a row and a height, so they line up. The wrapping
+     divs previously gave them different baselines. */
+  .date-row {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+    margin-bottom: 12px;
+  }
+  .date-row input {
+    flex: 1;
+    margin: 0;
+    height: 46px;
+  }
+  .date-row button {
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0;
+    height: 46px;
+    padding: 0 16px;
+  }
+
   .day-summary {
     background: #faf5f8;
     border-radius: 12px;
@@ -187,6 +208,26 @@
   }
   .day-summary h2 { font-size: 16px; margin: 0 0 4px; }
   .day-summary .day-stats { font-size: 13px; color: #555; margin-bottom: 10px; }
+  .summary-orders { margin-bottom: 14px; }
+  .summary-order {
+    background: #fff;
+    border-radius: 10px;
+    padding: 11px 12px;
+    margin-bottom: 8px;
+  }
+  .summary-order-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .summary-total { color: var(--plum, #a8305f); white-space: nowrap; }
+  .summary-order-meta { font-size: 11px; color: #888; margin: 3px 0 7px; line-height: 1.5; }
+  .summary-items { margin: 0; padding-left: 18px; font-size: 12px; color: #444; }
+  .summary-items li { margin-bottom: 2px; }
+
   .day-summary pre {
     background: #fff;
     border-radius: 8px;
@@ -300,9 +341,9 @@
   </p>
   <input type="password" id="ordersPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
   <label class="field-label">Show orders for (leave blank for all)</label>
-  <div class="field-row">
-    <div><input type="date" id="ordersDate"></div>
-    <div><button id="ordersClearDate" class="btn-neutral">All dates</button></div>
+  <div class="date-row">
+    <input type="date" id="ordersDate">
+    <button id="ordersClearDate" class="btn-neutral">All dates</button>
   </div>
   <button id="ordersLoadButton">Load Recent Orders</button>
   <div id="ordersDaySummary"></div>
@@ -912,21 +953,37 @@ function renderDaySummary(orders, wantedDate) {
 
   const cardCount = blockA ? blockA.split("\n").filter(Boolean).length : 0;
 
-  // Full buyer + item rundown, for packing and for a records copy.
+  // Readable rundown — laid out for reading and packing rather than pasting.
   const rundown = orders
     .map(e => {
       const r = e.record || {};
-      return [
-        `#${r.Order_ID || ""} — ${r.Buyer_Name || ""} — ${r.Total || ""}`,
-        `${r.Telegram_Username || ""} · ${r.Phone || ""}`,
-        r.Address || "",
-        `${r.Mail_Preference || ""}${r.Discount_Code ? ` · ${r.Discount_Code} ${r.Discount_Amount || ""}` : ""}`,
-        r.Items_Readable || "",
-      ]
+      const items = String(r.Items_Readable || "")
+        .split("\n")
+        .map(l => l.trim())
         .filter(Boolean)
-        .join("\n");
+        .map(l => `<li>${escapeHtml(l)}</li>`)
+        .join("");
+
+      return `
+        <div class="summary-order">
+          <div class="summary-order-head">
+            <span>${escapeHtml(r.Buyer_Name || "")}</span>
+            <span class="summary-total">${escapeHtml(r.Total || "")}</span>
+          </div>
+          <div class="summary-order-meta">
+            #${escapeHtml(r.Order_ID || "")} · ${escapeHtml(r.Telegram_Username || "")}
+            ${r.Phone ? " · " + escapeHtml(r.Phone) : ""}<br>
+            ${escapeHtml(r.Mail_Preference || "")}${
+              r.Discount_Code
+                ? ` · ${escapeHtml(r.Discount_Code)} ${escapeHtml(r.Discount_Amount || "")}`
+                : ""
+            }
+            ${r.Address ? `<br>${escapeHtml(r.Address)}` : ""}
+          </div>
+          <ul class="summary-items">${items}</ul>
+        </div>`;
     })
-    .join("\n\n———\n\n");
+    .join("");
 
   slot.innerHTML = `
     <div class="day-summary">
@@ -935,8 +992,7 @@ function renderDaySummary(orders, wantedDate) {
         ${orders.length} order(s) · ${cardCount} card(s) · $${revenue.toFixed(2)} total
       </div>
 
-      <button class="btn copy-btn" data-daycopy="rundown">Copy full rundown (all buyers + items)</button>
-      <pre id="day-rundown">${escapeHtml(rundown)}</pre>
+      <div class="summary-orders">${rundown}</div>
 
       <button class="btn copy-btn" data-daycopy="a">Copy all columns A–C</button>
       <pre id="day-a">${escapeHtml(blockA)}</pre>
@@ -947,7 +1003,7 @@ function renderDaySummary(orders, wantedDate) {
 
   slot.querySelectorAll(".copy-btn").forEach(btn => {
     btn.onclick = () => {
-      const map = { rundown: "day-rundown", a: "day-a", f: "day-f" };
+      const map = { a: "day-a", f: "day-f" };
       const target = document.getElementById(map[btn.dataset.daycopy]);
       if (target) copyText(target.textContent, btn);
     };
