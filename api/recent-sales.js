@@ -24,6 +24,7 @@ const ALLOWED_EVENTS = new Set([
   "payment_shown",
   "purchase",
   "checkout_failed",
+  "checkout_blocked",
 ]);
 
 const REPORT_DAYS = 14;
