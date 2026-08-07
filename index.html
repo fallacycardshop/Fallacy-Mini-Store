@@ -1048,6 +1048,9 @@ function buildOrderPayload(order) {
         Buyer_Name: order.name,
         Phone: order.phone,
         Address: order.address,
+        Address_Line: order.addressLine || "",
+        Unit_Number: order.unitNumber || "",
+        Postal_Code: order.postalCode || "",
         Telegram_Username: telegramUsernameDisplay,
         Telegram_User_ID: telegramUserIdDisplay,
         Buyer_Entered_Telegram_Username: order.telegramUsername || "",
@@ -2068,6 +2071,11 @@ checkoutButtonEl.onclick = async () => {
     name,
     phone,
     address: fullAddress,
+    // Kept separately as well as joined, so the admin page can offer each part
+    // as its own copy button instead of making you select text by hand.
+    addressLine,
+    unitNumber,
+    postalCode,
     cart,
     subtotal: subtotalTextEl.textContent,
     discountCode: appliedDiscount ? appliedDiscount.code : "",
