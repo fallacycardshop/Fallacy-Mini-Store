@@ -208,6 +208,29 @@
   }
   .day-summary h2 { font-size: 16px; margin: 0 0 4px; }
   .day-summary .day-stats { font-size: 13px; color: #555; margin-bottom: 10px; }
+  .addr-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 8px; }
+  .addr-chip {
+    width: auto;
+    margin: 0;
+    padding: 6px 10px;
+    background: #fff;
+    border: 1px dashed #e29ebd;
+    border-radius: 8px;
+    text-align: left;
+    cursor: pointer;
+    line-height: 1.3;
+  }
+  .addr-chip:active { transform: scale(0.97); }
+  .addr-label {
+    display: block;
+    font-size: 10px;
+    font-weight: 700;
+    color: #b07;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .addr-value { display: block; font-size: 13px; color: #2b2b2b; font-weight: 600; }
+
   .summary-orders { margin-bottom: 14px; }
   .summary-order {
     background: #fff;
@@ -919,6 +942,67 @@ document.getElementById("ordersLoadButton").onclick = async () => {
 
 // Orders are bucketed by SGT date so a "day" matches your trading day rather
 // than UTC.
+// Address parts. New orders store the three fields separately; older ones only
+// have the joined string, so fall back to splitting it — Singapore postal codes
+// are 6 digits and units look like #01-23, which makes this reliable enough.
+function addressParts(r) {
+  if (r.Address_Line || r.Unit_Number || r.Postal_Code) {
+    return {
+      line: r.Address_Line || "",
+      unit: r.Unit_Number || "",
+      postal: r.Postal_Code || "",
+    };
+  }
+
+  const raw = String(r.Address || "").trim();
+  if (!raw || raw.startsWith("(")) return { line: "", unit: "", postal: "" };
+
+  const pieces = raw.split(",").map(p => p.trim()).filter(Boolean);
+  let line = "", unit = "", postal = "";
+
+  pieces.forEach(piece => {
+    if (/^#?\d{1,4}[-–]\d{1,5}$/.test(piece)) unit = piece;
+    else if (/^(singapore\s*)?s?\d{6}$/i.test(piece)) postal = piece.replace(/^\D+/, "");
+    else line = line ? `${line}, ${piece}` : piece;
+  });
+
+  return { line, unit, postal };
+}
+
+// Renders each part as its own tap-to-copy chip, same idea as the promo code on
+// the storefront — one tap rather than selecting text on a phone.
+function addressChipsHtml(r, idPrefix) {
+  const { line, unit, postal } = addressParts(r);
+  const parts = [
+    ["Address", line],
+    ["Unit", unit],
+    ["Postal", postal],
+  ].filter(([, value]) => value);
+
+  if (parts.length === 0) return "";
+
+  return `<div class="addr-chips">${parts
+    .map(
+      ([label, value], i) => `
+        <button class="addr-chip" data-addr="${idPrefix}-${i}">
+          <span class="addr-label">${label}</span>
+          <span class="addr-value" id="addr-${idPrefix}-${i}">${escapeHtml(value)}</span>
+        </button>`
+    )
+    .join("")}</div>`;
+}
+
+function wireAddressChips(root) {
+  root.querySelectorAll(".addr-chip").forEach(btn => {
+    btn.onclick = () => {
+      // copyText handles the "Copied" feedback and restores the label itself,
+      // so the value span is passed straight in.
+      const value = document.getElementById("addr-" + btn.dataset.addr);
+      if (value) copyText(value.textContent, value);
+    };
+  });
+}
+
 function orderDateKey(savedAt) {
   return new Date(savedAt + 8 * 3600000).toISOString().slice(0, 10);
 }
@@ -955,7 +1039,7 @@ function renderDaySummary(orders, wantedDate) {
 
   // Readable rundown — laid out for reading and packing rather than pasting.
   const rundown = orders
-    .map(e => {
+    .map((e, i) => {
       const r = e.record || {};
       const items = String(r.Items_Readable || "")
         .split("\n")
@@ -978,8 +1062,8 @@ function renderDaySummary(orders, wantedDate) {
                 ? ` · ${escapeHtml(r.Discount_Code)} ${escapeHtml(r.Discount_Amount || "")}`
                 : ""
             }
-            ${r.Address ? `<br>${escapeHtml(r.Address)}` : ""}
           </div>
+          ${addressChipsHtml(r, "sum" + i)}
           <ul class="summary-items">${items}</ul>
         </div>`;
     })
@@ -1000,6 +1084,8 @@ function renderDaySummary(orders, wantedDate) {
       <button class="btn copy-btn" data-daycopy="f">Copy all columns F–H</button>
       <pre id="day-f">${escapeHtml(blockF)}</pre>
     </div>`;
+
+  wireAddressChips(slot);
 
   slot.querySelectorAll(".copy-btn").forEach(btn => {
     btn.onclick = () => {
@@ -1049,9 +1135,9 @@ function renderOrders() {
           <div class="order-meta">
             saved ${new Date(entry.savedAt).toLocaleString("en-SG", { dateStyle: "medium", timeStyle: "short" })}<br>
             ${escapeHtml(r.Telegram_Username)} · ${escapeHtml(r.Phone)}<br>
-            ${escapeHtml(r.Address)}<br>
             ${escapeHtml(r.Mail_Preference)} · discount ${escapeHtml(r.Discount_Code)} ${escapeHtml(r.Discount_Amount)}
           </div>
+          ${addressChipsHtml(r, "ord" + i)}
           <pre>${escapeHtml(r.Items_Readable)}</pre>
           <button class="btn copy-btn" data-card="${i}" data-kind="confirmation">Order confirmation image</button>
           <button class="btn copy-btn" data-card="${i}" data-kind="receipt">Receipt image</button>
@@ -1062,6 +1148,8 @@ function renderOrders() {
           <pre id="copy-${i}-f">${escapeHtml(blockF)}</pre>
         </div>`;
     }).join("");
+
+    wireAddressChips(ordersListEl);
 
     ordersListEl.querySelectorAll(".copy-btn").forEach(btn => {
       btn.onclick = () => {
