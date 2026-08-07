@@ -179,6 +179,26 @@
   }
   .checkbox-row input { width: auto; margin: 3px 0 0; }
 
+  .day-summary {
+    background: #faf5f8;
+    border-radius: 12px;
+    padding: 14px;
+    margin-top: 14px;
+  }
+  .day-summary h2 { font-size: 16px; margin: 0 0 4px; }
+  .day-summary .day-stats { font-size: 13px; color: #555; margin-bottom: 10px; }
+  .day-summary pre {
+    background: #fff;
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 220px;
+    overflow-y: auto;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+  }
+
   .order-block {
     margin-top: 16px;
     padding-top: 14px;
@@ -229,6 +249,18 @@
   .funnel-rate { flex: 0 0 58px; text-align: right; font-size: 12px; color: #777; }
   .funnel-headline { font-size: 14px; font-weight: 700; margin: 16px 0 10px; }
 
+  .edit-row {
+    border: 1px solid #eee;
+    border-radius: 10px;
+    padding: 12px;
+    margin-top: 10px;
+  }
+  .edit-head { font-size: 14px; margin-bottom: 4px; }
+  .edit-meta { font-size: 12px; color: #777; margin-bottom: 10px; }
+  .edit-fields { display: flex; gap: 10px; }
+  .edit-fields > div { flex: 1; }
+  .edit-fields input { margin-bottom: 8px; }
+
   .card-image-slot { margin: 10px 0; }
   .card-image-slot canvas {
     width: 100%;
@@ -267,7 +299,13 @@
     order is still recoverable from this list.
   </p>
   <input type="password" id="ordersPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
+  <label class="field-label">Show orders for (leave blank for all)</label>
+  <div class="field-row">
+    <div><input type="date" id="ordersDate"></div>
+    <div><button id="ordersClearDate" class="btn-neutral">All dates</button></div>
+  </div>
   <button id="ordersLoadButton">Load Recent Orders</button>
+  <div id="ordersDaySummary"></div>
   <p id="ordersResultText"></p>
   <div id="ordersList"></div>
 </div>
@@ -398,9 +436,10 @@
 </div>
 
 <div class="card">
-  <h1>Hide a Card for Auction</h1>
+  <h1>Card Lookup &amp; Inventory Edit</h1>
   <p>
-    Paste one Card ID or a whole batch — separated by commas, spaces or new lines,
+    Look up any Card ID to see and edit its price and stock, or pull it from the
+    store during an auction. Paste one Card ID or a whole batch — separated by commas, spaces or new lines,
     so a column copied straight out of a spreadsheet works. You'll see every condition
     listed under each ID and how many are genuinely still available, then you can pull
     the whole batch for a set number of hours so they don't compete with your auctions.
@@ -799,7 +838,9 @@ document.getElementById("ordersLoadButton").onclick = async () => {
     const res = await fetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, limit: 25 }),
+      // 100 is the endpoint maximum — enough that a day filter has the whole
+      // day's orders to work with rather than just the newest 25.
+      body: JSON.stringify({ key, limit: 100 }),
     });
 
     const raw = await res.text();
@@ -827,12 +868,117 @@ document.getElementById("ordersLoadButton").onclick = async () => {
       return;
     }
 
-    ordersResultEl.textContent = `Showing the ${data.orders.length} most recent order(s).`;
+    window.__allOrders = data.orders;
+    renderOrders();
+  } catch (err) {
+    ordersResultEl.textContent = "Network error — please try again.";
+    ordersResultEl.className = "error";
+  }
+};
+
+// Orders are bucketed by SGT date so a "day" matches your trading day rather
+// than UTC.
+function orderDateKey(savedAt) {
+  return new Date(savedAt + 8 * 3600000).toISOString().slice(0, 10);
+}
+
+// Aggregated view for a whole day: every line item and every buyer in one
+// copiable block, so a day's sales go into the spreadsheet in one paste.
+function renderDaySummary(orders, wantedDate) {
+  const slot = document.getElementById("ordersDaySummary");
+  const label = wantedDate || "all loaded orders";
+
+  const money = str => Number(String(str || "").replace(/[^0-9.]/g, "")) || 0;
+  const revenue = orders.reduce((sum, e) => sum + money((e.record || {}).Total), 0);
+
+  // Blocks are concatenated in order, so they stay row-aligned with each other
+  // exactly as they do for a single order.
+  const blockA = orders
+    .map(e => (e.record || {})["PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition"] || "")
+    .filter(Boolean)
+    .join("\n");
+
+  const blockF = orders
+    .map(e => {
+      const r = e.record || {};
+      return (
+        r["PASTE_INTO_COLUMNS_F_to_H_Buyer_Price_OrderID"] ||
+        r["PASTE_INTO_COLUMNS_F_to_G_Buyer_Price"] ||
+        ""
+      );
+    })
+    .filter(Boolean)
+    .join("\n");
+
+  const cardCount = blockA ? blockA.split("\n").filter(Boolean).length : 0;
+
+  // Full buyer + item rundown, for packing and for a records copy.
+  const rundown = orders
+    .map(e => {
+      const r = e.record || {};
+      return [
+        `#${r.Order_ID || ""} — ${r.Buyer_Name || ""} — ${r.Total || ""}`,
+        `${r.Telegram_Username || ""} · ${r.Phone || ""}`,
+        r.Address || "",
+        `${r.Mail_Preference || ""}${r.Discount_Code ? ` · ${r.Discount_Code} ${r.Discount_Amount || ""}` : ""}`,
+        r.Items_Readable || "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    })
+    .join("\n\n———\n\n");
+
+  slot.innerHTML = `
+    <div class="day-summary">
+      <h2>Day summary — ${escapeHtml(label)}</h2>
+      <div class="day-stats">
+        ${orders.length} order(s) · ${cardCount} card(s) · $${revenue.toFixed(2)} total
+      </div>
+
+      <button class="btn copy-btn" data-daycopy="rundown">Copy full rundown (all buyers + items)</button>
+      <pre id="day-rundown">${escapeHtml(rundown)}</pre>
+
+      <button class="btn copy-btn" data-daycopy="a">Copy all columns A–C</button>
+      <pre id="day-a">${escapeHtml(blockA)}</pre>
+
+      <button class="btn copy-btn" data-daycopy="f">Copy all columns F–H</button>
+      <pre id="day-f">${escapeHtml(blockF)}</pre>
+    </div>`;
+
+  slot.querySelectorAll(".copy-btn").forEach(btn => {
+    btn.onclick = () => {
+      const map = { rundown: "day-rundown", a: "day-a", f: "day-f" };
+      const target = document.getElementById(map[btn.dataset.daycopy]);
+      if (target) copyText(target.textContent, btn);
+    };
+  });
+}
+
+function renderOrders() {
+  const all = window.__allOrders || [];
+  const wanted = document.getElementById("ordersDate").value;
+  const orders = wanted ? all.filter(e => orderDateKey(e.savedAt) === wanted) : all;
+
+  window.__orderRecords = orders.map(e => e.record || {});
+
+  if (orders.length === 0) {
+    ordersResultEl.textContent = wanted
+      ? `No orders on ${wanted}.`
+      : "No stored orders yet.";
     ordersResultEl.className = "success";
+    document.getElementById("ordersDaySummary").innerHTML = "";
+    ordersListEl.innerHTML = "";
+    return;
+  }
 
-    window.__orderRecords = data.orders.map(e => e.record || {});
+  ordersResultEl.textContent = wanted
+    ? `${orders.length} order(s) on ${wanted}.`
+    : `Showing the ${orders.length} most recent order(s).`;
+  ordersResultEl.className = "success";
 
-    ordersListEl.innerHTML = data.orders.map((entry, i) => {
+  renderDaySummary(orders, wanted);
+
+  ordersListEl.innerHTML = orders.map((entry, i) => {
       const r = entry.record || {};
       const blockA = r["PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition"] || "";
       // New three-column format, falling back to the old two-column key so
@@ -871,10 +1017,12 @@ document.getElementById("ordersLoadButton").onclick = async () => {
         if (target) copyText(target.textContent, btn);
       };
     });
-  } catch (err) {
-    ordersResultEl.textContent = "Network error — please try again.";
-    ordersResultEl.className = "error";
-  }
+}
+
+document.getElementById("ordersDate").onchange = renderOrders;
+document.getElementById("ordersClearDate").onclick = () => {
+  document.getElementById("ordersDate").value = "";
+  renderOrders();
 };
 
 // --------------------------------------------------------------------------
@@ -1404,6 +1552,59 @@ async function callHideApi(action, extra = {}) {
   return data;
 }
 
+// Inline price/stock editing. Saves an override on top of the CSV — Vercel
+// can't write to GitHub, so this is how a value changes without a commit. The
+// override is dropped automatically if the CSV later changes that field.
+function wireInventoryEditors() {
+  lookupResultEl.querySelectorAll(".edit-row").forEach(row => {
+    const groupKey = row.dataset.groupkey;
+
+    const saveBtn = row.querySelector(".edit-save");
+    if (saveBtn) {
+      saveBtn.onclick = async () => {
+        const price = row.querySelector(".edit-price").value;
+        const stock = row.querySelector(".edit-stock").value;
+
+        saveBtn.textContent = "Saving...";
+        try {
+          const data = await callHideApi("updateListing", { groupKey, price, stock });
+          if (!data) {
+            saveBtn.textContent = "Save Changes";
+            return;
+          }
+          saveBtn.textContent = "Saved";
+          hideResultEl.textContent =
+            `Updated ${groupKey} — price $${Number(price).toFixed(2)}, stock ${stock}. Live on the store within a minute.`;
+          hideResultEl.className = "success";
+          setTimeout(() => (saveBtn.textContent = "Save Changes"), 1600);
+        } catch (err) {
+          saveBtn.textContent = "Save Changes";
+          hideResultEl.textContent = "Network error — please try again.";
+          hideResultEl.className = "error";
+        }
+      };
+    }
+
+    const revertBtn = row.querySelector(".edit-revert");
+    if (revertBtn) {
+      revertBtn.onclick = async () => {
+        if (!confirm("Discard the edit and go back to the CSV values?")) return;
+        try {
+          const data = await callHideApi("clearOverride", { groupKey });
+          if (!data) return;
+          hideResultEl.textContent = data.cleared
+            ? "Reverted to the CSV values. Re-check the card to see them."
+            : "That listing had no edits to revert.";
+          hideResultEl.className = "success";
+        } catch (err) {
+          hideResultEl.textContent = "Network error — please try again.";
+          hideResultEl.className = "error";
+        }
+      };
+    }
+  });
+}
+
 document.getElementById("lookupButton").onclick = async () => {
   const cardIds = cardIdInputEl.value.trim();
   if (!cardIds) {
@@ -1449,31 +1650,56 @@ document.getElementById("lookupButton").onclick = async () => {
         pill = '<span class="pill pill-none">all sold</span>';
       }
 
-      const rows = r.listings.map(l => `
-        <tr>
-          <td>${l.condition || "-"}</td>
-          <td class="num">${l.publishedStock !== undefined && l.publishedStock !== l.baseStock
-            ? `${l.publishedStock} <span class="muted">/ ${l.baseStock}</span>`
-            : l.baseStock}</td>
-          <td class="num">${l.sold}</td>
-          <td class="num"><strong>${l.available}</strong></td>
-        </tr>
-      `).join("");
+      const rows = r.listings.map(l => {
+        const liveLabel = !l.released
+          ? '<span class="pill pill-none">scheduled</span>'
+          : l.available > 0
+            ? '<span class="pill pill-live">live</span>'
+            : '<span class="pill pill-none">sold out</span>';
+
+        return `
+        <div class="edit-row" data-groupkey="${escapeHtml(l.groupKey)}">
+          <div class="edit-head">
+            <strong>${escapeHtml(l.condition || "-")}</strong> ${liveLabel}
+            ${l.featured ? '<span class="pill pill-live">featured</span>' : ""}
+            ${l.hasImage
+              ? '<span class="pill pill-live">image ✓</span>'
+              : '<span class="pill pill-hidden">no image</span>'}
+          </div>
+          <div class="edit-meta">
+            ${escapeHtml(l.rarity || "—")} · sold ${l.sold} · reserved ${l.reserved}
+            · available <strong>${l.available}</strong>
+            ${l.publishedStock !== l.baseStock ? ` · live stock ${l.publishedStock} of ${l.baseStock}` : ""}
+          </div>
+          <div class="edit-fields">
+            <div>
+              <label class="field-label">Price ${l.priceOverridden ? '<span class="muted">(edited)</span>' : ""}</label>
+              <input type="number" step="0.01" min="0" class="edit-price" value="${l.price}">
+            </div>
+            <div>
+              <label class="field-label">Stock ${l.stockOverridden ? '<span class="muted">(edited)</span>' : ""}</label>
+              <input type="number" step="1" min="0" class="edit-stock" value="${l.baseStock}">
+            </div>
+          </div>
+          <div class="button-row">
+            <button class="btn edit-save">Save Changes</button>
+            ${(l.priceOverridden || l.stockOverridden)
+              ? '<button class="btn btn-neutral edit-revert">Revert to CSV</button>'
+              : ""}
+          </div>
+        </div>`;
+      }).join("");
 
       return `
         <div class="result-block">
           <strong>${r.name}</strong> <span class="muted">(${r.cardId})</span> ${pill}
-          <table class="listing-table">
-            <thead>
-              <tr><th>Condition</th><th class="num">Live / CSV</th><th class="num">Sold</th><th class="num">Available</th></tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
+          ${rows}
         </div>`;
     }).join("");
 
     lookupResultEl.innerHTML = `<p class="summary-line">${parts.join(" · ")}</p>${blocks}`;
     hideControlsEl.style.display = "block";
+    wireInventoryEditors();
   } catch (err) {
     hideResultEl.textContent = "Network error — please try again.";
     hideResultEl.className = "error";
