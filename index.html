@@ -1204,7 +1204,13 @@ async function expirePaynowSession() {
 
 function startPaynowTimer() {
   clearPaynowTimer();
-  paynowExpiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
+  // 5 minutes. Must stay in step with RESERVATION_TTL_SECONDS in api/reserve.js
+  // (330s), which is deliberately a little longer so the reservation never
+  // expires while the buyer still sees time on the clock.
+  //
+  // Kept at 5 rather than shortened: the funnel showed a quarter of buyers who
+  // reached the QR code were already timing out at this length.
+  paynowExpiresAt = Date.now() + 5 * 60 * 1000;
   updatePaynowTimerDisplay();
   paynowTimerInterval = setInterval(() => {
     if (Date.now() >= paynowExpiresAt) {
@@ -2025,6 +2031,7 @@ checkoutButtonEl.onclick = async () => {
   });
 
   if (!telegramUsername) {
+    trackEvent("checkout_blocked", { reason: "missing_telegram" });
     alert("Please enter your Telegram username.");
     return;
   }
@@ -2050,6 +2057,15 @@ checkoutButtonEl.onclick = async () => {
       getMailPreference() === "immediate" ? "Mail out now" : "Hold my package";
 
     if (!name || !phone || !addressLine || !postalCode) {
+      // Which field is missing matters — it tells us whether the address block
+      // or something simpler is losing people at this step.
+      const missing = [
+        !name && "name",
+        !phone && "phone",
+        !addressLine && "address",
+        !postalCode && "postal",
+      ].filter(Boolean).join("+");
+      trackEvent("checkout_blocked", { reason: "missing_details", missing });
       alert("Please fill in Name, Phone, Address Line, and Postal Code.");
       return;
     }
@@ -2107,6 +2123,7 @@ checkoutButtonEl.onclick = async () => {
     });
   } catch (err) {
     console.error("Stock reservation request failed:", err);
+    trackEvent("checkout_blocked", { reason: "network" });
     alert("Something went wrong reserving your items. Please try again.");
     return;
   }
@@ -2117,8 +2134,10 @@ checkoutButtonEl.onclick = async () => {
       const names = errData.unavailable
         .map(u => `${u.name} (only ${u.available} left)`)
         .join(", ");
+      trackEvent("checkout_blocked", { reason: "stock_gone", items: errData.unavailable.length });
       alert(`Sorry, someone else just claimed part of your order before you: ${names}. Please adjust your cart and try again.`);
     } else {
+      trackEvent("checkout_blocked", { reason: "reserve_failed" });
       alert("Something went wrong reserving your items. Please try again.");
     }
     loadProducts();
