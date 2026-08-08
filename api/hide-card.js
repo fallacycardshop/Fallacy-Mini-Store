@@ -122,6 +122,13 @@ export default async function handler(req, res) {
             name: m.group.name,
             condition: m.group.description || "",
             set: m.group.set || "",
+            // Display-only extras for the admin lookup panel. Without these the
+            // panel showed "no image" for every card, because it was reading
+            // fields this endpoint never sent.
+            rarity: m.group.category || "",
+            price: Number(m.group.price || 0),
+            hasImage: Boolean(m.group.photo),
+            featured: Boolean(m.group.featured),
             baseStock: m.group.baseStock,
             sold,
             reserved,
@@ -136,7 +143,12 @@ export default async function handler(req, res) {
           name: listings[0].name,
           listings,
           totalAvailable: listings.reduce((sum, l) => sum + l.available, 0),
-          onStore: listings.some(l => l.trueStock > 0),
+          onStore: listings.some(l => l.released && l.trueStock > 0),
+          scheduled: listings.some(l => !l.released),
+          nextReleaseAt: listings.reduce((soonest, l) => {
+            if (!l.pendingReleaseAt) return soonest;
+            return soonest === null ? l.pendingReleaseAt : Math.min(soonest, l.pendingReleaseAt);
+          }, null),
           hiddenUntil,
         };
       });
