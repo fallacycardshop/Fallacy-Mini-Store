@@ -565,6 +565,8 @@ export function buildDripSchedule(
     let day = 0;
     dailyCounts.forEach(count => {
       const n = Math.max(Math.floor(Number(count) || 0), 0);
+      // A 0 releases nothing that day but still advances the calendar — that's
+      // how you build in a rest day, e.g. "5,0,5" skips the middle day.
       for (let i = 0; i < n; i++) dayForIndex.push(day);
       day += 1;
     });
