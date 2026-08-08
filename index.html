@@ -862,6 +862,9 @@ window.onerror = function (message, source, lineno, colno, error) {
 
 let products = [];
 
+// Fingerprint of the last rendered catalogue, used to skip pointless rebuilds.
+let lastProductsSignature = "";
+
 // Headings above the featured and newly-in rows. Both overridden by
 // /api/products, which the admin page can edit.
 let featuredTitle = "🔥 Popular this week";
@@ -1320,10 +1323,32 @@ async function loadProducts() {
       renderPromoBanner();
     }
     statusTextEl.textContent = "All items have been updated.";
+
+    // A background refresh usually returns exactly what's already on screen.
+    // Rebuilding the grid anyway threw away the shopper's scroll position and
+    // collapsed any sold-out section they'd opened — so only re-render when
+    // something actually changed.
+    const signature = products
+      .map(p => `${p.id}:${p.stock}:${p.price}:${p.isNew ? 1 : 0}`)
+      .join("|");
+    const unchanged = signature === lastProductsSignature && productListEl.children.length > 0;
+    lastProductsSignature = signature;
+
     renderCategoryFilter();
     renderSetFilter();
     reconcileCartWithStock();
-    renderProducts();
+
+    if (!unchanged) {
+      // Something did change. Hold the scroll position across the rebuild so
+      // the page doesn't jump under the shopper's thumb.
+      const scrollY = window.scrollY;
+      renderProducts();
+      requestAnimationFrame(() => window.scrollTo(0, scrollY));
+    } else {
+      // Same data — just refresh the cards in place for cart state.
+      refreshProductCards();
+    }
+
     updateCartBadge();
   } catch (e) {
     console.error(e);
@@ -1508,6 +1533,10 @@ function buildProductCard(p) {
 // collapsed behind a button. The featured and newly-in rows pass 0, so their
 // sold-out cards are hidden entirely until the shopper asks for them — those
 // rows are meant to showcase what's buyable.
+// Sections the shopper has expanded, kept across re-renders so a background
+// refresh doesn't silently collapse what they opened.
+const expandedSoldOutSections = new Set();
+
 function renderSection(headingText, matches, options = {}) {
   if (matches.length === 0) return;
 
@@ -1558,7 +1587,14 @@ function renderSection(headingText, matches, options = {}) {
     showMoreBtn.style.width = "100%";
     // "more" only makes sense when some sold-out cards are already showing.
     showMoreBtn.textContent = `Show ${hiddenSoldOut.length} more sold out ${soldOutNoun}item${hiddenSoldOut.length === 1 ? "" : "s"}`;
+    // Restore a previously opened section instead of re-collapsing it.
+    if (expandedSoldOutSections.has(headingText)) {
+      hiddenWrap.classList.add("expanded");
+      showMoreBtn.style.display = "none";
+    }
+
     showMoreBtn.onclick = () => {
+      expandedSoldOutSections.add(headingText);
       hiddenWrap.classList.add("expanded");
       showMoreBtn.remove();
     };
