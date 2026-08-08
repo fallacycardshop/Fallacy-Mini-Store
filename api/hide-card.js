@@ -145,6 +145,12 @@ export default async function handler(req, res) {
           totalAvailable: listings.reduce((sum, l) => sum + l.available, 0),
           onStore: listings.some(l => l.released && l.trueStock > 0),
           scheduled: listings.some(l => !l.released),
+          // True only when NOTHING is released yet. "scheduled" as a card-level
+          // status should mean "not on the store at all" — a released but
+          // sold-out card was wrongly reported as scheduled because onStore
+          // also requires available stock.
+          allScheduled: listings.every(l => !l.released),
+          anyReleased: listings.some(l => l.released),
           nextReleaseAt: listings.reduce((soonest, l) => {
             if (!l.pendingReleaseAt) return soonest;
             return soonest === null ? l.pendingReleaseAt : Math.min(soonest, l.pendingReleaseAt);
