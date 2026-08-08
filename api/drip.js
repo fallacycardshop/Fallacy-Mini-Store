@@ -59,7 +59,32 @@ export default async function handler(req, res) {
       : String(dailyCounts || "")
           .split(/[\s,;]+/)
           .map(n => Number(n))
-          .filter(n => Number.isFinite(n) && n > 0);
+          // Zeros are kept: they mean "release nothing that day", which is how
+          // a rest day is expressed.
+          .filter(n => Number.isFinite(n) && n >= 0);
+
+    // Scheduling actions honour whatever settings were sent with the request, so
+    // what's on screen is what gets used. Previously perDay and newWindowHours
+    // came only from saved config while the plan and start time came from the
+    // form — the same panel behaving two different ways.
+    if (config && typeof config === "object" && action !== "config") {
+      const num = (v, min, max, fallback) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? Math.min(Math.max(n, min), max) : fallback;
+      };
+      if (config.perDay !== undefined) {
+        state.config.perDay = num(config.perDay, 1, 200, state.config.perDay);
+      }
+      if (config.releaseHour !== undefined) {
+        state.config.releaseHour = num(config.releaseHour, 0, 23, state.config.releaseHour);
+      }
+      if (config.releaseMinute !== undefined) {
+        state.config.releaseMinute = num(config.releaseMinute, 0, 59, state.config.releaseMinute);
+      }
+      if (config.newWindowHours !== undefined) {
+        state.config.newWindowHours = num(config.newWindowHours, 1, 720, state.config.newWindowHours);
+      }
+    }
 
     const requestedStart = startAt ? parseLocalDateTime(startAt, state.config) : null;
     const firstSlotAt = requestedStart !== null && requestedStart > now ? requestedStart : null;
@@ -540,7 +565,7 @@ export default async function handler(req, res) {
     // Takes a card out of the Newly In Stock row without unpublishing it: the
     // release timestamp is backdated past the window, so isNew goes false and
     // the card falls into Featured or All Cards on the next fetch.
-    if (action === "dropFromNew") {
+    if (action === "dropFromNew" || action === "previewDropFromNew") {
       const wantedId = normaliseCardId(cardId);
       const windowMs = Math.max(Number(state.config.newWindowHours) || 0, 0) * 3600000;
       const backdated = now - windowMs - 60000;
@@ -557,12 +582,21 @@ export default async function handler(req, res) {
         targets = Array.from(groups.keys()).filter(k => isListingNew(state, k, now));
       }
 
-      const dropped = targets
-        .filter(groupKey => isListingNew(state, groupKey, now))
-        .map(groupKey => {
-          state.releases[groupKey] = backdated;
-          return describe(groupKey);
+      const affected = targets.filter(groupKey => isListingNew(state, groupKey, now));
+
+      // Preview: report what WOULD be removed, change nothing.
+      if (action === "previewDropFromNew") {
+        return res.status(200).json({
+          ok: true,
+          preview: true,
+          dropped: affected.map(describe),
         });
+      }
+
+      const dropped = affected.map(groupKey => {
+        state.releases[groupKey] = backdated;
+        return describe(groupKey);
+      });
 
       if (dropped.length > 0) await saveDripState(redis, state);
 
