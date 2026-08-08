@@ -208,6 +208,20 @@
   }
   .day-summary h2 { font-size: 16px; margin: 0 0 4px; }
   .day-summary .day-stats { font-size: 13px; color: #555; margin-bottom: 10px; }
+  .hist-card { border-top: 1px solid #eee; padding: 10px 0; }
+  .hist-card:first-child { border-top: none; }
+  .hist-head { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; font-weight: 700; }
+  .hist-sub { font-size: 11px; color: #888; margin: 2px 0 6px; }
+  .hist-sales { font-size: 12px; color: #444; }
+  .hist-sale {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 3px 0;
+    border-bottom: 1px dashed #f0f0f0;
+  }
+  .hist-sale span:last-child { color: var(--plum, #a8305f); font-weight: 700; white-space: nowrap; }
+
   .addr-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 8px; }
   .addr-chip {
     width: auto;
@@ -356,6 +370,20 @@
 </div>
 
 <div class="card">
+  <h1>Sales History</h1>
+  <p>
+    Every card sold, with the date, condition and the price it actually went for
+    (after any discount). Built from stored orders, so it covers sales from when
+    order backup went live &mdash; the raw sold counters carry no dates.
+  </p>
+  <input type="password" id="historyPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
+  <input type="text" id="historySearch" placeholder="Filter by card name, Card ID or set" autocomplete="off">
+  <button id="historyLoadButton">Load Sales History</button>
+  <p id="historyResultText"></p>
+  <div id="historyReport"></div>
+</div>
+
+<div class="card">
   <h1>Recent Orders</h1>
   <p>
     Every confirmed order is saved here the moment stock is decremented &mdash;
@@ -416,6 +444,12 @@
       daily release time. Useful for starting later today once that time has passed.
     </label>
     <input type="datetime-local" id="dripStartAt">
+    <label class="field-label">
+      Cards per day, day by day (optional &mdash; e.g. <strong>3,5,2</strong> releases
+      3 on the first day, 5 on the second, 2 on the third). Blank uses the same
+      number every day.
+    </label>
+    <input type="text" id="dripDailyCounts" placeholder="e.g. 3,5,2" autocomplete="off">
     <div class="button-row">
       <button id="dripPreviewButton" class="btn-neutral">Preview Schedule</button>
       <button id="dripScheduleButton">Confirm Schedule</button>
@@ -435,6 +469,15 @@
       <button id="alignEarliestButton" class="btn-neutral">Align to Earliest</button>
       <button id="alignLatestButton" class="btn-neutral">Align to Latest</button>
     </div>
+
+    <h3 style="margin-top:22px;font-size:15px;">Remove From &ldquo;Newly In Stock&rdquo;</h3>
+    <p class="config-note">
+      Drops a card out of the Newly in stock row early. It stays on sale &mdash;
+      it just falls into Featured or All Cards straight away. Leave the Card ID
+      blank to clear the whole row.
+    </p>
+    <input type="text" id="dropCardId" placeholder="Card ID (blank = clear the whole row)" autocomplete="off">
+    <button id="dropFromNewButton" class="btn-neutral">Remove From Newly In Stock</button>
 
     <h3 style="margin-top:22px;font-size:15px;">Publish Stock Now</h3>
     <p class="config-note">
@@ -500,9 +543,9 @@
 </div>
 
 <div class="card">
-  <h1>Card Lookup &amp; Inventory Edit</h1>
+  <h1>Card Lookup &amp; Auction Hiding</h1>
   <p>
-    Look up any Card ID to see and edit its price and stock, or pull it from the
+    Look up any Card ID to check its price, stock and status, or pull it from the
     store during an auction. Paste one Card ID or a whole batch — separated by commas, spaces or new lines,
     so a column copied straight out of a spreadsheet works. You'll see every condition
     listed under each ID and how many are genuinely still available, then you can pull
@@ -887,6 +930,151 @@ function renderOrderCard(index, kind) {
   slot.appendChild(actions);
 }
 
+// ---------------------------------------------------------------------------
+// Sales history
+//
+// Built from the stored order records rather than the sold: counters, because
+// those counters are plain integers with no timestamps — they can tell you a
+// card sold 3 times but not when, or for how much.
+//
+// The A–C and F–H paste blocks are row-aligned, one row per physical card, so
+// zipping them gives date + CardID + condition + the actual price paid.
+// ---------------------------------------------------------------------------
+function buildSalesHistory(orders) {
+  const byCard = new Map();
+
+  orders.forEach(entry => {
+    const r = entry.record || {};
+    const aLines = String(r["PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition"] || "")
+      .split("\n").map(l => l.trim()).filter(Boolean);
+    const fLines = String(
+      r["PASTE_INTO_COLUMNS_F_to_H_Buyer_Price_OrderID"] ||
+      r["PASTE_INTO_COLUMNS_F_to_G_Buyer_Price"] || ""
+    ).split("\n").map(l => l.trim()).filter(Boolean);
+
+    // Names and sets aren't in the paste blocks, so pull them from the readable
+    // list by CardID.
+    const nameByCardId = {};
+    String(r.Items_Readable || "").split("\n").forEach(line => {
+      const m = line.match(/^(.*?)\s*\[(.*?)\]\s*\((.*?)\)/);
+      if (m) nameByCardId[m[2].trim()] = { name: m[1].trim(), meta: m[3].trim() };
+    });
+
+    aLines.forEach((aLine, i) => {
+      const [date, cardId, condition] = aLine.split("|").map(p => p.trim());
+      const fParts = (fLines[i] || "").split("|").map(p => p.trim());
+      const price = Number(fParts[1] || 0) || 0;
+      const buyer = fParts[0] || r.Buyer_Name || "";
+
+      const key = `${cardId}::${condition}`;
+      if (!byCard.has(key)) {
+        const info = nameByCardId[cardId] || {};
+        byCard.set(key, {
+          cardId,
+          condition,
+          name: info.name || cardId,
+          meta: info.meta || "",
+          sales: [],
+        });
+      }
+      byCard.get(key).sales.push({ date, price, buyer, savedAt: entry.savedAt });
+    });
+  });
+
+  return Array.from(byCard.values())
+    .map(c => ({
+      ...c,
+      qty: c.sales.length,
+      revenue: c.sales.reduce((s, x) => s + x.price, 0),
+      sales: c.sales.sort((a, b) => b.savedAt - a.savedAt),
+    }))
+    .sort((a, b) => b.qty - a.qty || b.revenue - a.revenue);
+}
+
+function renderSalesHistory() {
+  const cards = window.__salesHistory || [];
+  const term = document.getElementById("historySearch").value.trim().toLowerCase();
+  const shown = term
+    ? cards.filter(c =>
+        `${c.name} ${c.cardId} ${c.meta} ${c.condition}`.toLowerCase().includes(term))
+    : cards;
+
+  const totalCards = shown.reduce((s, c) => s + c.qty, 0);
+  const totalRevenue = shown.reduce((s, c) => s + c.revenue, 0);
+
+  document.getElementById("historyResultText").textContent =
+    `${shown.length} listing(s) · ${totalCards} card(s) sold · $${totalRevenue.toFixed(2)}`;
+  document.getElementById("historyResultText").className = "success";
+
+  document.getElementById("historyReport").innerHTML = shown.length
+    ? shown.map(c => `
+        <div class="hist-card">
+          <div class="hist-head">
+            <span>${escapeHtml(c.name)}</span>
+            <span>${c.qty}× · $${c.revenue.toFixed(2)}</span>
+          </div>
+          <div class="hist-sub">
+            ${escapeHtml(c.cardId)} · ${escapeHtml(c.condition)}${c.meta ? " · " + escapeHtml(c.meta) : ""}
+          </div>
+          <div class="hist-sales">
+            ${c.sales.map(sale => `
+              <div class="hist-sale">
+                <span>${escapeHtml(sale.date)}${sale.buyer ? " · " + escapeHtml(sale.buyer) : ""}</span>
+                <span>$${sale.price.toFixed(2)}</span>
+              </div>`).join("")}
+          </div>
+        </div>`).join("")
+    : '<p class="muted">No sales match that filter.</p>';
+}
+
+document.getElementById("historySearch").oninput = () => {
+  if (window.__salesHistory) renderSalesHistory();
+};
+
+document.getElementById("historyLoadButton").onclick = async () => {
+  const key = document.getElementById("historyPassphrase").value.trim();
+  const resultEl = document.getElementById("historyResultText");
+
+  if (!key) {
+    resultEl.textContent = "Please enter the passphrase.";
+    resultEl.className = "error";
+    return;
+  }
+
+  resultEl.textContent = "Loading...";
+  resultEl.className = "";
+
+  try {
+    const res = await fetch("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, limit: 300 }),
+    });
+    const raw = await res.text();
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      resultEl.textContent = raw.trim().startsWith("<")
+        ? `The /api/orders endpoint isn't deployed (HTTP ${res.status}).`
+        : `Unexpected response from the server (HTTP ${res.status}).`;
+      resultEl.className = "error";
+      return;
+    }
+    if (!res.ok) {
+      resultEl.textContent = data.error || `Something went wrong (HTTP ${res.status}).`;
+      resultEl.className = "error";
+      return;
+    }
+
+    window.__salesHistory = buildSalesHistory(data.orders);
+    renderSalesHistory();
+  } catch (err) {
+    resultEl.textContent = "Network error — please try again.";
+    resultEl.className = "error";
+  }
+};
+
 document.getElementById("ordersLoadButton").onclick = async () => {
   const key = ordersPassphraseEl.value.trim();
   if (!key) {
@@ -1270,6 +1458,10 @@ function renderDripStatus(status) {
 
 // Blank means "use the next daily slot". The value is a local wall-clock time
 // and is interpreted as SGT server-side.
+function readDripDailyCounts() {
+  return document.getElementById("dripDailyCounts").value.trim() || null;
+}
+
 function readDripStartAt() {
   return document.getElementById("dripStartAt").value || null;
 }
@@ -1348,7 +1540,7 @@ document.getElementById("dripPreviewButton").onclick = async () => {
   dripResultEl.textContent = "Building preview...";
   dripResultEl.className = "";
   try {
-    const data = await callDripApi("preview", { startAt: readDripStartAt() });
+    const data = await callDripApi("preview", { startAt: readDripStartAt(), dailyCounts: readDripDailyCounts() });
     if (!data) return;
 
     if (!data.proposed.length) {
@@ -1386,7 +1578,7 @@ document.getElementById("dripScheduleButton").onclick = async () => {
   dripResultEl.textContent = "Scheduling...";
   dripResultEl.className = "";
   try {
-    const data = await callDripApi("schedule", { startAt: readDripStartAt() });
+    const data = await callDripApi("schedule", { startAt: readDripStartAt(), dailyCounts: readDripDailyCounts() });
     if (!data) return;
     renderDripStatus(data.status);
     let msg = data.scheduled
@@ -1407,7 +1599,7 @@ document.getElementById("dripRescheduleButton").onclick = async () => {
   dripResultEl.textContent = "Rescheduling...";
   dripResultEl.className = "";
   try {
-    const data = await callDripApi("reschedule", { startAt: readDripStartAt() });
+    const data = await callDripApi("reschedule", { startAt: readDripStartAt(), dailyCounts: readDripDailyCounts() });
     if (!data) return;
     renderDripStatus(data.status);
     dripResultEl.textContent = `Re-spread ${data.rescheduled} pending listing(s).`;
@@ -1448,6 +1640,30 @@ async function alignNewWindow(mode) {
 
 document.getElementById("alignEarliestButton").onclick = () => alignNewWindow("earliest");
 document.getElementById("alignLatestButton").onclick = () => alignNewWindow("latest");
+
+document.getElementById("dropFromNewButton").onclick = async () => {
+  const cardId = document.getElementById("dropCardId").value.trim();
+  const confirmMsg = cardId
+    ? `Remove ${cardId} from the Newly in stock row?`
+    : "Clear the ENTIRE Newly in stock row? Every card in it drops into the normal sections.";
+  if (!confirm(confirmMsg)) return;
+
+  dripResultEl.textContent = "Working...";
+  dripResultEl.className = "";
+
+  try {
+    const data = await callDripApi("dropFromNew", cardId ? { cardId } : {});
+    if (!data) return;
+    renderDripStatus(data.status);
+    dripResultEl.textContent = data.dropped.length
+      ? `Removed ${data.dropped.length} listing(s) from the Newly in stock row.`
+      : "Nothing matching was in the Newly in stock row.";
+    dripResultEl.className = "success";
+  } catch (err) {
+    dripResultEl.textContent = "Network error — please try again.";
+    dripResultEl.className = "error";
+  }
+};
 
 document.getElementById("publishNowButton").onclick = async () => {
   const cardId = document.getElementById("publishCardId").value.trim();
@@ -1700,56 +1916,6 @@ async function callHideApi(action, extra = {}) {
 // Inline price/stock editing. Saves an override on top of the CSV — Vercel
 // can't write to GitHub, so this is how a value changes without a commit. The
 // override is dropped automatically if the CSV later changes that field.
-function wireInventoryEditors() {
-  lookupResultEl.querySelectorAll(".edit-row").forEach(row => {
-    const groupKey = row.dataset.groupkey;
-
-    const saveBtn = row.querySelector(".edit-save");
-    if (saveBtn) {
-      saveBtn.onclick = async () => {
-        const price = row.querySelector(".edit-price").value;
-        const stock = row.querySelector(".edit-stock").value;
-
-        saveBtn.textContent = "Saving...";
-        try {
-          const data = await callHideApi("updateListing", { groupKey, price, stock });
-          if (!data) {
-            saveBtn.textContent = "Save Changes";
-            return;
-          }
-          saveBtn.textContent = "Saved";
-          hideResultEl.textContent =
-            `Updated ${groupKey} — price $${Number(price).toFixed(2)}, stock ${stock}. Live on the store within a minute.`;
-          hideResultEl.className = "success";
-          setTimeout(() => (saveBtn.textContent = "Save Changes"), 1600);
-        } catch (err) {
-          saveBtn.textContent = "Save Changes";
-          hideResultEl.textContent = "Network error — please try again.";
-          hideResultEl.className = "error";
-        }
-      };
-    }
-
-    const revertBtn = row.querySelector(".edit-revert");
-    if (revertBtn) {
-      revertBtn.onclick = async () => {
-        if (!confirm("Discard the edit and go back to the CSV values?")) return;
-        try {
-          const data = await callHideApi("clearOverride", { groupKey });
-          if (!data) return;
-          hideResultEl.textContent = data.cleared
-            ? "Reverted to the CSV values. Re-check the card to see them."
-            : "That listing had no edits to revert.";
-          hideResultEl.className = "success";
-        } catch (err) {
-          hideResultEl.textContent = "Network error — please try again.";
-          hideResultEl.className = "error";
-        }
-      };
-    }
-  });
-}
-
 document.getElementById("lookupButton").onclick = async () => {
   const cardIds = cardIdInputEl.value.trim();
   if (!cardIds) {
@@ -1803,7 +1969,7 @@ document.getElementById("lookupButton").onclick = async () => {
             : '<span class="pill pill-none">sold out</span>';
 
         return `
-        <div class="edit-row" data-groupkey="${escapeHtml(l.groupKey)}">
+        <div class="edit-row">
           <div class="edit-head">
             <strong>${escapeHtml(l.condition || "-")}</strong> ${liveLabel}
             ${l.featured ? '<span class="pill pill-live">featured</span>' : ""}
@@ -1812,25 +1978,10 @@ document.getElementById("lookupButton").onclick = async () => {
               : '<span class="pill pill-hidden">no image</span>'}
           </div>
           <div class="edit-meta">
-            ${escapeHtml(l.rarity || "—")} · sold ${l.sold} · reserved ${l.reserved}
+            ${escapeHtml(l.rarity || "—")} · $${Number(l.price || 0).toFixed(2)}
+            · sold ${l.sold} · reserved ${l.reserved}
             · available <strong>${l.available}</strong>
             ${l.publishedStock !== l.baseStock ? ` · live stock ${l.publishedStock} of ${l.baseStock}` : ""}
-          </div>
-          <div class="edit-fields">
-            <div>
-              <label class="field-label">Price ${l.priceOverridden ? '<span class="muted">(edited)</span>' : ""}</label>
-              <input type="number" step="0.01" min="0" class="edit-price" value="${l.price}">
-            </div>
-            <div>
-              <label class="field-label">Stock ${l.stockOverridden ? '<span class="muted">(edited)</span>' : ""}</label>
-              <input type="number" step="1" min="0" class="edit-stock" value="${l.baseStock}">
-            </div>
-          </div>
-          <div class="button-row">
-            <button class="btn edit-save">Save Changes</button>
-            ${(l.priceOverridden || l.stockOverridden)
-              ? '<button class="btn btn-neutral edit-revert">Revert to CSV</button>'
-              : ""}
           </div>
         </div>`;
       }).join("");
@@ -1844,7 +1995,6 @@ document.getElementById("lookupButton").onclick = async () => {
 
     lookupResultEl.innerHTML = `<p class="summary-line">${parts.join(" · ")}</p>${blocks}`;
     hideControlsEl.style.display = "block";
-    wireInventoryEditors();
   } catch (err) {
     hideResultEl.textContent = "Network error — please try again.";
     hideResultEl.className = "error";
