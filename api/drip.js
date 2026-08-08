@@ -33,7 +33,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { key, action, config, groupKeys, startAt, cardId, keepNew, alignToBatch } = req.body || {};
+    const { key, action, config, groupKeys, startAt, cardId, keepNew, alignToBatch, dailyCounts } =
+      req.body || {};
     const adminKey = process.env.ADMIN_RESET_KEY;
 
     if (!adminKey) {
@@ -51,6 +52,15 @@ export default async function handler(req, res) {
     // Optional one-off override for the FIRST release moment, e.g. "start this
     // batch at 18:00 today" when the usual 12:00 slot has already passed.
     // Ignored if it isn't in the future — a past start would publish instantly.
+    // Optional per-day plan, e.g. "3,5,2". Blank falls back to the uniform
+    // cards-per-day setting.
+    const plan = Array.isArray(dailyCounts)
+      ? dailyCounts
+      : String(dailyCounts || "")
+          .split(/[\s,;]+/)
+          .map(n => Number(n))
+          .filter(n => Number.isFinite(n) && n > 0);
+
     const requestedStart = startAt ? parseLocalDateTime(startAt, state.config) : null;
     const firstSlotAt = requestedStart !== null && requestedStart > now ? requestedStart : null;
     const startRejected = Boolean(startAt) && firstSlotAt === null;
@@ -276,7 +286,7 @@ export default async function handler(req, res) {
 
     // ------------------------------------------------------------- preview --
     if (action === "preview") {
-      const proposed = buildDripSchedule(unscheduled, state.config, now, firstSlotAt).map(entry => ({
+      const proposed = buildDripSchedule(unscheduled, state.config, now, firstSlotAt, plan).map(entry => ({
         ...describe(entry.groupKey),
         releaseAt: entry.releaseAt,
       }));
@@ -296,7 +306,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, scheduled: 0, status: buildStatus() });
       }
       const restockKeys = new Set(unscheduledRestocks.map(r => r.groupKey));
-      buildDripSchedule(unscheduled, state.config, now, firstSlotAt).forEach(entry => {
+      buildDripSchedule(unscheduled, state.config, now, firstSlotAt, plan).forEach(entry => {
         const group = groups.get(entry.groupKey);
         if (restockKeys.has(entry.groupKey)) {
           // Existing listing: queue the stock increase, leave it visible at its
@@ -341,7 +351,7 @@ export default async function handler(req, res) {
         .filter((k, i, arr) => arr.indexOf(k) === i) // a key can be in both lists
         .sort((a, b) => rowIndexOf(a) - rowIndexOf(b));
 
-      buildDripSchedule(pendingKeys, state.config, now, firstSlotAt).forEach(entry => {
+      buildDripSchedule(pendingKeys, state.config, now, firstSlotAt, plan).forEach(entry => {
         if (state.releases[entry.groupKey] !== undefined && state.releases[entry.groupKey] > now) {
           state.releases[entry.groupKey] = entry.releaseAt;
         }
@@ -524,6 +534,39 @@ export default async function handler(req, res) {
         alignedToBatch: keepNew !== false && alignToBatch !== false && publishAt !== now,
         status: buildStatus(),
       });
+    }
+
+    // ---------------------------------------------------------- dropFromNew --
+    // Takes a card out of the Newly In Stock row without unpublishing it: the
+    // release timestamp is backdated past the window, so isNew goes false and
+    // the card falls into Featured or All Cards on the next fetch.
+    if (action === "dropFromNew") {
+      const wantedId = normaliseCardId(cardId);
+      const windowMs = Math.max(Number(state.config.newWindowHours) || 0, 0) * 3600000;
+      const backdated = now - windowMs - 60000;
+
+      let targets = [];
+      if (Array.isArray(groupKeys) && groupKeys.length > 0) {
+        targets = groupKeys.filter(k => groups.has(k));
+      } else if (wantedId) {
+        Array.from(groups.entries()).forEach(([groupKey, group]) => {
+          if (normaliseCardId(group.cardId) === wantedId) targets.push(groupKey);
+        });
+      } else {
+        // No card given — clear the whole row.
+        targets = Array.from(groups.keys()).filter(k => isListingNew(state, k, now));
+      }
+
+      const dropped = targets
+        .filter(groupKey => isListingNew(state, groupKey, now))
+        .map(groupKey => {
+          state.releases[groupKey] = backdated;
+          return describe(groupKey);
+        });
+
+      if (dropped.length > 0) await saveDripState(redis, state);
+
+      return res.status(200).json({ ok: true, dropped, status: buildStatus() });
     }
 
     return res.status(400).json({ error: "Unknown action." });
