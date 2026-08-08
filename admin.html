@@ -151,6 +151,15 @@
   }
   .field-row { display: flex; gap: 10px; }
   .field-row > div { flex: 1; }
+  .drip-step {
+    margin: 22px 0 4px;
+    font-size: 15px;
+    color: var(--plum, #a8305f);
+    padding-top: 14px;
+    border-top: 1px solid #eee;
+  }
+  .drip-step:first-of-type { border-top: none; padding-top: 0; }
+
   .config-note {
     font-size: 12px;
     color: #777;
@@ -416,7 +425,12 @@
   <div id="dripStatus"></div>
 
   <div id="dripControls" style="display:none;">
-    <h3 style="margin-top:22px;font-size:15px;">Settings</h3>
+    <h3 class="drip-step">Step 1 · How the release runs</h3>
+    <p class="config-note">
+      These apply to whatever you schedule next. They're used straight from this
+      form, so you don't have to save first &mdash; saving just makes them the
+      default for future visits.
+    </p>
     <div class="field-row">
       <div>
         <label class="field-label">Cards per day</label>
@@ -424,46 +438,54 @@
       </div>
       <div>
         <label class="field-label">Release time (SGT)</label>
-        <input type="time" id="dripTime" value="10:00">
+        <input type="time" id="dripTime" value="12:00">
       </div>
     </div>
-    <label class="field-label">Hours in the &ldquo;Newly in stock!&rdquo; row</label>
+    <label class="field-label">How long a card stays in &ldquo;Newly in stock!&rdquo; (hours)</label>
     <input type="number" id="dripNewWindow" min="1" max="720" value="24">
     <div class="checkbox-row">
       <input type="checkbox" id="dripHoldNew" checked>
       <label for="dripHoldNew">
-        Hold back any new CSV rows until I schedule them (recommended &mdash;
+        Hold back new CSV rows until I schedule them (recommended &mdash;
         otherwise newly uploaded cards go live immediately)
       </label>
     </div>
-    <button id="dripSaveConfig">Save Settings</button>
+    <button id="dripSaveConfig" class="btn-neutral">Save As Default</button>
 
-    <h3 style="margin-top:22px;font-size:15px;">Release New Stock</h3>
-    <label class="field-label">
-      Start the first batch at (optional &mdash; SGT). Leave blank to use the next
-      daily release time. Useful for starting later today once that time has passed.
-    </label>
+    <h3 class="drip-step">Step 2 · Fine-tune this batch (optional)</h3>
+    <p class="config-note">
+      Leave both blank to release at the settings above, starting from the next
+      release time.
+    </p>
+    <label class="field-label">Start the first batch at (SGT)</label>
     <input type="datetime-local" id="dripStartAt">
     <label class="field-label">
-      Cards per day, day by day (optional &mdash; e.g. <strong>3,5,2</strong> releases
-      3 on the first day, 5 on the second, 2 on the third). Blank uses the same
-      number every day.
+      Different amounts per day &mdash; e.g. <strong>3,5,0,8</strong> releases 3, then 5,
+      then <strong>nothing</strong> on day three, then 8. Add as many days as you like;
+      anything left over continues at the cards-per-day rate above.
     </label>
-    <input type="text" id="dripDailyCounts" placeholder="e.g. 3,5,2" autocomplete="off">
+    <input type="text" id="dripDailyCounts" placeholder="e.g. 3,5,0,8" autocomplete="off">
+
+    <h3 class="drip-step">Step 3 · Schedule it</h3>
+    <p class="config-note">
+      Preview first &mdash; nothing is saved until you press Confirm.
+    </p>
     <div class="button-row">
       <button id="dripPreviewButton" class="btn-neutral">Preview Schedule</button>
       <button id="dripScheduleButton">Confirm Schedule</button>
     </div>
+
+    <h3 class="drip-step">Adjust what's already scheduled</h3>
     <div class="button-row">
       <button id="dripRescheduleButton" class="btn-neutral">Re-spread Pending</button>
       <button id="dripReleaseNowButton" class="btn-danger">Release All Now</button>
     </div>
 
-    <h3 style="margin-top:22px;font-size:15px;">Align Expiry Times</h3>
+    <h3 class="drip-step">Align expiry times</h3>
     <p class="config-note">
-      Puts every card currently in the &ldquo;Newly in stock!&rdquo; row on the same
-      release time so they all expire together. Uses the <strong>earliest</strong>
-      time in the row, so nothing gets its stay extended.
+      Puts every card in the &ldquo;Newly in stock!&rdquo; row on the same release time
+      so they all expire together. Uses the <strong>earliest</strong> time, so nothing
+      gets its stay extended.
     </p>
     <div class="button-row">
       <button id="alignEarliestButton" class="btn-neutral">Align to Earliest</button>
@@ -477,7 +499,10 @@
       blank to clear the whole row.
     </p>
     <input type="text" id="dropCardId" placeholder="Card ID (blank = clear the whole row)" autocomplete="off">
-    <button id="dropFromNewButton" class="btn-neutral">Remove From Newly In Stock</button>
+    <div class="button-row">
+      <button id="dropPreviewButton" class="btn-neutral">Preview</button>
+      <button id="dropFromNewButton" class="btn-danger">Remove From Newly In Stock</button>
+    </div>
 
     <h3 style="margin-top:22px;font-size:15px;">Publish Stock Now</h3>
     <p class="config-note">
@@ -1528,7 +1553,7 @@ document.getElementById("dripSaveConfig").onclick = async () => {
     const data = await callDripApi("config", { config: readDripConfig() });
     if (!data) return;
     renderDripStatus(data.status);
-    dripResultEl.textContent = `Saved: ${data.config.perDay} cards/day at ${String(data.config.releaseHour).padStart(2, "0")}:${String(data.config.releaseMinute).padStart(2, "0")} SGT, new for ${data.config.newWindowHours}h. Use "Re-spread Pending" to apply to already-scheduled cards.`;
+    dripResultEl.textContent = `Saved as default: ${data.config.perDay} cards/day at ${String(data.config.releaseHour).padStart(2, "0")}:${String(data.config.releaseMinute).padStart(2, "0")} SGT, new for ${data.config.newWindowHours}h. Use "Re-spread Pending" to apply to already-scheduled cards.`;
     dripResultEl.className = "success";
   } catch (err) {
     dripResultEl.textContent = "Network error — please try again.";
@@ -1540,7 +1565,7 @@ document.getElementById("dripPreviewButton").onclick = async () => {
   dripResultEl.textContent = "Building preview...";
   dripResultEl.className = "";
   try {
-    const data = await callDripApi("preview", { startAt: readDripStartAt(), dailyCounts: readDripDailyCounts() });
+    const data = await callDripApi("preview", { startAt: readDripStartAt(), dailyCounts: readDripDailyCounts(), config: readDripConfig() });
     if (!data) return;
 
     if (!data.proposed.length) {
@@ -1578,7 +1603,7 @@ document.getElementById("dripScheduleButton").onclick = async () => {
   dripResultEl.textContent = "Scheduling...";
   dripResultEl.className = "";
   try {
-    const data = await callDripApi("schedule", { startAt: readDripStartAt(), dailyCounts: readDripDailyCounts() });
+    const data = await callDripApi("schedule", { startAt: readDripStartAt(), dailyCounts: readDripDailyCounts(), config: readDripConfig() });
     if (!data) return;
     renderDripStatus(data.status);
     let msg = data.scheduled
@@ -1599,7 +1624,7 @@ document.getElementById("dripRescheduleButton").onclick = async () => {
   dripResultEl.textContent = "Rescheduling...";
   dripResultEl.className = "";
   try {
-    const data = await callDripApi("reschedule", { startAt: readDripStartAt(), dailyCounts: readDripDailyCounts() });
+    const data = await callDripApi("reschedule", { startAt: readDripStartAt(), dailyCounts: readDripDailyCounts(), config: readDripConfig() });
     if (!data) return;
     renderDripStatus(data.status);
     dripResultEl.textContent = `Re-spread ${data.rescheduled} pending listing(s).`;
@@ -1640,6 +1665,37 @@ async function alignNewWindow(mode) {
 
 document.getElementById("alignEarliestButton").onclick = () => alignNewWindow("earliest");
 document.getElementById("alignLatestButton").onclick = () => alignNewWindow("latest");
+
+document.getElementById("dropPreviewButton").onclick = async () => {
+  const cardId = document.getElementById("dropCardId").value.trim();
+  dripResultEl.textContent = "Checking...";
+  dripResultEl.className = "";
+
+  try {
+    const data = await callDripApi("previewDropFromNew", cardId ? { cardId } : {});
+    if (!data) return;
+
+    if (!data.dropped.length) {
+      dripListEl.innerHTML = "";
+      dripResultEl.textContent = cardId
+        ? `${cardId} isn't in the Newly in stock row.`
+        : "The Newly in stock row is already empty.";
+      dripResultEl.className = "error";
+      return;
+    }
+
+    dripListEl.innerHTML =
+      `<div style="margin-top:14px;"><strong>Would remove ${data.dropped.length} listing(s):</strong></div>` +
+      data.dropped.map(d => `<div><strong>${d.name}</strong>
+        <span class="muted">${d.set ? d.set + " · " : ""}${d.condition}</span></div>`).join("");
+
+    dripResultEl.textContent = "Preview only — nothing changed. Press Remove to apply.";
+    dripResultEl.className = "success";
+  } catch (err) {
+    dripResultEl.textContent = "Network error — please try again.";
+    dripResultEl.className = "error";
+  }
+};
 
 document.getElementById("dropFromNewButton").onclick = async () => {
   const cardId = document.getElementById("dropCardId").value.trim();
