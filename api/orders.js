@@ -3,7 +3,7 @@ import { Redis } from "@upstash/redis";
 const redis = Redis.fromEnv();
 
 const DEFAULT_LIMIT = 25;
-const MAX_LIMIT = 100;
+const MAX_LIMIT = 300; // matches MAX_STORED_ORDERS in confirm-order.js
 
 // Reads back the server-side order backup written by /api/confirm-order.
 //
