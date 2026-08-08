@@ -2005,16 +2005,19 @@ document.getElementById("lookupButton").onclick = async () => {
       let pill;
       if (r.hiddenUntil) {
         pill = `<span class="pill pill-hidden">hidden until ${formatWhen(r.hiddenUntil)}</span>`;
-      } else if (r.scheduled && !r.onStore) {
-        // Scheduled by the drip but not released yet — previously reported as
-        // "live on store", which was wrong and misleading.
+      } else if (r.allScheduled) {
+        // Nothing released at all — genuinely not on the store yet.
         pill = `<span class="pill pill-none">scheduled${
           r.nextReleaseAt ? ` &mdash; releases ${formatWhen(r.nextReleaseAt)}` : ", not released"
         }</span>`;
       } else if (r.onStore) {
-        pill = '<span class="pill pill-live">live on store</span>';
+        // Live and buyable. A partly-scheduled card still counts as live, with
+        // the pending part flagged separately below.
+        pill = '<span class="pill pill-live">live on store</span>'
+          + (r.scheduled ? '<span class="pill pill-none">more scheduled</span>' : "");
       } else {
-        pill = '<span class="pill pill-none">all sold</span>';
+        pill = '<span class="pill pill-none">all sold</span>'
+          + (r.scheduled ? '<span class="pill pill-none">more scheduled</span>' : "");
       }
 
       const rows = r.listings.map(l => {
