@@ -6,6 +6,10 @@ import {
   saveHiddenCardsMap,
   indexGroupsByCardId,
   parseCardIdList,
+  getDripState,
+  getEffectiveStock,
+  isListingReleased,
+  isListingNew,
 } from "./_inventory.js";
 
 const redis = Redis.fromEnv();
@@ -86,6 +90,10 @@ export default async function handler(req, res) {
     // genuinely available, and whether each is already hidden.
     if (action === "lookup") {
       const reservedMap = await getActiveReservedMap(redis);
+      // Release state comes from the drip schedule; without it every listing
+      // looked unreleased and the panel reported live cards as "scheduled".
+      const drip = await getDripState(redis);
+      const now = Date.now();
 
       // Flatten every matched listing across the whole batch, then fetch all
       // sold counters in ONE MGET rather than per card.
@@ -117,6 +125,17 @@ export default async function handler(req, res) {
         const listings = matches.map(m => {
           const sold = soldByGroupKey[m.groupKey] || 0;
           const reserved = reservedMap[m.groupKey] || 0;
+
+          const released = isListingReleased(drip, m.groupKey, now);
+          // Published portion only — a pending restock isn't buyable yet.
+          const publishedStock = getEffectiveStock(drip, m.groupKey, m.group.baseStock, now);
+          const pendingReleaseAt =
+            drip.releases[m.groupKey] !== undefined && drip.releases[m.groupKey] > now
+              ? drip.releases[m.groupKey]
+              : (drip.levels[m.groupKey] && drip.levels[m.groupKey].pendingAt > now
+                  ? drip.levels[m.groupKey].pendingAt
+                  : null);
+
           return {
             groupKey: m.groupKey,
             name: m.group.name,
@@ -130,10 +149,14 @@ export default async function handler(req, res) {
             hasImage: Boolean(m.group.photo),
             featured: Boolean(m.group.featured),
             baseStock: m.group.baseStock,
+            publishedStock,
             sold,
             reserved,
-            available: Math.max(m.group.baseStock - sold - reserved, 0),
-            trueStock: Math.max(m.group.baseStock - sold, 0),
+            released,
+            isNew: isListingNew(drip, m.groupKey, now),
+            pendingReleaseAt,
+            available: released ? Math.max(publishedStock - sold - reserved, 0) : 0,
+            trueStock: released ? Math.max(publishedStock - sold, 0) : 0,
           };
         });
 
