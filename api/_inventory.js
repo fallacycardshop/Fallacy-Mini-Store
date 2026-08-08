@@ -545,14 +545,42 @@ export function parseLocalDateTime(text, config) {
 // counted forward from that first slot.
 //
 // Pure function — the caller decides whether to persist it.
-export function buildDripSchedule(groupKeys, config, now = Date.now(), firstSlotAt = null) {
+// dailyCounts optionally overrides the uniform perDay: [3, 5, 2] releases three
+// on the first day, five on the second, two on the third, then falls back to
+// perDay for any remaining listings. Lets a big drop be front- or back-loaded
+// without changing the default setting.
+export function buildDripSchedule(
+  groupKeys,
+  config,
+  now = Date.now(),
+  firstSlotAt = null,
+  dailyCounts = null
+) {
   const perDay = Math.max(Number(config.perDay) || 1, 1);
+
+  // Expand the plan into a per-listing day index up front, so the slot maths
+  // below stays a simple lookup.
+  const dayForIndex = [];
+  if (Array.isArray(dailyCounts) && dailyCounts.length > 0) {
+    let day = 0;
+    dailyCounts.forEach(count => {
+      const n = Math.max(Math.floor(Number(count) || 0), 0);
+      for (let i = 0; i < n; i++) dayForIndex.push(day);
+      day += 1;
+    });
+    // Anything beyond the plan continues at the default rate.
+    let overflow = 0;
+    while (dayForIndex.length < groupKeys.length) {
+      dayForIndex.push(day + Math.floor(overflow / perDay));
+      overflow += 1;
+    }
+  }
   const validFirst = Number.isFinite(Number(firstSlotAt)) && Number(firstSlotAt) > now
     ? Number(firstSlotAt)
     : null;
 
   return groupKeys.map((groupKey, i) => {
-    const day = Math.floor(i / perDay);
+    const day = dayForIndex.length > 0 ? dayForIndex[i] : Math.floor(i / perDay);
     let releaseAt;
     if (validFirst !== null) {
       releaseAt = day === 0
