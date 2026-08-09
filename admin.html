@@ -372,32 +372,61 @@
 
   /* Panel navigation: ten stacked cards was a lot of scrolling, so only one is
      shown at a time and these chips switch between them. */
-  .panel-nav {
+  /* Scrolls sideways (works well by touch on mobile). On desktop the wheel and
+     the arrow buttons drive it, since neither is obvious otherwise. */
+  .panel-nav-wrap {
     position: sticky;
     top: 0;
     z-index: 20;
     width: 100%;
     max-width: 460px;
     display: flex;
+    align-items: center;
+    gap: 4px;
+    background: #fdf3f7;
+    padding: 10px 0;
+    margin-bottom: -6px;
+  }
+
+  .panel-nav {
+    flex: 1;
+    min-width: 0;
+    display: flex;
     gap: 8px;
     overflow-x: auto;
-    padding: 10px 2px;
-    margin-bottom: -6px;
-    background: #fdf3f7;
+    scroll-behavior: smooth;
+    padding: 2px;
     scrollbar-width: none;
   }
   .panel-nav::-webkit-scrollbar { display: none; }
+
+  .panel-arrow {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 34px;
+    margin: 0;
+    padding: 0;
+    min-height: 0;
+    border-radius: 8px;
+    background: #fff;
+    border: 1px solid #f0d5e3;
+    color: #a8305f;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .panel-arrow:disabled { opacity: 0.35; }
 
   .panel-chip {
     flex: 0 0 auto;
     width: auto;
     margin: 0;
-    padding: 9px 15px;
+    padding: 7px 12px;
     border-radius: 999px;
     border: 1px solid #f0d5e3;
     background: #fff;
     color: #a8305f;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     white-space: nowrap;
     min-height: 0;
@@ -449,7 +478,11 @@
 </head>
 <body>
 
-<nav class="panel-nav" id="panelNav"></nav>
+<div class="panel-nav-wrap">
+  <button type="button" class="panel-arrow" id="panelNavLeft" aria-label="Scroll tabs left">&#8249;</button>
+  <nav class="panel-nav" id="panelNav"></nav>
+  <button type="button" class="panel-arrow" id="panelNavRight" aria-label="Scroll tabs right">&#8250;</button>
+</div>
 
 <div class="card">
   <h1>Sales Funnel</h1>
@@ -849,6 +882,8 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (e) {
       /* storage unavailable — the tabs still work for this visit */
     }
+    const activeChip = nav.querySelectorAll(".panel-chip")[index];
+    if (activeChip) activeChip.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
     window.scrollTo(0, 0);
   };
 
@@ -863,6 +898,32 @@ document.addEventListener("DOMContentLoaded", () => {
     chip.onclick = () => show(i);
     nav.appendChild(chip);
   });
+
+  // Desktop affordances: arrow buttons, and the wheel scrolling the row
+  // sideways instead of the page.
+  const leftBtn = document.getElementById("panelNavLeft");
+  const rightBtn = document.getElementById("panelNavRight");
+
+  const updateArrows = () => {
+    const max = nav.scrollWidth - nav.clientWidth;
+    if (leftBtn) leftBtn.disabled = nav.scrollLeft <= 2;
+    if (rightBtn) rightBtn.disabled = nav.scrollLeft >= max - 2;
+  };
+
+  if (leftBtn) leftBtn.onclick = () => nav.scrollBy({ left: -180, behavior: "smooth" });
+  if (rightBtn) rightBtn.onclick = () => nav.scrollBy({ left: 180, behavior: "smooth" });
+
+  nav.addEventListener("scroll", updateArrows);
+  window.addEventListener("resize", updateArrows);
+
+  nav.addEventListener("wheel", e => {
+    // Only hijack a vertical wheel; trackpad horizontal gestures already work.
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    e.preventDefault();
+    nav.scrollLeft += e.deltaY;
+  }, { passive: false });
+
+  updateArrows();
 
   let start = 0;
   try {
