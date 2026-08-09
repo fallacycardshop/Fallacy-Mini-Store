@@ -684,6 +684,13 @@ h2 {
   box-shadow: 0 2px 6px rgba(0,0,0,0.08);
 }
 
+.total-note {
+  font-size: 11px;
+  color: var(--text-soft, #888);
+  margin: -2px 0 8px;
+  line-height: 1.35;
+}
+
 .total-row {
   display: flex;
   justify-content: space-between;
@@ -852,6 +859,7 @@ footer .btn { width: auto; flex-shrink: 0; }
       <div class="total-row"><span>Subtotal</span><span id="subtotalText">$0.00</span></div>
       <div class="total-row" id="discountRow" style="display:none;color:#3a7d44;"><span>Discount</span><span id="discountText">-$0.00</span></div>
       <div class="total-row"><span>Mailing Fee</span><span id="shippingText">$0.00</span></div>
+      <div class="total-note" id="shippingNote">Flat $3, paid upfront — whether we post now or hold your cards.</div>
       <div class="total-row" style="font-weight:700;"><span>Total</span><span id="totalText">$0.00</span></div>
     </div>
 
@@ -1474,6 +1482,8 @@ function updateTotals() {
 
   subtotalTextEl.textContent = `$${currentSubtotal.toFixed(2)}`;
   shippingTextEl.textContent = `$${shipping.toFixed(2)}`;
+  const shippingNoteEl = document.getElementById("shippingNote");
+  if (shippingNoteEl) shippingNoteEl.style.display = shipping > 0 ? "block" : "none";
   totalTextEl.textContent = `$${total.toFixed(2)}`;
 
   if (discountAmount > 0) {
