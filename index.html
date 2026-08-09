@@ -541,6 +541,28 @@ h2 {
   opacity: 0.75;
 }
 
+.field-hint {
+  font-size: 11px;
+  color: #777;
+  margin: 4px 0 0;
+  line-height: 1.4;
+}
+
+.field-hint-warn { color: #c0392b; font-weight: 600; }
+
+.faq-link {
+  display: inline-block;
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pink-deep);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 .stock-warning {
   font-size: 11px;
   color: #c0392b;
@@ -686,6 +708,7 @@ footer .btn { width: auto; flex-shrink: 0; }
       <span id="promoText"></span>
     </div>
     <p class="stock-note">Note: All photos are for reference only and do not reflect actual condition stated.</p>
+    <button type="button" id="faqLink" class="faq-link">Questions? Read our FAQ</button>
     <p id="statusText" class="status-text">Loading inventory…</p>
 
     <div class="toolbar">
@@ -965,12 +988,31 @@ imageLightboxEl.onclick = () => {
   imageLightboxEl.style.display = "none";
 };
 
-// Prefill the checkout name field from Telegram's profile, if available.
+// Prefill the checkout fields from Telegram's profile, if available.
+//
+// Only works when the store is opened as a Mini App (t.me/<bot>/<app>) — a
+// plain link opens the in-app browser, which passes no identity at all.
 if (telegramUser) {
   const nameInputEl = document.getElementById("nameInput");
   const fullName = [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ");
   if (fullName) nameInputEl.value = fullName;
-  if (telegramUser.username) telegramUsernameInputEl.value = `@${telegramUser.username}`;
+
+  const hint = document.createElement("p");
+  hint.className = "field-hint";
+
+  if (telegramUser.username) {
+    telegramUsernameInputEl.value = `@${telegramUser.username}`;
+    hint.textContent = "Filled in from your Telegram account — edit if you'd like.";
+  } else {
+    // Plenty of Telegram accounts have no @username. Saying so beats leaving
+    // the buyer staring at a required field they can't guess the format for.
+    hint.textContent =
+      "Your Telegram account has no @username yet. Add one in Telegram → Settings → Username so we can reach you about your order.";
+    hint.classList.add("field-hint-warn");
+  }
+
+  telegramUsernameInputEl.insertAdjacentElement("afterend", hint);
+  trackEvent("telegram_prefill", { username: telegramUser.username ? "yes" : "no" });
 }
 
 // IMPORTANT: replace this with your real notification email address.
@@ -1165,7 +1207,48 @@ function generateReservationId() {
   return `res_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
+// The active reservation id is mirrored into localStorage so it can be cleaned
+// up even if the page dies without running any of the normal exit paths.
+//
+// Without this, a buyer who closed the Mini App mid-checkout kept holding their
+// own stock for the full TTL — and on returning was told the cards were sold
+// out, by their own abandoned session.
+const RESERVATION_KEY = "fallacy_active_reservation";
+
+function rememberReservation(reservationId) {
+  try {
+    if (reservationId) localStorage.setItem(RESERVATION_KEY, reservationId);
+    else localStorage.removeItem(RESERVATION_KEY);
+  } catch (e) {
+    // Storage unavailable — the normal exit paths still release the hold.
+  }
+}
+
+function storedReservationId() {
+  try {
+    return localStorage.getItem(RESERVATION_KEY);
+  } catch (e) {
+    return null;
+  }
+}
+
+// Fire-and-forget release that survives the page being torn down.
+function releaseReservationBeacon(reservationId) {
+  if (!reservationId) return;
+  try {
+    fetch("/api/release-reservation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reservationId }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch (e) {
+    /* ignored */
+  }
+}
+
 async function releaseReservation(reservationId) {
+  rememberReservation(null);
   if (!reservationId) return;
   try {
     await fetch("/api/release-reservation", {
@@ -2144,6 +2227,11 @@ checkoutButtonEl.onclick = async () => {
   // the server side even if this page is closed or crashes, and the order
   // itself isn't emailed/considered a real sale yet — that only happens
   // once they confirm they've actually paid.
+  // Clear any hold left over from an abandoned session first, so the buyer
+  // isn't blocked by their own previous reservation.
+  const leftover = storedReservationId();
+  if (leftover) await releaseReservation(leftover);
+
   const reservationId = generateReservationId();
   const reservationItems = Object.values(order.cart).map(({ product, quantity }) => ({
     key: product.stockKey || product.cardId || product.name,
@@ -2182,6 +2270,7 @@ checkoutButtonEl.onclick = async () => {
   }
 
   order.reservationId = reservationId;
+  rememberReservation(reservationId);
 
   // Stock reserved and the PayNow QR is on screen. Anyone lost between here and
   // "purchase" is hesitating at payment, not at the form.
@@ -2278,11 +2367,30 @@ paynowConfirmButtonEl.onclick = async () => {
   updateCheckoutFieldsVisibility();
   modalBackdropEl.style.display = "flex";
 
+  rememberReservation(null);
+
   // Order complete. Re-enable for the NEXT order, but only now that
   // pendingOrder is null — a further tap can't resubmit this one.
   isConfirmingOrder = false;
   paynowConfirmButtonEl.disabled = false;
   paynowConfirmButtonEl.textContent = confirmLabel;
+};
+
+// Pinned FAQ message in the Telegram channel.
+//
+// REPLACE THIS with the link to your pinned FAQ message: open the message in
+// Telegram, tap "Copy Link", and paste it here. It looks like
+// https://t.me/fallacytcg/123 (the number is the message id).
+const FAQ_MESSAGE_URL = "https://t.me/fallacytcg";
+
+document.getElementById("faqLink").onclick = () => {
+  // openTelegramLink keeps the buyer inside Telegram rather than bouncing them
+  // out to a browser; falls back to a normal link outside the Mini App.
+  if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openTelegramLink) {
+    window.Telegram.WebApp.openTelegramLink(FAQ_MESSAGE_URL);
+  } else {
+    window.open(FAQ_MESSAGE_URL, "_blank");
+  }
 };
 
 modalCloseButtonEl.onclick = () => {
@@ -2418,6 +2526,23 @@ loadRecentSales();
 // Counted once per page load (not on the 60s refresh), giving the funnel a
 // top-of-funnel number to measure the other steps against.
 trackEvent("page_view");
+
+// A reservation left over from a previous visit can only be stale: pendingOrder
+// lives in memory and doesn't survive a reload, so the buyer could never
+// confirm it anyway. Release it rather than let it block their own cart.
+const staleReservation = storedReservationId();
+if (staleReservation) {
+  releaseReservationBeacon(staleReservation);
+  rememberReservation(null);
+}
+
+// Closing the Mini App or backgrounding the tab mid-checkout previously left
+// the hold in place for the full TTL.
+window.addEventListener("pagehide", () => {
+  if (pendingOrder && pendingOrder.reservationId) {
+    releaseReservationBeacon(pendingOrder.reservationId);
+  }
+});
 
 // Retry any order notification that never made it out — e.g. the buyer closed
 // the Telegram webview before the request finished on a previous visit.
