@@ -1237,7 +1237,8 @@ document.getElementById("promoBuildButton").onclick = async () => {
     const pad = 40;
     const logoUrl = document.getElementById("promoLogo").value.trim();
     const logoImg = logoUrl ? await loadImage(logoUrl) : null;
-    const headingH = (logoImg ? 230 : 0) + (heading ? 96 : 0) + 24;
+    // Logo and heading share one band now (logo right, heading left).
+    const headingH = (logoImg || heading) ? 150 : 24;
     const cardW = Math.floor((PROMO_W - pad * 2 - gap * (cols - 1)) / cols);
     const cardH = Math.round(cardW * CARD_RATIO);
     const rows = Math.ceil(usable.length / cols);
@@ -1248,40 +1249,62 @@ document.getElementById("promoBuildButton").onclick = async () => {
     canvas.height = height;
     const ctx = canvas.getContext("2d");
 
-    // Brand-pink gradient background, matching the channel artwork.
-    const bg = ctx.createLinearGradient(0, 0, PROMO_W, height);
+    // Brand pink at the edges fading to near-white through the middle, so the
+    // cards sit on a light field and stand out instead of competing with a
+    // saturated background.
+    const bg = ctx.createLinearGradient(0, 0, 0, height);
     bg.addColorStop(0, PROMO_BG);
+    bg.addColorStop(0.18, "#f7e3ec");
+    bg.addColorStop(0.55, "#ffffff");
+    bg.addColorStop(0.88, "#fbeaf1");
     bg.addColorStop(1, PROMO_BG_DEEP);
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, PROMO_W, height);
 
-    if (heading || logoImg) {
-      const centreX = PROMO_W / 2;
+    if (logoImg) {
+      // Top right, feathered into the background. A JPEG logo has a hard square
+      // edge, so it's drawn through a radial mask that fades the corners out
+      // rather than showing a visible border against the gradient.
+      const logoH = 150;
+      const logoW = Math.round(logoH * (logoImg.width / logoImg.height));
+      const lx = PROMO_W - logoW - 40;
+      const ly = 26;
 
-      if (logoImg) {
-        // Soft white glow behind the logo, as on the channel picture.
-        const logoH = 108;
-        const logoW = Math.round(logoH * (logoImg.width / logoImg.height));
-        ctx.save();
-        ctx.shadowColor = "rgba(255,255,255,0.85)";
-        ctx.shadowBlur = 26;
-        ctx.drawImage(logoImg, centreX - logoW / 2, 24, logoW, logoH);
-        ctx.restore();
-      }
+      const mask = document.createElement("canvas");
+      mask.width = logoW;
+      mask.height = logoH;
+      const mctx = mask.getContext("2d");
+      mctx.drawImage(logoImg, 0, 0, logoW, logoH);
 
-      if (heading) {
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 62px Poppins, Arial, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(heading, centreX, logoImg ? 200 : 74);
-      }
+      const fade = mctx.createRadialGradient(
+        logoW / 2, logoH / 2, Math.min(logoW, logoH) * 0.30,
+        logoW / 2, logoH / 2, Math.min(logoW, logoH) * 0.52
+      );
+      fade.addColorStop(0, "rgba(0,0,0,1)");
+      fade.addColorStop(1, "rgba(0,0,0,0)");
+      mctx.globalCompositeOperation = "destination-in";
+      mctx.fillStyle = fade;
+      mctx.fillRect(0, 0, logoW, logoH);
 
-      ctx.font = "28px Poppins, Arial, sans-serif";
-      ctx.fillStyle = "rgba(255,255,255,0.88)";
-      ctx.textAlign = "center";
-      ctx.fillText("@fallacyministore_bot", PROMO_W / 2, height - 26);
-      ctx.textAlign = "left";
+      ctx.drawImage(mask, lx, ly, logoW, logoH);
     }
+
+    if (heading) {
+      // Left aligned at the top, clear of the logo.
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 60px Poppins, Arial, sans-serif";
+      ctx.textAlign = "left";
+      ctx.shadowColor = "rgba(150,20,70,0.35)";
+      ctx.shadowBlur = 12;
+      ctx.fillText(heading, 46, 92);
+      ctx.shadowColor = "transparent";
+    }
+
+    ctx.font = "28px Poppins, Arial, sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.textAlign = "center";
+    ctx.fillText("@fallacyministore_bot", PROMO_W / 2, height - 26);
+    ctx.textAlign = "left";
 
     const rand = seededRandom(usable.length * 7919);
 
