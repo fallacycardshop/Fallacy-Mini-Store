@@ -106,6 +106,11 @@ export default async function handler(req, res) {
         await redis.lpush("recent_sales", ...entries);
         await redis.ltrim("recent_sales", 0, MAX_RECENT_SALES - 1);
       }
+
+      // Adds to the hand-entered lifetime figure so the headline number keeps
+      // climbing on its own between manual updates. One HINCRBY per order.
+      const cardCount = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+      await redis.hincrby("stats:lifetime", "cards", cardCount);
     } catch (feedErr) {
       // Never let the activity feed break a real order confirmation.
       console.error("recent_sales logging failed:", feedErr);
