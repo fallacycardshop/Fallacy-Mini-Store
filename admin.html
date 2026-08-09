@@ -370,6 +370,40 @@
   .card-image-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
   .card-image-actions button { flex: 1; min-width: 110px; font-size: 12px; padding: 8px; }
 
+  .results-bar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 14px;
+    padding: 8px 10px;
+    background: #faf5f8;
+    border: 1px solid #f0e2ea;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #a8305f;
+  }
+  .results-bar-collapsed {
+    opacity: 0.75;
+    background: #f2f2f2;
+    border-color: #e6e6e6;
+    color: #777;
+  }
+  .results-bar-collapsed .results-hide { background: #777; }
+
+  .results-hide {
+    width: auto;
+    margin: 0;
+    padding: 5px 14px;
+    font-size: 12px;
+    background: #a8305f;
+    border-radius: 8px;
+  }
+
   .hidden-list { margin-top: 14px; font-size: 13px; }
   .hidden-list div { padding: 6px 0; border-bottom: 1px solid #eee; }
 </style>
@@ -789,6 +823,63 @@ document.getElementById("funnelLoadButton").onclick = async () => {
 const ordersPassphraseEl = document.getElementById("ordersPassphrase");
 const ordersResultEl = document.getElementById("ordersResultText");
 const ordersListEl = document.getElementById("ordersList");
+
+// ---------------------------------------------------------------------------
+// Collapsible result panels
+//
+// Several actions render long lists — sales history, orders, the funnel, drip
+// queues. Watching for them to appear and giving each a sticky Hide bar means
+// you can dismiss a list from where you are, instead of scrolling to the end
+// of it to reach the next control.
+// ---------------------------------------------------------------------------
+function makeCollapsible(el, label) {
+  if (!el || el.dataset.collapsibleReady === "1") return;
+  el.dataset.collapsibleReady = "1";
+
+  const observer = new MutationObserver(() => {
+    const hasContent = el.children.length > 0 || el.textContent.trim() !== "";
+    const existing = el.previousElementSibling;
+    const isBar = existing && existing.classList && existing.classList.contains("results-bar");
+
+    // New content arriving un-hides the panel — otherwise a fresh search would
+    // appear to do nothing.
+    if (hasContent && el.style.display === "none") {
+      el.style.display = "";
+      const btn = isBar && existing.querySelector(".results-hide");
+      if (btn) btn.textContent = "Hide";
+      if (isBar) existing.classList.remove("results-bar-collapsed");
+    }
+
+    if (hasContent && !isBar) {
+      const bar = document.createElement("div");
+      bar.className = "results-bar";
+
+      const title = document.createElement("span");
+      title.textContent = label;
+
+      const hideBtn = document.createElement("button");
+      hideBtn.type = "button";
+      hideBtn.className = "results-hide";
+      hideBtn.textContent = "Hide";
+      // Toggles visibility rather than clearing, so reopening doesn't mean
+      // re-running the query.
+      hideBtn.onclick = () => {
+        const hidden = el.style.display === "none";
+        el.style.display = hidden ? "" : "none";
+        hideBtn.textContent = hidden ? "Hide" : "Show";
+        bar.classList.toggle("results-bar-collapsed", !hidden);
+      };
+
+      bar.appendChild(title);
+      bar.appendChild(hideBtn);
+      el.parentNode.insertBefore(bar, el);
+    } else if (!hasContent && isBar) {
+      existing.remove();
+    }
+  });
+
+  observer.observe(el, { childList: true, subtree: false, characterData: true });
+}
 
 function escapeHtml(value) {
   return String(value === undefined || value === null ? "" : value)
@@ -1869,6 +1960,18 @@ function renderOrders() {
       };
     });
 }
+
+// Long-output panels get a sticky Hide bar as soon as they have content.
+[
+  ["funnelReport", "Funnel report"],
+  ["promoSlot", "Promo image"],
+  ["historyReport", "Sales history"],
+  ["ordersDaySummary", "Day summary"],
+  ["ordersList", "Orders"],
+  ["dripList", "Release schedule"],
+  ["lookupResult", "Card lookup"],
+  ["hiddenList", "Hidden cards"],
+].forEach(([id, label]) => makeCollapsible(document.getElementById(id), label));
 
 document.getElementById("ordersDate").onchange = renderOrders;
 document.getElementById("ordersClearDate").onclick = () => {
