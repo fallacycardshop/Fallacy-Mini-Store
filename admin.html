@@ -498,6 +498,25 @@
 </div>
 
 <div class="card">
+  <h1>Recent Orders</h1>
+  <p>
+    Every confirmed order is saved here the moment stock is decremented &mdash;
+    independently of the notification email. If an email never arrives, the full
+    order is still recoverable from this list.
+  </p>
+  <input type="password" id="ordersPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
+  <label class="field-label">Show orders for (leave blank for all)</label>
+  <div class="date-row">
+    <input type="date" id="ordersDate">
+    <button id="ordersClearDate" class="btn-neutral">All dates</button>
+  </div>
+  <button id="ordersLoadButton">Load Recent Orders</button>
+  <div id="ordersDaySummary"></div>
+  <p id="ordersResultText"></p>
+  <div id="ordersList"></div>
+</div>
+
+<div class="card">
   <h1>Auction Promo Image</h1>
   <p>
     For cards that aren&rsquo;t in the store inventory. Upload the card photos to
@@ -622,25 +641,6 @@
   <button id="historyLoadButton">Load Sales History</button>
   <p id="historyResultText"></p>
   <div id="historyReport"></div>
-</div>
-
-<div class="card">
-  <h1>Recent Orders</h1>
-  <p>
-    Every confirmed order is saved here the moment stock is decremented &mdash;
-    independently of the notification email. If an email never arrives, the full
-    order is still recoverable from this list.
-  </p>
-  <input type="password" id="ordersPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
-  <label class="field-label">Show orders for (leave blank for all)</label>
-  <div class="date-row">
-    <input type="date" id="ordersDate">
-    <button id="ordersClearDate" class="btn-neutral">All dates</button>
-  </div>
-  <button id="ordersLoadButton">Load Recent Orders</button>
-  <div id="ordersDaySummary"></div>
-  <p id="ordersResultText"></p>
-  <div id="ordersList"></div>
 </div>
 
 <div class="card">
