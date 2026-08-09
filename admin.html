@@ -1292,33 +1292,52 @@ document.getElementById("promoBuildButton").onclick = async () => {
       // Top right, feathered into the background. A JPEG logo has a hard square
       // edge, so it's drawn through a radial mask that fades the corners out
       // rather than showing a visible border against the gradient.
-      const logoH = 240;
+      const logoH = 190;
       const logoW = Math.round(logoH * (logoImg.width / logoImg.height));
       const lx = PROMO_W - logoW - 24;
       // Sat high so it stays clear of the white glow — the fade then blends
       // into flat pink all the way round rather than half onto white.
-      const ly = -34;
+      const ly = -22;
 
-      // Radial fade so the logo's square JPEG edge dissolves into the pink
-      // instead of showing as a visible tile. Feathered wide enough to keep the
-      // artwork itself intact.
+      // Rectangular fade following the image's own shape: fully opaque through
+      // the middle, with only the outer band on each side feathered out. Keeps
+      // the whole square of artwork visible while dissolving the JPEG edge.
       const mask = document.createElement("canvas");
       mask.width = logoW;
       mask.height = logoH;
       const mctx = mask.getContext("2d");
       mctx.drawImage(logoImg, 0, 0, logoW, logoH);
 
-      const fade = mctx.createRadialGradient(
-        logoW / 2, logoH / 2, Math.min(logoW, logoH) * 0.38,
-        logoW / 2, logoH / 2, Math.min(logoW, logoH) * 0.50
-      );
-      fade.addColorStop(0, "rgba(0,0,0,1)");
-      fade.addColorStop(1, "rgba(0,0,0,0)");
       mctx.globalCompositeOperation = "destination-in";
-      mctx.fillStyle = fade;
+
+      // Opaque core, then fade each edge independently.
+      const featherX = Math.round(logoW * 0.16);
+      const featherY = Math.round(logoH * 0.16);
+
+      const hFade = mctx.createLinearGradient(0, 0, logoW, 0);
+      hFade.addColorStop(0, "rgba(0,0,0,0)");
+      hFade.addColorStop(featherX / logoW, "rgba(0,0,0,1)");
+      hFade.addColorStop(1 - featherX / logoW, "rgba(0,0,0,1)");
+      hFade.addColorStop(1, "rgba(0,0,0,0)");
+      mctx.fillStyle = hFade;
       mctx.fillRect(0, 0, logoW, logoH);
 
-      ctx.drawImage(mask, lx, ly, logoW, logoH);
+      // Second pass trims the top and bottom edges the same way.
+      const vMask = document.createElement("canvas");
+      vMask.width = logoW;
+      vMask.height = logoH;
+      const vctx = vMask.getContext("2d");
+      vctx.drawImage(mask, 0, 0);
+      vctx.globalCompositeOperation = "destination-in";
+      const vFade = vctx.createLinearGradient(0, 0, 0, logoH);
+      vFade.addColorStop(0, "rgba(0,0,0,0)");
+      vFade.addColorStop(featherY / logoH, "rgba(0,0,0,1)");
+      vFade.addColorStop(1 - featherY / logoH, "rgba(0,0,0,1)");
+      vFade.addColorStop(1, "rgba(0,0,0,0)");
+      vctx.fillStyle = vFade;
+      vctx.fillRect(0, 0, logoW, logoH);
+
+      ctx.drawImage(vMask, lx, ly, logoW, logoH);
     }
 
     if (heading) {
