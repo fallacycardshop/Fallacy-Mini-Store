@@ -2463,7 +2463,7 @@ paynowConfirmButtonEl.onclick = async () => {
   paynowConfirmButtonEl.textContent = "Confirming…";
 
   try {
-    const confirmRes = await fetch("/api/confirm-order", {
+    let confirmRes = await fetch("/api/confirm-order", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       // The order record travels WITH the confirmation, so it is stored
@@ -2475,12 +2475,60 @@ paynowConfirmButtonEl.onclick = async () => {
         record: buildOrderPayload(pendingOrder),
       }),
     });
+    // EXPIRY RESCUE.
+    //
+    // A lapsed reservation doesn't mean the cards sold — usually nobody else
+    // took them and they're still sitting there. Rather than losing a buyer who
+    // was 30 seconds late (often after they've already sent payment), try to
+    // reserve the same cards again and complete the order.
+    //
+    // If someone genuinely claimed them in the meantime the re-reservation
+    // fails and they get the honest message. No stock is held any longer than
+    // the normal window.
+    if (confirmRes.status === 410) {
+      const rescueId = generateReservationId();
+      const rescueItems = Object.values(pendingOrder.cart).map(({ product, quantity }) => ({
+        key: product.stockKey || product.cardId || product.name,
+        quantity,
+      }));
+
+      try {
+        const rescueRes = await fetch("/api/reserve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reservationId: rescueId, items: rescueItems }),
+        });
+
+        if (rescueRes.ok) {
+          pendingOrder.reservationId = rescueId;
+          rememberReservation(rescueId);
+          trackEvent("reservation_rescued", { items: rescueItems.length });
+
+          // One retry only — if this fails too, fall through to the normal
+          // error path rather than looping.
+          confirmRes = await fetch("/api/confirm-order", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              reservationId: rescueId,
+              record: buildOrderPayload(pendingOrder),
+            }),
+          });
+        }
+      } catch (rescueErr) {
+        console.error("Reservation rescue failed:", rescueErr);
+      }
+    }
+
     if (!confirmRes.ok) {
       const errData = await confirmRes.json().catch(() => ({}));
       // Worth watching: a buyer who paid attention all the way here and then
       // lost their reservation is the most expensive kind of drop-off.
       trackEvent("checkout_failed", { reason: "reservation_expired" });
-      alert(errData.error || "Your reservation has expired. Please try again.");
+      alert(
+        errData.error ||
+        "Your reservation expired and someone else has since claimed one of these cards. Please check your cart and try again."
+      );
       pendingOrder = null;
       isConfirmingOrder = false;
       paynowConfirmButtonEl.disabled = false;
