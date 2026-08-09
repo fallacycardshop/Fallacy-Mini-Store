@@ -349,6 +349,17 @@
   .edit-fields input { margin-bottom: 8px; }
 
   .card-image-slot { margin: 10px 0; }
+  .promo-preview {
+    width: 100%;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+    display: block;
+    /* Lets iOS offer the save/copy menu on long-press. */
+    -webkit-touch-callout: default;
+    user-select: auto;
+    -webkit-user-select: auto;
+  }
+
   .card-image-slot canvas {
     width: 100%;
     max-width: 380px;
@@ -1397,37 +1408,73 @@ document.getElementById("promoBuildButton").onclick = async () => {
       drawCardImage(ctx, entry.img, x, y, cardW, cardH, 14, rotation);
     });
 
-    slot.appendChild(canvas);
+    // Rendered as a real <img>, not the canvas itself: iOS only offers
+    // "Add to Photos" on a long-press when the element is an image.
+    const preview = document.createElement("img");
+    preview.src = canvas.toDataURL("image/png");
+    preview.alt = "Promo image";
+    preview.className = "promo-preview";
+    slot.appendChild(preview);
+
+    const hint = document.createElement("p");
+    hint.className = "config-note";
+    hint.textContent = "On iPhone: press and hold the image above, then choose \u201CAdd to Photos\u201D. Or use Share below.";
+    slot.appendChild(hint);
+
+    const filename = `newly-in-stock-${new Date().toISOString().slice(0, 10)}.png`;
+    const toBlob = () => new Promise(r => canvas.toBlob(r, "image/png"));
 
     const actions = document.createElement("div");
     actions.className = "card-image-actions";
 
+    // Share sheet is the reliable route on iOS — it offers "Save Image"
+    // straight to the camera roll, which a download link cannot do there.
+    const shareBtn = document.createElement("button");
+    shareBtn.className = "btn";
+    shareBtn.textContent = "Share / Save";
+    shareBtn.onclick = async () => {
+      try {
+        const blob = await toBlob();
+        const file = new File([blob], filename, { type: "image/png" });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file] });
+          return;
+        }
+        // Desktop and anything without file sharing: fall back to a download.
+        const link = document.createElement("a");
+        link.download = filename;
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+      } catch (e) {
+        // Sharing cancelled or unsupported — the long-press route still works.
+      }
+    };
+
     const copyBtn = document.createElement("button");
-    copyBtn.className = "btn";
+    copyBtn.className = "btn btn-neutral";
     copyBtn.textContent = "Copy image";
     copyBtn.onclick = async () => {
       try {
-        const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
+        const blob = await toBlob();
         await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
         copyBtn.textContent = "Copied";
         setTimeout(() => (copyBtn.textContent = "Copy image"), 1500);
       } catch (e) {
-        copyBtn.textContent = "Use Save instead";
+        copyBtn.textContent = "Use Share instead";
       }
     };
 
-    const saveBtn = document.createElement("button");
-    saveBtn.className = "btn btn-neutral";
-    saveBtn.textContent = "Save image";
-    saveBtn.onclick = () => {
-      const link = document.createElement("a");
-      link.download = `newly-in-stock-${new Date().toISOString().slice(0, 10)}.png`;
-      link.href = canvas.toDataURL("image/png");
-      link.click();
+    const openBtn = document.createElement("button");
+    openBtn.className = "btn btn-neutral";
+    openBtn.textContent = "Open in new tab";
+    openBtn.onclick = async () => {
+      const blob = await toBlob();
+      window.open(URL.createObjectURL(blob), "_blank");
     };
 
+    actions.appendChild(shareBtn);
     actions.appendChild(copyBtn);
-    actions.appendChild(saveBtn);
+    actions.appendChild(openBtn);
     slot.appendChild(actions);
 
     const skipped = newCards.length - usable.length;
