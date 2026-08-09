@@ -898,6 +898,7 @@ footer .btn { width: auto; flex-shrink: 0; }
     <h3 id="proofHeadline">Join our little community!</h3>
     <p class="proof-sub" id="proofSub"></p>
     <div id="proofList" class="proof-list"></div>
+    <button class="btn btn-primary" id="proofJoinButton">Join our channel!</button>
     <button class="btn btn-secondary" id="proofCloseButton">Close</button>
   </div>
 </div>
@@ -2540,6 +2541,27 @@ function setKeyboardOpen(isOpen) {
 // Primary signal: any text field gaining focus. Works in every browser,
 // including the Telegram in-app webview.
 recentSalesBannerEl.onclick = openSocialProof;
+const COMMUNITY_CHANNEL_URL = "https://t.me/fallacycardshop";
+
+// openTelegramLink hands the link to the Telegram client rather than opening a
+// browser tab, so the buyer lands in the channel with the Mini App collapsed
+// behind them — reopenable from the header without losing their cart, which
+// survives in localStorage regardless.
+//
+// Deliberately NOT WebApp.close(): that would terminate the session outright.
+document.getElementById("proofJoinButton").onclick = () => {
+  trackEvent("join_channel_click");
+
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg && tg.openTelegramLink) {
+    // Close the panel first so the store is in a clean state to return to.
+    document.getElementById("proofBackdrop").style.display = "none";
+    tg.openTelegramLink(COMMUNITY_CHANNEL_URL);
+  } else {
+    window.open(COMMUNITY_CHANNEL_URL, "_blank");
+  }
+};
+
 document.getElementById("proofCloseButton").onclick = () => {
   document.getElementById("proofBackdrop").style.display = "none";
 };
