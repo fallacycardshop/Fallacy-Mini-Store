@@ -1313,6 +1313,41 @@ function drawCardTrimmed(ctx, img, x, y, w, h, radius, trimPct) {
   ctx.restore();
 }
 
+// Same trimming, but tilted about the card's own centre — used for the fanned
+// highlight cluster while the grid behind stays square.
+function drawCardTrimmedRotated(ctx, img, x, y, w, h, radius, trimPct, rotation) {
+  const t = Math.max(Math.min(Number(trimPct) || 0, 12), 0) / 100;
+  const sx = img.width * t;
+  const sy = img.height * t;
+  const sw = img.width * (1 - t * 2);
+  const sh = img.height * (1 - t * 2);
+
+  ctx.save();
+  ctx.translate(x + w / 2, y + h / 2);
+  ctx.rotate(rotation);
+
+  // Heavier shadow than the grid, so the fan sits visibly above it.
+  ctx.shadowColor = "rgba(0,0,0,0.40)";
+  ctx.shadowBlur = 24;
+  ctx.shadowOffsetY = 8;
+
+  ctx.beginPath();
+  const r = radius;
+  ctx.moveTo(-w / 2 + r, -h / 2);
+  ctx.arcTo(w / 2, -h / 2, w / 2, h / 2, r);
+  ctx.arcTo(w / 2, h / 2, -w / 2, h / 2, r);
+  ctx.arcTo(-w / 2, h / 2, -w / 2, -h / 2, r);
+  ctx.arcTo(-w / 2, -h / 2, w / 2, -h / 2, r);
+  ctx.closePath();
+
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+  ctx.shadowColor = "transparent";
+  ctx.clip();
+  ctx.drawImage(img, sx, sy, sw, sh, -w / 2, -h / 2, w, h);
+  ctx.restore();
+}
+
 function drawCardImage(ctx, img, x, y, w, h, radius, rotation) {
   ctx.save();
   ctx.translate(x + w / 2, y + h / 2);
@@ -1481,28 +1516,25 @@ document.getElementById("auctionBuildButton").onclick = async () => {
       drawCardTrimmed(ctx, img, x, y, cardW, cardH, 10, trim);
     });
 
-    // --- highlights: same size, straight, overlapping the middle ---
-    // Laid across the centre like a second row placed on top, offset by half a
-    // card so they sit over the seams rather than lining up with the grid.
+    // --- highlights: fanned across the centre, same size as the grid ---
+    // Only these are angled — the grid behind stays square. Cards overlap
+    // heavily and arc like a hand held out, which is what makes the cluster read
+    // as physical cards laid on top rather than another row of the grid.
     if (front.length > 0) {
-      const spanW = front.length * cardW + (front.length - 1) * gap;
+      const overlap = cardW * 0.42;                       // how much each card covers the last
+      const spanW = cardW + (front.length - 1) * overlap;
       const startX = (PROMO_W - spanW) / 2;
-      const y = (height - cardH) / 2;
+      const centreY = height / 2;
+      const maxTilt = 0.30;                               // radians at the ends of the fan
 
       front.forEach((img, i) => {
-        const x = startX + i * (cardW + gap);
+        const t = front.length > 1 ? i / (front.length - 1) - 0.5 : 0; // -0.5 … +0.5
+        const x = startX + i * overlap;
+        // Ends dip lower than the middle, as a fanned hand does.
+        const y = centreY - cardH / 2 + Math.abs(t) * cardH * 0.13;
+        const rotation = t * 2 * maxTilt;
 
-        // Slight lift: a soft shadow pool under the row so it reads as sitting
-        // on top of the grid rather than being part of it.
-        ctx.save();
-        ctx.shadowColor = "rgba(0,0,0,0.34)";
-        ctx.shadowBlur = 26;
-        ctx.shadowOffsetY = 10;
-        ctx.fillStyle = "rgba(0,0,0,0.001)";
-        ctx.fillRect(x, y, cardW, cardH);
-        ctx.restore();
-
-        drawCardTrimmed(ctx, img, x, y, cardW, cardH, 10, trim);
+        drawCardTrimmedRotated(ctx, img, x, y, cardW, cardH, 10, trim, rotation);
       });
     }
 
