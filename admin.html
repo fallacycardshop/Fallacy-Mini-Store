@@ -1234,11 +1234,12 @@ document.getElementById("promoBuildButton").onclick = async () => {
 
     // Layout maths
     const gap = style === "grid" ? 18 : -18; // negative gap = overlap
-    const pad = 40;
+    const pad = 34;
     const logoUrl = document.getElementById("promoLogo").value.trim();
     const logoImg = logoUrl ? await loadImage(logoUrl) : null;
     // Logo and heading share one band now (logo right, heading left).
-    const headingH = (logoImg || heading) ? 150 : 24;
+    // Enough for the heading and the larger logo, without a gap before the cards.
+    const headingH = (logoImg || heading) ? 176 : 24;
     const cardW = Math.floor((PROMO_W - pad * 2 - gap * (cols - 1)) / cols);
     const cardH = Math.round(cardW * CARD_RATIO);
     const rows = Math.ceil(usable.length / cols);
@@ -1249,26 +1250,36 @@ document.getElementById("promoBuildButton").onclick = async () => {
     canvas.height = height;
     const ctx = canvas.getContext("2d");
 
-    // Brand pink at the edges fading to near-white through the middle, so the
-    // cards sit on a light field and stand out instead of competing with a
-    // saturated background.
-    const bg = ctx.createLinearGradient(0, 0, 0, height);
-    bg.addColorStop(0, PROMO_BG);
-    bg.addColorStop(0.18, "#f7e3ec");
-    bg.addColorStop(0.55, "#ffffff");
-    bg.addColorStop(0.88, "#fbeaf1");
-    bg.addColorStop(1, PROMO_BG_DEEP);
-    ctx.fillStyle = bg;
+    // Flat brand pink with a solid white panel behind the cards — no gradient.
+    // Clean edges read better than a blend, and the white block makes the cards
+    // pop without muddying the brand colour.
+    ctx.fillStyle = PROMO_BG;
     ctx.fillRect(0, 0, PROMO_W, height);
+
+    const panelTop = headingH - 12;
+    const panelBottom = height - 74;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    const pr = 26;
+    const px = 26;
+    const pw = PROMO_W - px * 2;
+    const ph = panelBottom - panelTop;
+    ctx.moveTo(px + pr, panelTop);
+    ctx.arcTo(px + pw, panelTop, px + pw, panelTop + ph, pr);
+    ctx.arcTo(px + pw, panelTop + ph, px, panelTop + ph, pr);
+    ctx.arcTo(px, panelTop + ph, px, panelTop, pr);
+    ctx.arcTo(px, panelTop, px + pw, panelTop, pr);
+    ctx.closePath();
+    ctx.fill();
 
     if (logoImg) {
       // Top right, feathered into the background. A JPEG logo has a hard square
       // edge, so it's drawn through a radial mask that fades the corners out
       // rather than showing a visible border against the gradient.
-      const logoH = 150;
+      const logoH = 240;
       const logoW = Math.round(logoH * (logoImg.width / logoImg.height));
-      const lx = PROMO_W - logoW - 40;
-      const ly = 26;
+      const lx = PROMO_W - logoW - 24;
+      const ly = 8;
 
       const mask = document.createElement("canvas");
       mask.width = logoW;
@@ -1296,7 +1307,7 @@ document.getElementById("promoBuildButton").onclick = async () => {
       ctx.textAlign = "left";
       ctx.shadowColor = "rgba(150,20,70,0.35)";
       ctx.shadowBlur = 12;
-      ctx.fillText(heading, 46, 92);
+      ctx.fillText(heading, 46, 132);
       ctx.shadowColor = "transparent";
     }
 
