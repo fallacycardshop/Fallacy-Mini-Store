@@ -106,8 +106,6 @@ body {
 /* Recent-sales ticker: sits inside the fixed footer, to the LEFT of the cart
    button. flex:1 + min-width:0 lets it take the leftover space and truncate
    with an ellipsis instead of pushing the cart button off screen. */
-.recent-sales-banner { cursor: pointer; }
-
 .proof-modal { max-width: 420px; width: 100%; }
 
 .proof-sub {
@@ -159,23 +157,29 @@ body {
 
 .proof-row .proof-when { color: #999; font-size: 12px; white-space: nowrap; }
 
-.recent-sales-banner-original {
+.recent-sales-banner {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
+  justify-content: flex-start;
+  text-align: left;
   padding-right: 12px;
   font-size: 12px;
   font-weight: 600;
   color: #fff;
   overflow: hidden;
+  cursor: pointer;
 }
 
 .recent-sales-banner span {
   display: block;
   width: 100%;
+  text-align: left;
   white-space: nowrap;
   overflow: hidden;
+  /* Truncates with "…" right before the cart button rather than wrapping or
+     pushing the button off the edge. */
   text-overflow: ellipsis;
   transition: opacity 0.3s ease;
 }
