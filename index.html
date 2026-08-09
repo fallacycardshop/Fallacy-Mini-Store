@@ -2640,7 +2640,7 @@ async function openSocialProof() {
     subEl.textContent = "This is us across our auction channel and mini store:";
 
     const rows = sales.length
-      ? `<p class="proof-sub proof-heading">Some cards we have sold from our Mini Store recently!</p>` +
+      ? `<p class="proof-sub proof-heading">Our recently sold items:</p>` +
         sales.map(sale => `
           <div class="proof-row">
             <span>${sale.name}</span>
