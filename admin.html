@@ -1295,11 +1295,30 @@ document.getElementById("promoBuildButton").onclick = async () => {
       const logoH = 240;
       const logoW = Math.round(logoH * (logoImg.width / logoImg.height));
       const lx = PROMO_W - logoW - 24;
-      const ly = 8;
+      // Sat high so it stays clear of the white glow — the fade then blends
+      // into flat pink all the way round rather than half onto white.
+      const ly = -34;
 
-      // Drawn straight on — the logo's own pink matches the background, so a
-      // mask isn't needed and a hard edge is invisible.
-      ctx.drawImage(logoImg, lx, ly, logoW, logoH);
+      // Radial fade so the logo's square JPEG edge dissolves into the pink
+      // instead of showing as a visible tile. Feathered wide enough to keep the
+      // artwork itself intact.
+      const mask = document.createElement("canvas");
+      mask.width = logoW;
+      mask.height = logoH;
+      const mctx = mask.getContext("2d");
+      mctx.drawImage(logoImg, 0, 0, logoW, logoH);
+
+      const fade = mctx.createRadialGradient(
+        logoW / 2, logoH / 2, Math.min(logoW, logoH) * 0.38,
+        logoW / 2, logoH / 2, Math.min(logoW, logoH) * 0.50
+      );
+      fade.addColorStop(0, "rgba(0,0,0,1)");
+      fade.addColorStop(1, "rgba(0,0,0,0)");
+      mctx.globalCompositeOperation = "destination-in";
+      mctx.fillStyle = fade;
+      mctx.fillRect(0, 0, logoW, logoH);
+
+      ctx.drawImage(mask, lx, ly, logoW, logoH);
     }
 
     if (heading) {
