@@ -231,10 +231,10 @@ async function handleFunnel(req, res) {
 
 // Show up to 20 (matches MAX_RECENT_SALES in confirm-order.js), and never show
 // anything older than 2 days.
+// Always the last 20 sales, however old. No age cutoff: on a quiet week an
+// empty banner says less about the shop than a slightly older sale does.
 const MAX_SHOWN = 20;
-const MAX_AGE_HOURS = 48;
-const MAX_PANEL = 24;        // entries considered for the expanded panel
-const PANEL_AGE_HOURS = 72;  // expanded panel shows the last 3 days
+const MAX_PANEL = 20;        // expanded panel shows the same last 20
 
 export default async function handler(req, res) {
   try {
@@ -246,14 +246,13 @@ export default async function handler(req, res) {
       return await handleFunnel(req, res);
     }
 
-    // ?full=1 is the expanded social-proof panel: more entries, no age cutoff,
-    // plus lifetime totals. The plain ticker stays one LRANGE.
+    // ?full=1 adds the lifetime totals for the expanded panel. Both views show
+    // the same last 20 sales; the ticker stays a single LRANGE.
     const wantFull = req.query && (req.query.full === "1" || req.query.full === "true");
     const limit = wantFull ? MAX_PANEL - 1 : MAX_SHOWN - 1;
 
     const raw = await redis.lrange("recent_sales", 0, limit);
 
-    const cutoff = Date.now() - MAX_AGE_HOURS * 3600000;
 
     const sales = (raw || [])
       .map(entry => {
@@ -263,15 +262,9 @@ export default async function handler(req, res) {
           return null;
         }
       })
-      .filter(Boolean)
-      // Age cutoff applied at read time rather than by deleting entries, so a
-      // quiet spell simply shows fewer sales instead of presenting a week-old
-      // sale as "Just sold". Entries with no timestamp predate this field and
-      // are dropped, since their age can't be established.
-      .filter(sale => {
-        const age = Number(sale.timestamp);
-        return wantFull ? age > Date.now() - PANEL_AGE_HOURS * 3600000 : age > cutoff;
-      });
+      // No age filtering — ltrim caps the list at 20 on write, so it
+      // self-limits without ever emptying during a quiet spell.
+      .filter(Boolean);
 
     if (!wantFull) {
       // Unchanged shape for the ticker, so nothing else needs updating.
