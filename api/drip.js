@@ -128,7 +128,21 @@ export default async function handler(req, res) {
     // Self-healing: any already-released listing with no level entry (state
     // written before restock tracking existed) starts tracking at its current
     // CSV stock, so nothing is retroactively hidden.
+    // Self-healing for listings released before stock levels were tracked.
+    //
+    // Adopts the current CSV stock, which is correct for the overwhelming
+    // majority: an untracked listing that's live with its full stock must keep
+    // showing that stock. Healing to anything lower would make live cards
+    // disappear as sold out until they were scheduled.
+    //
+    // The trade-off: if a listing's FIRST heal happens in the same pass as a
+    // restock, that increase is absorbed into the baseline and never detected
+    // (this is what happened to one card in a 72-row upload). There's no way to
+    // tell the two apart after the fact — the pre-restock figure isn't recorded
+    // anywhere. So instead of guessing, newly-tracked listings are REPORTED, and
+    // you can publish any that should have been treated as restocks.
     let healed = false;
+    const newlyTracked = [];
     if (state.initialized) {
       Array.from(groups.entries()).forEach(([groupKey, group]) => {
         if (state.releases[groupKey] !== undefined && !state.levels[groupKey]) {
@@ -137,10 +151,12 @@ export default async function handler(req, res) {
             pendingStock: null,
             pendingAt: null,
           };
+          newlyTracked.push(groupKey);
           healed = true;
         }
       });
     }
+
     if (consolidated || healed) await saveDripState(redis, state);
 
     // Computed as a FUNCTION, not a one-off snapshot: actions below mutate the
@@ -238,6 +254,10 @@ export default async function handler(req, res) {
         unscheduledCount: currentUnscheduledCount,
         pending: [...pending, ...pendingRestocks].sort(byTimeThenCsv),
         newlyIn,
+        // Listings that gained a stock record on this request. If any were
+        // restocked in the same upload, that increase was absorbed — publish
+        // them manually if they should have been treated as new stock.
+        newlyTracked: newlyTracked.map(describe),
         unscheduled: [
           ...freshListings.map(describe),
           ...restocks.map(r => ({
