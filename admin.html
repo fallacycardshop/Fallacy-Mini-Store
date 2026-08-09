@@ -1182,7 +1182,17 @@ document.getElementById("promoBuildButton").onclick = async () => {
     const res = await fetch("/api/products");
     const payload = await res.json();
     const products = Array.isArray(payload) ? payload : payload.products || [];
-    const newCards = products.filter(p => p.isNew && p.photo);
+    // One image per card, not per listing. A card stocked in both Near Mint and
+    // Lightly Played is two listings sharing the same photo, which would appear
+    // twice in the collage otherwise.
+    const seenCardIds = new Set();
+    const newCards = products.filter(p => {
+      if (!p.isNew || !p.photo) return false;
+      const key = p.cardId || p.photo;
+      if (seenCardIds.has(key)) return false;
+      seenCardIds.add(key);
+      return true;
+    });
 
     if (newCards.length === 0) {
       resultEl.textContent = "Nothing is in the Newly in stock row right now.";
