@@ -482,8 +482,20 @@
       </select>
     </div>
   </div>
-  <label class="field-label">Trim card edges (%)</label>
-  <input type="number" id="promoTrim" min="0" max="12" step="0.5" value="4">
+  <div class="field-row">
+    <div>
+      <label class="field-label">Trim card edges (%)</label>
+      <input type="number" id="promoTrim" min="0" max="12" step="0.5" value="4">
+    </div>
+    <div>
+      <label class="field-label">Sold-out cards</label>
+      <select id="promoSoldOut">
+        <option value="stamp">Show with SOLD stamp</option>
+        <option value="exclude">Leave them out</option>
+        <option value="plain">Show as normal</option>
+      </select>
+    </div>
+  </div>
   <label class="field-label">Heading (blank for none)</label>
   <input type="text" id="promoHeading" maxlength="60">
   <label class="field-label">
@@ -1329,6 +1341,41 @@ function drawCardTrimmed(ctx, img, x, y, w, h, radius, trimPct) {
 
 // Same trimming, but tilted about the card's own centre — used for the fanned
 // highlight cluster while the grid behind stays square.
+// Dims a sold card and lays a band across it. Deliberately not a full blackout:
+// the card should still be recognisable, since the point is "this one went",
+// not "ignore this".
+function drawSoldStamp(ctx, x, y, w, h, rotation) {
+  ctx.save();
+  ctx.translate(x + w / 2, y + h / 2);
+  if (rotation) ctx.rotate(rotation);
+
+  ctx.beginPath();
+  const r = 14;
+  ctx.moveTo(-w / 2 + r, -h / 2);
+  ctx.arcTo(w / 2, -h / 2, w / 2, h / 2, r);
+  ctx.arcTo(w / 2, h / 2, -w / 2, h / 2, r);
+  ctx.arcTo(-w / 2, h / 2, -w / 2, -h / 2, r);
+  ctx.arcTo(-w / 2, -h / 2, w / 2, -h / 2, r);
+  ctx.closePath();
+  ctx.clip();
+
+  ctx.fillStyle = "rgba(20,10,16,0.52)";
+  ctx.fillRect(-w / 2, -h / 2, w, h);
+
+  const bandH = Math.max(h * 0.17, 26);
+  ctx.fillStyle = "rgba(168,48,95,0.95)";
+  ctx.fillRect(-w / 2, -bandH / 2, w, bandH);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = `bold ${Math.round(bandH * 0.56)}px Poppins, Arial, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("SOLD", 0, 1);
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "left";
+  ctx.restore();
+}
+
 function drawCardTrimmedRotated(ctx, img, x, y, w, h, radius, trimPct, rotation) {
   const t = Math.max(Math.min(Number(trimPct) || 0, 12), 0) / 100;
   const sx = img.width * t;
@@ -1637,9 +1684,14 @@ document.getElementById("promoBuildButton").onclick = async () => {
     // One image per card, not per listing. A card stocked in both Near Mint and
     // Lightly Played is two listings sharing the same photo, which would appear
     // twice in the collage otherwise.
+    const soldOutMode = document.getElementById("promoSoldOut").value;
+
     const seenCardIds = new Set();
     const newCards = products.filter(p => {
       if (!p.isNew || !p.photo) return false;
+      // A card is sold out when nothing is left to buy. Showing these stamped
+      // is often better than hiding them: it proves the drop moved.
+      if (soldOutMode === "exclude" && Number(p.stock || 0) <= 0) return false;
       const key = p.cardId || p.photo;
       if (seenCardIds.has(key)) return false;
       seenCardIds.add(key);
@@ -1844,6 +1896,10 @@ document.getElementById("promoBuildButton").onclick = async () => {
       // Same edge trimming as the auction generator — crops the white scan
       // margin off the source before scaling, rather than covering it.
       drawCardTrimmedRotated(ctx, entry.img, x, y, cardW, cardH, 14, promoTrim, rotation);
+
+      if (soldOutMode === "stamp" && Number(entry.card.stock || 0) <= 0) {
+        drawSoldStamp(ctx, x, y, cardW, cardH, rotation);
+      }
     });
 
     // Rendered as a real <img>, not the canvas itself: iOS only offers
@@ -1915,6 +1971,7 @@ document.getElementById("promoBuildButton").onclick = async () => {
     actions.appendChild(openBtn);
     slot.appendChild(actions);
 
+    const soldCount = usable.filter(u => Number(u.card.stock || 0) <= 0).length;
     const skipped = newCards.length - usable.length;
     const notes = [];
     if (skipped) notes.push(`${skipped} card image(s) failed to load`);
@@ -1923,7 +1980,9 @@ document.getElementById("promoBuildButton").onclick = async () => {
     if (logoUrl && !logoImg) notes.push("the logo URL couldn't be loaded — check the filename and extension");
 
     resultEl.textContent =
-      `Built from ${usable.length} card(s)` + (notes.length ? ` — ${notes.join("; ")}.` : ".");
+      `Built from ${usable.length} card(s)` +
+      (soldOutMode === "stamp" && soldCount ? `, ${soldCount} marked sold` : "") +
+      (notes.length ? ` — ${notes.join("; ")}.` : ".");
     resultEl.className = notes.length ? "error" : "success";
   } catch (err) {
     resultEl.textContent = "Couldn't build the image — please try again.";
