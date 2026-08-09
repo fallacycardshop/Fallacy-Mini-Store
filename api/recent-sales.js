@@ -27,6 +27,7 @@ const ALLOWED_EVENTS = new Set([
   "checkout_blocked",
   "telegram_prefill",
   "view_social_proof",
+  "join_channel_click",
 ]);
 
 const REPORT_DAYS = 14;
@@ -160,7 +161,16 @@ async function handleFunnel(req, res) {
 
     const { baseCards, baseCustomers, sinceLabel } = req.body || {};
     const update = {};
-    if (baseCards !== undefined) update.baseCards = Math.max(Number(baseCards) || 0, 0);
+    if (baseCards !== undefined) {
+      update.baseCards = Math.max(Number(baseCards) || 0, 0);
+      // Zero the auto-added store counter whenever the base is re-entered.
+      //
+      // Without this, entering a fresh true total would double-count: the
+      // figure you type already includes the store sales that this counter has
+      // been adding on top. Resetting makes the number you enter exactly what
+      // shoppers see, and it climbs from there.
+      update.cards = 0;
+    }
     if (baseCustomers !== undefined) update.baseCustomers = Math.max(Number(baseCustomers) || 0, 0);
     if (sinceLabel !== undefined) update.sinceLabel = String(sinceLabel || "").slice(0, 40);
 
