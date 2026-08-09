@@ -106,7 +106,60 @@ body {
 /* Recent-sales ticker: sits inside the fixed footer, to the LEFT of the cart
    button. flex:1 + min-width:0 lets it take the leftover space and truncate
    with an ellipsis instead of pushing the cart button off screen. */
-.recent-sales-banner {
+.recent-sales-banner { cursor: pointer; }
+
+.proof-modal { max-width: 420px; width: 100%; }
+
+.proof-sub {
+  font-size: 13px;
+  color: var(--text-soft, #777);
+  margin-top: -4px;
+}
+
+.proof-stats {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0 14px;
+}
+
+.proof-stat {
+  flex: 1;
+  background: var(--pink-soft);
+  border-radius: 12px;
+  padding: 12px 8px;
+  text-align: center;
+}
+
+.proof-stat strong {
+  display: block;
+  font-size: 22px;
+  color: var(--pink-deep);
+  line-height: 1.1;
+}
+
+.proof-stat span { font-size: 11px; color: var(--text-soft, #777); }
+
+.proof-heading {
+  font-weight: 700;
+  color: var(--pink-deep);
+  margin: 4px 0 6px;
+  font-size: 13px;
+}
+
+.proof-list { max-height: 44vh; overflow-y: auto; text-align: left; }
+
+.proof-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f2eef1;
+  font-size: 13px;
+}
+
+.proof-row .proof-when { color: #999; font-size: 12px; white-space: nowrap; }
+
+.recent-sales-banner-original {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -835,6 +888,15 @@ footer .btn { width: auto; flex-shrink: 0; }
   </section>
 
 </main>
+
+<div class="modal-backdrop" id="proofBackdrop" style="display:none;">
+  <div class="modal proof-modal">
+    <h3 id="proofHeadline">Why buy from us</h3>
+    <p class="proof-sub" id="proofSub"></p>
+    <div id="proofList" class="proof-list"></div>
+    <button class="btn btn-secondary" id="proofCloseButton">Close</button>
+  </div>
+</div>
 
 <footer>
   <div class="recent-sales-banner" id="recentSalesBanner" style="display:none;">
@@ -2391,6 +2453,50 @@ let recentSales = [];
 let recentSalesIndex = 0;
 let recentSalesInterval = null;
 
+// Tapping the ticker opens the proof panel: headline figures for the business
+// as a whole, then what's sold here in the last three days.
+//
+// Deliberately no timestamps on the list. With a sale every few hours, "5h ago"
+// reads as quiet — the run of cards itself is the evidence.
+async function openSocialProof() {
+  const backdrop = document.getElementById("proofBackdrop");
+  const listEl = document.getElementById("proofList");
+  const subEl = document.getElementById("proofSub");
+
+  backdrop.style.display = "flex";
+  listEl.innerHTML = '<p class="proof-sub">Loading…</p>';
+  subEl.textContent = "";
+  trackEvent("view_social_proof");
+
+  try {
+    const res = await fetch("/api/recent-sales?full=1");
+    const data = await res.json();
+    const sales = Array.isArray(data) ? data : data.sales || [];
+    const stats = (data && data.stats) || {};
+
+    const tiles = [
+      stats.cards ? `<div class="proof-stat"><strong>${stats.cards.toLocaleString()}+</strong><span>cards sold</span></div>` : "",
+      stats.customers ? `<div class="proof-stat"><strong>${stats.customers.toLocaleString()}+</strong><span>customers</span></div>` : "",
+      stats.sinceLabel ? `<div class="proof-stat"><strong>${stats.sinceLabel}</strong><span>trading since</span></div>` : "",
+    ].filter(Boolean).join("");
+
+    subEl.textContent = "Across our auction channel and mini store.";
+
+    const rows = sales.length
+      ? `<p class="proof-sub proof-heading">Sold here in the last 3 days</p>` +
+        sales.map(sale => `
+          <div class="proof-row">
+            <span>${sale.name}</span>
+            <span class="proof-when">${sale.set || ""}</span>
+          </div>`).join("")
+      : "";
+
+    listEl.innerHTML = (tiles ? `<div class="proof-stats">${tiles}</div>` : "") + rows;
+  } catch (e) {
+    listEl.innerHTML = '<p class="proof-sub">Couldn\'t load right now — please try again.</p>';
+  }
+}
+
 function showRecentSaleAt(index) {
   if (recentSales.length === 0) return;
   const sale = recentSales[index];
@@ -2429,6 +2535,11 @@ function setKeyboardOpen(isOpen) {
 
 // Primary signal: any text field gaining focus. Works in every browser,
 // including the Telegram in-app webview.
+recentSalesBannerEl.onclick = openSocialProof;
+document.getElementById("proofCloseButton").onclick = () => {
+  document.getElementById("proofBackdrop").style.display = "none";
+};
+
 document.addEventListener("focusin", e => {
   if (e.target && e.target.matches("input, textarea, select")) setKeyboardOpen(true);
 });
