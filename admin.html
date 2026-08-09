@@ -435,8 +435,16 @@
   <textarea id="auctionBack" placeholder="S12A001&#10;S7R047&#10;M2A199"></textarea>
   <label class="field-label">Highlight cards &mdash; fanned across the centre (optional)</label>
   <textarea id="auctionFront" placeholder="S8B001"></textarea>
-  <label class="field-label">Cards per row (background)</label>
-  <input type="number" id="auctionCols" min="3" max="10" value="6">
+  <div class="field-row">
+    <div>
+      <label class="field-label">Cards per row</label>
+      <input type="number" id="auctionCols" min="3" max="10" value="6">
+    </div>
+    <div>
+      <label class="field-label">Trim card edges (%)</label>
+      <input type="number" id="auctionTrim" min="0" max="12" step="0.5" value="4">
+    </div>
+  </div>
   <button id="auctionBuildButton">Build Auction Image</button>
   <p id="auctionResultText"></p>
   <div id="auctionSlot" class="card-image-slot"></div>
@@ -1273,6 +1281,38 @@ function seededRandom(seed) {
   };
 }
 
+// Draws a card straight, cropping a percentage off each edge of the SOURCE
+// image before scaling. Scans carry a white margin around the card; trimming it
+// away is the only thing that genuinely removes the border rather than hiding it.
+function drawCardTrimmed(ctx, img, x, y, w, h, radius, trimPct) {
+  const t = Math.max(Math.min(Number(trimPct) || 0, 12), 0) / 100;
+  const sx = img.width * t;
+  const sy = img.height * t;
+  const sw = img.width * (1 - t * 2);
+  const sh = img.height * (1 - t * 2);
+
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.30)";
+  ctx.shadowBlur = 14;
+  ctx.shadowOffsetY = 5;
+
+  ctx.beginPath();
+  const r = radius;
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+  ctx.shadowColor = "transparent";
+  ctx.clip();
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+  ctx.restore();
+}
+
 function drawCardImage(ctx, img, x, y, w, h, radius, rotation) {
   ctx.save();
   ctx.translate(x + w / 2, y + h / 2);
@@ -1418,6 +1458,7 @@ document.getElementById("auctionBuildButton").onclick = async () => {
     const cardW = Math.floor((PROMO_W - pad * 2 - gap * (cols - 1)) / cols);
     const cardH = Math.round(cardW * CARD_RATIO);
     const rows = Math.max(Math.ceil(back.length / cols), 1);
+    const trim = Number(document.getElementById("auctionTrim").value) || 0;
     const headingH = 0;
     const height = pad * 2 + rows * cardH + (rows - 1) * gap;
 
@@ -1431,44 +1472,37 @@ document.getElementById("auctionBuildButton").onclick = async () => {
     ctx.fillStyle = "#f2e6ec";
     ctx.fillRect(0, 0, PROMO_W, height);
 
-    // --- background grid ---
-    const rand = seededRandom(back.length * 104729 + front.length);
+    // --- straight grid, aligned rows and columns ---
     back.forEach((img, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
-      let x = pad + col * (cardW + gap);
-      let y = headingH + pad + row * (cardH + gap);
-      if (row % 2 === 1) x += (cardW + gap) * 0.35;
-      x += (rand() - 0.5) * cardW * 0.06;
-      y += (rand() - 0.5) * cardH * 0.05;
-      drawCardImage(ctx, img, x, y, cardW, cardH, 12, (rand() - 0.5) * 0.09);
+      const x = pad + col * (cardW + gap);
+      const y = pad + row * (cardH + gap);
+      drawCardTrimmed(ctx, img, x, y, cardW, cardH, 10, trim);
     });
 
-    // --- fanned highlights across the centre ---
+    // --- highlights: same size, straight, overlapping the middle ---
+    // Laid across the centre like a second row placed on top, offset by half a
+    // card so they sit over the seams rather than lining up with the grid.
     if (front.length > 0) {
-      const fanW = Math.round(cardW * 1.34);   // larger than the grid, for depth
-      const fanH = Math.round(fanW * CARD_RATIO);
-      const spread = Math.min(PROMO_W * 0.62, fanW * 0.62 * front.length);
-      const step = front.length > 1 ? spread / (front.length - 1) : 0;
-      const startX = PROMO_W / 2 - spread / 2;
-      const baseY = (height - fanH) / 2;
+      const spanW = front.length * cardW + (front.length - 1) * gap;
+      const startX = (PROMO_W - spanW) / 2;
+      const y = (height - cardH) / 2;
 
       front.forEach((img, i) => {
-        const t = front.length > 1 ? i / (front.length - 1) - 0.5 : 0;
-        const x = startX + i * step - fanW / 2 + PROMO_W * 0;
-        // Arc: middle cards sit slightly higher, ends dip — like a held fan.
-        const y = baseY + Math.abs(t) * fanH * 0.10;
-        const rotation = t * 0.34;
+        const x = startX + i * (cardW + gap);
 
-        // Glow behind each highlight so it lifts off the grid without a border.
+        // Slight lift: a soft shadow pool under the row so it reads as sitting
+        // on top of the grid rather than being part of it.
         ctx.save();
-        ctx.shadowColor = "rgba(255,255,255,0.95)";
-        ctx.shadowBlur = 46;
-        ctx.fillStyle = "rgba(255,255,255,0.01)";
-        ctx.fillRect(x, y, fanW, fanH);
+        ctx.shadowColor = "rgba(0,0,0,0.34)";
+        ctx.shadowBlur = 26;
+        ctx.shadowOffsetY = 10;
+        ctx.fillStyle = "rgba(0,0,0,0.001)";
+        ctx.fillRect(x, y, cardW, cardH);
         ctx.restore();
 
-        drawCardImage(ctx, img, x, y, fanW, fanH, 16, rotation);
+        drawCardTrimmed(ctx, img, x, y, cardW, cardH, 10, trim);
       });
     }
 
