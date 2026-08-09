@@ -1297,7 +1297,7 @@ document.getElementById("promoBuildButton").onclick = async () => {
       const lx = PROMO_W - logoW - 24;
       // Sat high so it stays clear of the white glow — the fade then blends
       // into flat pink all the way round rather than half onto white.
-      const ly = -22;
+      const ly = 4;
 
       // Rectangular fade following the image's own shape: fully opaque through
       // the middle, with only the outer band on each side feathered out. Keeps
@@ -1345,7 +1345,7 @@ document.getElementById("promoBuildButton").onclick = async () => {
 
       // Small chip above the heading — gives the top-left corner a second level
       // of hierarchy instead of one lonely line of text.
-      const chipText = `${usable.length} NEW ${usable.length === 1 ? "CARD" : "CARDS"}`;
+      const chipText = `${usable.length} NEW ${usable.length === 1 ? "ITEM" : "ITEMS"}`;
       ctx.font = "bold 22px Poppins, Arial, sans-serif";
       const chipW = ctx.measureText(chipText).width + 34;
       ctx.fillStyle = "rgba(255,255,255,0.22)";
