@@ -385,7 +385,9 @@
     Entered by hand because they cover the whole business &mdash; the auction
     channel as well as this store &mdash; which nothing here can measure.
     Confirmed store orders are added on top automatically, so the cards figure
-    keeps climbing between updates.
+    keeps climbing between updates. Whenever you re-enter the cards total it
+    becomes the exact number shown &mdash; the running count resets, so nothing
+    is double-counted.
   </p>
   <input type="password" id="statsPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
   <div class="field-row">
@@ -398,7 +400,7 @@
       <input type="number" id="statsCustomers" min="0" placeholder="360">
     </div>
   </div>
-  <label class="field-label">Trading since</label>
+  <label class="field-label">Active since</label>
   <input type="text" id="statsSince" maxlength="40" placeholder="May 2026">
   <button id="statsSaveButton">Save Proof Figures</button>
   <p id="statsResultText"></p>
