@@ -424,6 +424,25 @@
 </div>
 
 <div class="card">
+  <h1>Auction Promo Image</h1>
+  <p>
+    For cards that aren&rsquo;t in the store inventory. Upload the card photos to
+    <code>/images</code> in the repo, then list the filenames below &mdash; one per
+    line. Highlighted cards are fanned across the centre, overlapping the rest,
+    which also hides the scan borders.
+  </p>
+  <label class="field-label">Background cards &mdash; Card IDs, one per line</label>
+  <textarea id="auctionBack" placeholder="S12A001&#10;S7R047&#10;M2A199"></textarea>
+  <label class="field-label">Highlight cards &mdash; fanned across the centre (optional)</label>
+  <textarea id="auctionFront" placeholder="S8B001"></textarea>
+  <label class="field-label">Cards per row (background)</label>
+  <input type="number" id="auctionCols" min="3" max="10" value="6">
+  <button id="auctionBuildButton">Build Auction Image</button>
+  <p id="auctionResultText"></p>
+  <div id="auctionSlot" class="card-image-slot"></div>
+</div>
+
+<div class="card">
   <h1>Promo Image Generator</h1>
   <p>
     Builds a collage of everything currently in the &ldquo;Newly in stock!&rdquo; row,
@@ -1293,6 +1312,224 @@ function defaultPromoHeading() {
 }
 
 document.getElementById("promoHeading").value = defaultPromoHeading();
+
+// ---------------------------------------------------------------------------
+// Auction promo image
+//
+// Structured like a photo of cards laid on a table: a tidy grid behind, with a
+// fanned cluster overlapping the centre. The fan is doing real work — scanned
+// cards have hard white borders, and overlapping them hides those edges so the
+// result reads as physical cards rather than pasted images.
+// ---------------------------------------------------------------------------
+const IMAGE_BASE = "https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/";
+
+// Card ID -> image URL.
+//
+// Filenames embed the Card ID (PsyduckAR + M2A199 + .jpg), so the folder is
+// listed once and matched on that. Cached for the page's lifetime; the GitHub
+// contents API allows 60 unauthenticated calls an hour, and this needs one.
+let imageIndexPromise = null;
+
+function fetchImageIndex() {
+  if (!imageIndexPromise) {
+    imageIndexPromise = fetch(
+      "https://api.github.com/repos/fallacycardshop/Fallacy-Mini-Store/contents/images"
+    )
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error("listing failed"))))
+      .then(list => (Array.isArray(list) ? list.map(f => f.name) : []))
+      .catch(() => []);
+  }
+  return imageIndexPromise;
+}
+
+function resolveCardUrl(line, filenames) {
+  const t = line.trim();
+  if (!t) return null;
+  if (/^https?:\/\//i.test(t)) return t;          // full URL still accepted
+  if (/\.(jpe?g|png|webp)$/i.test(t)) return IMAGE_BASE + t; // filename too
+
+  const id = t.toUpperCase().replace(/\s+/g, "");
+  // Longest match wins, so "M2A19" can't beat "M2A199".
+  const hit = filenames
+    .filter(n => n.toUpperCase().replace(/\.[^.]+$/, "").includes(id))
+    .sort((a, b) => a.length - b.length)[0];
+
+  return hit ? IMAGE_BASE + hit : null;
+}
+
+document.getElementById("auctionBuildButton").onclick = async () => {
+  const resultEl = document.getElementById("auctionResultText");
+  const slot = document.getElementById("auctionSlot");
+  const cols = Math.min(Math.max(Number(document.getElementById("auctionCols").value) || 6, 3), 10);
+
+  const backLines = document.getElementById("auctionBack").value.split("\n").map(l => l.trim()).filter(Boolean);
+  const frontLines = document.getElementById("auctionFront").value.split("\n").map(l => l.trim()).filter(Boolean);
+
+  resultEl.textContent = "Looking up card images...";
+  resultEl.className = "";
+  const filenames = await fetchImageIndex();
+
+  if (filenames.length === 0) {
+    resultEl.textContent =
+      "Couldn't list the images folder (GitHub may be rate limiting). Paste filenames or full URLs instead of Card IDs.";
+    resultEl.className = "error";
+    return;
+  }
+
+  const unmatched = [];
+  const toUrl = line => {
+    const url = resolveCardUrl(line, filenames);
+    if (!url) unmatched.push(line);
+    return url;
+  };
+
+  const backUrls = backLines.map(toUrl).filter(Boolean);
+  const frontUrls = frontLines.map(toUrl).filter(Boolean);
+
+  if (backLines.length === 0 && frontLines.length === 0) {
+    resultEl.textContent = "Add at least one Card ID.";
+    resultEl.className = "error";
+    return;
+  }
+
+  resultEl.textContent = `Loading ${backUrls.length + frontUrls.length} image(s)...`;
+  resultEl.className = "";
+  slot.innerHTML = "";
+
+  try {
+    const [backImgs, frontImgs] = await Promise.all([
+      Promise.all(backUrls.map(loadImage)),
+      Promise.all(frontUrls.map(loadImage)),
+    ]);
+    const back = backImgs.filter(Boolean);
+    const front = frontImgs.filter(Boolean);
+    const failed = (backUrls.length + frontUrls.length) - (back.length + front.length);
+
+    if (back.length === 0 && front.length === 0) {
+      resultEl.textContent = "None of those images could be loaded — check the filenames.";
+      resultEl.className = "error";
+      return;
+    }
+
+    // No heading or footer — the image is cropped tight to the cards, so it
+    // drops straight into a Telegram post as artwork rather than a poster.
+    const pad = 18;
+    const gap = -14; // slight overlap in the background grid too
+    const cardW = Math.floor((PROMO_W - pad * 2 - gap * (cols - 1)) / cols);
+    const cardH = Math.round(cardW * CARD_RATIO);
+    const rows = Math.max(Math.ceil(back.length / cols), 1);
+    const headingH = 0;
+    const height = pad * 2 + rows * cardH + (rows - 1) * gap;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = PROMO_W;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+
+    // Cards are drawn edge to edge, so the background barely shows — it only
+    // fills the slivers between overlapping cards.
+    ctx.fillStyle = "#f2e6ec";
+    ctx.fillRect(0, 0, PROMO_W, height);
+
+    // --- background grid ---
+    const rand = seededRandom(back.length * 104729 + front.length);
+    back.forEach((img, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      let x = pad + col * (cardW + gap);
+      let y = headingH + pad + row * (cardH + gap);
+      if (row % 2 === 1) x += (cardW + gap) * 0.35;
+      x += (rand() - 0.5) * cardW * 0.06;
+      y += (rand() - 0.5) * cardH * 0.05;
+      drawCardImage(ctx, img, x, y, cardW, cardH, 12, (rand() - 0.5) * 0.09);
+    });
+
+    // --- fanned highlights across the centre ---
+    if (front.length > 0) {
+      const fanW = Math.round(cardW * 1.34);   // larger than the grid, for depth
+      const fanH = Math.round(fanW * CARD_RATIO);
+      const spread = Math.min(PROMO_W * 0.62, fanW * 0.62 * front.length);
+      const step = front.length > 1 ? spread / (front.length - 1) : 0;
+      const startX = PROMO_W / 2 - spread / 2;
+      const baseY = (height - fanH) / 2;
+
+      front.forEach((img, i) => {
+        const t = front.length > 1 ? i / (front.length - 1) - 0.5 : 0;
+        const x = startX + i * step - fanW / 2 + PROMO_W * 0;
+        // Arc: middle cards sit slightly higher, ends dip — like a held fan.
+        const y = baseY + Math.abs(t) * fanH * 0.10;
+        const rotation = t * 0.34;
+
+        // Glow behind each highlight so it lifts off the grid without a border.
+        ctx.save();
+        ctx.shadowColor = "rgba(255,255,255,0.95)";
+        ctx.shadowBlur = 46;
+        ctx.fillStyle = "rgba(255,255,255,0.01)";
+        ctx.fillRect(x, y, fanW, fanH);
+        ctx.restore();
+
+        drawCardImage(ctx, img, x, y, fanW, fanH, 16, rotation);
+      });
+    }
+
+    // Preview as an <img> so iOS long-press offers "Add to Photos".
+    const preview = document.createElement("img");
+    preview.src = canvas.toDataURL("image/png");
+    preview.className = "promo-preview";
+    slot.appendChild(preview);
+
+    const filename = `auction-${new Date().toISOString().slice(0, 10)}.png`;
+    const actions = document.createElement("div");
+    actions.className = "card-image-actions";
+
+    const shareBtn = document.createElement("button");
+    shareBtn.className = "btn";
+    shareBtn.textContent = "Share / Save";
+    shareBtn.onclick = async () => {
+      try {
+        const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
+        const file = new File([blob], filename, { type: "image/png" });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file] });
+          return;
+        }
+        const link = document.createElement("a");
+        link.download = filename;
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+      } catch (e) { /* cancelled */ }
+    };
+
+    const copyBtn = document.createElement("button");
+    copyBtn.className = "btn btn-neutral";
+    copyBtn.textContent = "Copy image";
+    copyBtn.onclick = async () => {
+      try {
+        const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+        copyBtn.textContent = "Copied";
+        setTimeout(() => (copyBtn.textContent = "Copy image"), 1500);
+      } catch (e) {
+        copyBtn.textContent = "Use Share instead";
+      }
+    };
+
+    actions.appendChild(shareBtn);
+    actions.appendChild(copyBtn);
+    slot.appendChild(actions);
+
+    const notes = [];
+    if (failed) notes.push(`${failed} image(s) failed to load`);
+    if (unmatched.length) notes.push(`no image found for: ${unmatched.join(", ")}`);
+    resultEl.textContent =
+      `Built from ${back.length} background and ${front.length} highlighted card(s)` +
+      (notes.length ? ` — ${notes.join("; ")}.` : ".");
+    resultEl.className = notes.length ? "error" : "success";
+  } catch (err) {
+    resultEl.textContent = "Couldn't build the image — please try again.";
+    resultEl.className = "error";
+  }
+};
 
 document.getElementById("promoBuildButton").onclick = async () => {
   const resultEl = document.getElementById("promoResultText");
