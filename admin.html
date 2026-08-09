@@ -231,6 +231,17 @@
   }
   .hist-sale span:last-child { color: var(--plum, #a8305f); font-weight: 700; white-space: nowrap; }
 
+  .mail-flag {
+    display: inline-block;
+    background: #fff3cd;
+    border: 1px solid #f0d98a;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-weight: 800;
+    color: #8a6100;
+    font-size: 12px;
+  }
+
   .addr-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 8px; }
   .addr-chip {
     width: auto;
@@ -2310,6 +2321,17 @@ document.getElementById("ordersLoadButton").onclick = async () => {
 // Address parts. New orders store the three fields separately; older ones only
 // have the joined string, so fall back to splitting it — Singapore postal codes
 // are 6 digits and units look like #01-23, which makes this reliable enough.
+// Anything that needs posting is flagged loudly — those are the orders with an
+// action attached, and they're easy to miss in a list of held packages.
+function mailPreferenceHtml(pref) {
+  const text = String(pref || "").trim();
+  if (!text) return "";
+  const needsMailing = /mail\s*(it\s*)?out|mail out now/i.test(text);
+  return needsMailing
+    ? `<span class="mail-flag">📮 ${escapeHtml(text)}</span>`
+    : escapeHtml(text);
+}
+
 function addressParts(r) {
   if (r.Address_Line || r.Unit_Number || r.Postal_Code) {
     return {
@@ -2339,6 +2361,9 @@ function addressParts(r) {
 function addressChipsHtml(r, idPrefix) {
   const { line, unit, postal } = addressParts(r);
   const parts = [
+    // Phone sits alongside the address parts — it's copied just as often, and
+    // typing a number off a screen is exactly where mistakes happen.
+    ["Phone", (r.Phone || "").trim()],
     ["Address", line],
     ["Unit", unit],
     ["Postal", postal],
@@ -2428,7 +2453,7 @@ function renderDaySummary(orders, wantedDate) {
           <div class="summary-order-meta">
             #${escapeHtml(r.Order_ID || "")} · ${escapeHtml(r.Telegram_Username || "")}
             ${r.Phone ? " · " + escapeHtml(r.Phone) : ""}<br>
-            ${escapeHtml(r.Mail_Preference || "")}${
+            ${mailPreferenceHtml(r.Mail_Preference)}${
               r.Discount_Code
                 ? ` · ${escapeHtml(r.Discount_Code)} ${escapeHtml(r.Discount_Amount || "")}`
                 : ""
@@ -2505,8 +2530,9 @@ function renderOrders() {
           <div class="order-head">#${escapeHtml(r.Order_ID)} — ${escapeHtml(r.Buyer_Name)} — ${escapeHtml(r.Total)}</div>
           <div class="order-meta">
             saved ${new Date(entry.savedAt).toLocaleString("en-SG", { dateStyle: "medium", timeStyle: "short" })}<br>
-            ${escapeHtml(r.Telegram_Username)} · ${escapeHtml(r.Phone)}<br>
-            ${escapeHtml(r.Mail_Preference)} · discount ${escapeHtml(r.Discount_Code)} ${escapeHtml(r.Discount_Amount)}
+            ${escapeHtml(r.Telegram_Username)}<br>
+            ${mailPreferenceHtml(r.Mail_Preference)}
+            ${r.Discount_Code ? ` · discount ${escapeHtml(r.Discount_Code)} ${escapeHtml(r.Discount_Amount)}` : ""}
           </div>
           ${addressChipsHtml(r, "ord" + i)}
           <pre>${escapeHtml(r.Items_Readable)}</pre>
