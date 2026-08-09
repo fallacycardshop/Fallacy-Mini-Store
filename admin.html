@@ -602,48 +602,6 @@
 </div>
 
 <div class="card">
-  <h1>Shopfront Proof Figures</h1>
-  <p>
-    The headline numbers shoppers see when they tap the recent-sales ticker.
-    Entered by hand because they cover the whole business &mdash; the auction
-    channel as well as this store &mdash; which nothing here can measure.
-    Confirmed store orders are added on top automatically, so the cards figure
-    keeps climbing between updates. Whenever you re-enter the cards total it
-    becomes the exact number shown &mdash; the running count resets, so nothing
-    is double-counted.
-  </p>
-  <input type="password" id="statsPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
-  <div class="field-row">
-    <div>
-      <label class="field-label">Cards sold (all channels)</label>
-      <input type="number" id="statsCards" min="0" placeholder="3700">
-    </div>
-    <div>
-      <label class="field-label">Subscribers</label>
-      <input type="number" id="statsCustomers" min="0" placeholder="360">
-    </div>
-  </div>
-  <label class="field-label">Active since</label>
-  <input type="text" id="statsSince" maxlength="40" placeholder="May 2026">
-  <button id="statsSaveButton">Save Proof Figures</button>
-  <p id="statsResultText"></p>
-</div>
-
-<div class="card">
-  <h1>Sales History</h1>
-  <p>
-    Every card sold, with the date, condition and the price it actually went for
-    (after any discount). Built from stored orders, so it covers sales from when
-    order backup went live &mdash; the raw sold counters carry no dates.
-  </p>
-  <input type="password" id="historyPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
-  <input type="text" id="historySearch" placeholder="Filter by card name, Card ID or set" autocomplete="off">
-  <button id="historyLoadButton">Load Sales History</button>
-  <p id="historyResultText"></p>
-  <div id="historyReport"></div>
-</div>
-
-<div class="card">
   <h1>Slow Release Scheduling</h1>
   <p>
     Upload all your new stock to the CSV at once, then release it gradually.
@@ -769,6 +727,48 @@
 
   <p id="dripResultText"></p>
   <div id="dripList" class="hidden-list"></div>
+</div>
+
+<div class="card">
+  <h1>Shopfront Proof Figures</h1>
+  <p>
+    The headline numbers shoppers see when they tap the recent-sales ticker.
+    Entered by hand because they cover the whole business &mdash; the auction
+    channel as well as this store &mdash; which nothing here can measure.
+    Confirmed store orders are added on top automatically, so the cards figure
+    keeps climbing between updates. Whenever you re-enter the cards total it
+    becomes the exact number shown &mdash; the running count resets, so nothing
+    is double-counted.
+  </p>
+  <input type="password" id="statsPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
+  <div class="field-row">
+    <div>
+      <label class="field-label">Cards sold (all channels)</label>
+      <input type="number" id="statsCards" min="0" placeholder="3700">
+    </div>
+    <div>
+      <label class="field-label">Subscribers</label>
+      <input type="number" id="statsCustomers" min="0" placeholder="360">
+    </div>
+  </div>
+  <label class="field-label">Active since</label>
+  <input type="text" id="statsSince" maxlength="40" placeholder="May 2026">
+  <button id="statsSaveButton">Save Proof Figures</button>
+  <p id="statsResultText"></p>
+</div>
+
+<div class="card">
+  <h1>Sales History</h1>
+  <p>
+    Every card sold, with the date, condition and the price it actually went for
+    (after any discount). Built from stored orders, so it covers sales from when
+    order backup went live &mdash; the raw sold counters carry no dates.
+  </p>
+  <input type="password" id="historyPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
+  <input type="text" id="historySearch" placeholder="Filter by card name, Card ID or set" autocomplete="off">
+  <button id="historyLoadButton">Load Sales History</button>
+  <p id="historyResultText"></p>
+  <div id="historyReport"></div>
 </div>
 
 <div class="card">
