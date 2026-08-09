@@ -2507,7 +2507,7 @@ function showRecentSaleAt(index) {
   // Sales logged before the set name was recorded won't have one — fall back
   // to just the card name rather than showing an empty bracket.
   const setPart = sale.set ? ` · ${sale.set}` : "";
-  recentSalesTextEl.textContent = `🎉 Just sold: ${sale.name}${setPart}`;
+  recentSalesTextEl.textContent = `🎉 Sold! ${sale.name}${setPart}`;
 }
 
 // The ticker sits in the fixed footer, which an on-screen keyboard pushes up
