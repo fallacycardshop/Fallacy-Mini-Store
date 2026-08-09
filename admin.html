@@ -1138,8 +1138,11 @@ document.getElementById("historySearch").oninput = () => {
 const PROMO_W = 1400;
 const CARD_RATIO = 1.4;   // height / width of a Pokémon card
 // Matches the store's brand pink from the channel artwork.
-const PROMO_BG = "#e34a8a";
-const PROMO_BG_DEEP = "#c93a75";
+// Soft pastel pink rather than the saturated brand pink — the cards and the
+// white glow read better against it, and it photographs well in Telegram.
+const PROMO_BG = "#f8d3e2";
+const PROMO_BG_DEEP = "#f0bcd2";
+const PROMO_INK = "#a8305f";     // deep pink for text on the pastel ground
 
 function loadImage(src) {
   return new Promise(resolve => {
@@ -1294,7 +1297,7 @@ document.getElementById("promoBuildButton").onclick = async () => {
       if (dist < 0.72) continue; // keep them off the bright area
       const r = 2 + sparkleRand() * 4;
       ctx.beginPath();
-      ctx.fillStyle = `rgba(255,255,255,${0.25 + sparkleRand() * 0.5})`;
+      ctx.fillStyle = `rgba(255,255,255,${0.45 + sparkleRand() * 0.45})`;
       ctx.arc(sx, sy, r, 0, Math.PI * 2);
       ctx.fill();
     }
@@ -1359,7 +1362,7 @@ document.getElementById("promoBuildButton").onclick = async () => {
       const chipText = `${usable.length} NEW ${usable.length === 1 ? "ITEM" : "ITEMS"}`;
       ctx.font = "bold 22px Poppins, Arial, sans-serif";
       const chipW = ctx.measureText(chipText).width + 34;
-      ctx.fillStyle = "rgba(255,255,255,0.22)";
+      ctx.fillStyle = "rgba(168,48,95,0.14)";
       ctx.beginPath();
       ctx.moveTo(46 + 17, 44);
       ctx.arcTo(46 + chipW, 44, 46 + chipW, 44 + 38, 19);
@@ -1368,22 +1371,23 @@ document.getElementById("promoBuildButton").onclick = async () => {
       ctx.arcTo(46, 44, 46 + chipW, 44, 19);
       ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = PROMO_INK;
       ctx.fillText(chipText, 46 + 17, 70);
 
       ctx.font = "bold 58px Poppins, Arial, sans-serif";
-      ctx.shadowColor = "rgba(150,20,70,0.30)";
-      ctx.shadowBlur = 14;
+      ctx.fillStyle = PROMO_INK;
+      ctx.shadowColor = "rgba(255,255,255,0.55)";
+      ctx.shadowBlur = 10;
       ctx.fillText(heading, 46, 146);
       ctx.shadowColor = "transparent";
     }
 
     ctx.textAlign = "center";
     ctx.font = "bold 30px Poppins, Arial, sans-serif";
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = PROMO_INK;
     ctx.fillText("Fallacy's Mini Store", PROMO_W / 2, height - 54);
     ctx.font = "24px Poppins, Arial, sans-serif";
-    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.fillStyle = "rgba(168,48,95,0.70)";
     ctx.fillText("@fallacyministore_bot  ·  t.me/fallacytcg", PROMO_W / 2, height - 22);
     ctx.textAlign = "left";
 
