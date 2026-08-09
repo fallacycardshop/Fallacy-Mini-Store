@@ -387,8 +387,8 @@
   </p>
   <div class="field-row">
     <div>
-      <label class="field-label">Columns</label>
-      <input type="number" id="promoCols" min="2" max="8" value="5">
+      <label class="field-label">Cards per row</label>
+      <input type="number" id="promoCols" min="2" max="12" value="10">
     </div>
     <div>
       <label class="field-label">Style</label>
@@ -399,7 +399,12 @@
     </div>
   </div>
   <label class="field-label">Heading (blank for none)</label>
-  <input type="text" id="promoHeading" value="NEWLY IN STOCK" maxlength="40">
+  <input type="text" id="promoHeading" maxlength="60">
+  <label class="field-label">
+    Logo URL (leave as-is once your logo is in the repo &mdash; blank for no logo)
+  </label>
+  <input type="text" id="promoLogo"
+    value="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ministore-logo.png">
   <button id="promoBuildButton">Build Promo Image</button>
   <p id="promoResultText"></p>
   <div id="promoSlot" class="card-image-slot"></div>
@@ -1121,7 +1126,9 @@ document.getElementById("historySearch").oninput = () => {
 // ---------------------------------------------------------------------------
 const PROMO_W = 1400;
 const CARD_RATIO = 1.4;   // height / width of a Pokémon card
-const PROMO_BG = "#f6dbe7";
+// Matches the store's brand pink from the channel artwork.
+const PROMO_BG = "#e34a8a";
+const PROMO_BG_DEEP = "#c93a75";
 
 function loadImage(src) {
   return new Promise(resolve => {
@@ -1167,10 +1174,25 @@ function drawCardImage(ctx, img, x, y, w, h, radius, rotation) {
   ctx.restore();
 }
 
+// Heading defaults to today's date so the post is self-dating: "Newly in stock
+// on 9 Aug 2026!". Editable before building.
+function defaultPromoHeading() {
+  const today = new Date(Date.now() + 8 * 3600000); // SGT
+  const label = today.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  return `Newly in stock on ${label}!`;
+}
+
+document.getElementById("promoHeading").value = defaultPromoHeading();
+
 document.getElementById("promoBuildButton").onclick = async () => {
   const resultEl = document.getElementById("promoResultText");
   const slot = document.getElementById("promoSlot");
-  const cols = Math.min(Math.max(Number(document.getElementById("promoCols").value) || 5, 2), 8);
+  const cols = Math.min(Math.max(Number(document.getElementById("promoCols").value) || 10, 2), 12);
   const style = document.getElementById("promoStyle").value;
   const heading = document.getElementById("promoHeading").value.trim();
 
@@ -1213,28 +1235,51 @@ document.getElementById("promoBuildButton").onclick = async () => {
     // Layout maths
     const gap = style === "grid" ? 18 : -18; // negative gap = overlap
     const pad = 40;
-    const headingH = heading ? 96 : 24;
+    const logoUrl = document.getElementById("promoLogo").value.trim();
+    const logoImg = logoUrl ? await loadImage(logoUrl) : null;
+    const headingH = (logoImg ? 230 : 0) + (heading ? 96 : 0) + 24;
     const cardW = Math.floor((PROMO_W - pad * 2 - gap * (cols - 1)) / cols);
     const cardH = Math.round(cardW * CARD_RATIO);
     const rows = Math.ceil(usable.length / cols);
-    const height = headingH + pad + rows * cardH + (rows - 1) * gap + pad;
+    const height = headingH + pad + rows * cardH + (rows - 1) * gap + pad + 40;
 
     const canvas = document.createElement("canvas");
     canvas.width = PROMO_W;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
 
-    ctx.fillStyle = PROMO_BG;
+    // Brand-pink gradient background, matching the channel artwork.
+    const bg = ctx.createLinearGradient(0, 0, PROMO_W, height);
+    bg.addColorStop(0, PROMO_BG);
+    bg.addColorStop(1, PROMO_BG_DEEP);
+    ctx.fillStyle = bg;
     ctx.fillRect(0, 0, PROMO_W, height);
 
-    if (heading) {
-      ctx.fillStyle = "#a8305f";
-      ctx.font = "bold 58px Poppins, Arial, sans-serif";
+    if (heading || logoImg) {
+      const centreX = PROMO_W / 2;
+
+      if (logoImg) {
+        // Soft white glow behind the logo, as on the channel picture.
+        const logoH = 108;
+        const logoW = Math.round(logoH * (logoImg.width / logoImg.height));
+        ctx.save();
+        ctx.shadowColor = "rgba(255,255,255,0.85)";
+        ctx.shadowBlur = 26;
+        ctx.drawImage(logoImg, centreX - logoW / 2, 24, logoW, logoH);
+        ctx.restore();
+      }
+
+      if (heading) {
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 62px Poppins, Arial, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(heading, centreX, logoImg ? 200 : 74);
+      }
+
+      ctx.font = "28px Poppins, Arial, sans-serif";
+      ctx.fillStyle = "rgba(255,255,255,0.88)";
       ctx.textAlign = "center";
-      ctx.fillText(heading, PROMO_W / 2, 68);
-      ctx.font = "26px Poppins, Arial, sans-serif";
-      ctx.fillStyle = "#b8657f";
-      ctx.fillText("@fallacyministore_bot", PROMO_W / 2, height - 18);
+      ctx.fillText("@fallacyministore_bot", PROMO_W / 2, height - 26);
       ctx.textAlign = "left";
     }
 
