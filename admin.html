@@ -404,7 +404,7 @@
     Logo URL (leave as-is once your logo is in the repo &mdash; blank for no logo)
   </label>
   <input type="text" id="promoLogo"
-    value="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ministore-logo.png">
+    value="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ministore-logo.jpg">
   <button id="promoBuildButton">Build Promo Image</button>
   <p id="promoResultText"></p>
   <div id="promoSlot" class="card-image-slot"></div>
@@ -1337,9 +1337,15 @@ document.getElementById("promoBuildButton").onclick = async () => {
     slot.appendChild(actions);
 
     const skipped = newCards.length - usable.length;
+    const notes = [];
+    if (skipped) notes.push(`${skipped} card image(s) failed to load`);
+    // A missing logo used to fail silently, which looked like the feature was
+    // broken rather than the file being absent.
+    if (logoUrl && !logoImg) notes.push("the logo URL couldn't be loaded — check the filename and extension");
+
     resultEl.textContent =
-      `Built from ${usable.length} card(s)` + (skipped ? ` — ${skipped} image(s) failed to load.` : ".");
-    resultEl.className = skipped ? "error" : "success";
+      `Built from ${usable.length} card(s)` + (notes.length ? ` — ${notes.join("; ")}.` : ".");
+    resultEl.className = notes.length ? "error" : "success";
   } catch (err) {
     resultEl.textContent = "Couldn't build the image — please try again.";
     resultEl.className = "error";
