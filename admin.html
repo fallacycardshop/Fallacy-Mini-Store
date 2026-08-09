@@ -1233,44 +1233,60 @@ document.getElementById("promoBuildButton").onclick = async () => {
     }
 
     // Layout maths
-    const gap = style === "grid" ? 18 : -18; // negative gap = overlap
+    const gap = style === "grid" ? 18 : -26; // negative gap = overlap
     const pad = 34;
     const logoUrl = document.getElementById("promoLogo").value.trim();
     const logoImg = logoUrl ? await loadImage(logoUrl) : null;
     // Logo and heading share one band now (logo right, heading left).
     // Enough for the heading and the larger logo, without a gap before the cards.
     const headingH = (logoImg || heading) ? 176 : 24;
-    const cardW = Math.floor((PROMO_W - pad * 2 - gap * (cols - 1)) / cols);
+    // Extra half-card of width is reserved so the staggered odd rows don't run
+    // off the right edge.
+    const stagger = style === "scatter" ? 0.5 : 0;
+    const cardW = Math.floor((PROMO_W - pad * 2 - gap * (cols - 1)) / (cols + stagger));
     const cardH = Math.round(cardW * CARD_RATIO);
     const rows = Math.ceil(usable.length / cols);
-    const height = headingH + pad + rows * cardH + (rows - 1) * gap + pad + 40;
+    const height = headingH + pad + rows * cardH + (rows - 1) * gap + pad + 96;
 
     const canvas = document.createElement("canvas");
     canvas.width = PROMO_W;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
 
-    // Flat brand pink with a solid white panel behind the cards — no gradient.
-    // Clean edges read better than a blend, and the white block makes the cards
-    // pop without muddying the brand colour.
+    // Flat brand pink, then a large soft white glow behind the cards instead of
+    // a rectangular panel. A feathered ellipse has no edges to look boxy, and
+    // it still lifts the cards off the pink.
     ctx.fillStyle = PROMO_BG;
     ctx.fillRect(0, 0, PROMO_W, height);
 
-    const panelTop = headingH - 12;
-    const panelBottom = height - 74;
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    const pr = 26;
-    const px = 26;
-    const pw = PROMO_W - px * 2;
-    const ph = panelBottom - panelTop;
-    ctx.moveTo(px + pr, panelTop);
-    ctx.arcTo(px + pw, panelTop, px + pw, panelTop + ph, pr);
-    ctx.arcTo(px + pw, panelTop + ph, px, panelTop + ph, pr);
-    ctx.arcTo(px, panelTop + ph, px, panelTop, pr);
-    ctx.arcTo(px, panelTop, px + pw, panelTop, pr);
-    ctx.closePath();
-    ctx.fill();
+    const glowCx = PROMO_W / 2;
+    const glowCy = headingH + (height - headingH - 74) / 2;
+    const glowR = Math.max(PROMO_W, height) * 0.62;
+
+    ctx.save();
+    const glow = ctx.createRadialGradient(glowCx, glowCy, glowR * 0.12, glowCx, glowCy, glowR);
+    glow.addColorStop(0, "rgba(255,255,255,0.97)");
+    glow.addColorStop(0.55, "rgba(255,255,255,0.80)");
+    glow.addColorStop(0.82, "rgba(255,255,255,0.28)");
+    glow.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, PROMO_W, height);
+    ctx.restore();
+
+    // Scattered sparkles in the pink margins — cheap, but stops the corners
+    // reading as dead space.
+    const sparkleRand = seededRandom(4242);
+    for (let i = 0; i < 46; i++) {
+      const sx = sparkleRand() * PROMO_W;
+      const sy = sparkleRand() * height;
+      const dist = Math.hypot(sx - glowCx, sy - glowCy) / glowR;
+      if (dist < 0.72) continue; // keep them off the bright area
+      const r = 2 + sparkleRand() * 4;
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(255,255,255,${0.25 + sparkleRand() * 0.5})`;
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     if (logoImg) {
       // Top right, feathered into the background. A JPEG logo has a hard square
@@ -1281,40 +1297,45 @@ document.getElementById("promoBuildButton").onclick = async () => {
       const lx = PROMO_W - logoW - 24;
       const ly = 8;
 
-      const mask = document.createElement("canvas");
-      mask.width = logoW;
-      mask.height = logoH;
-      const mctx = mask.getContext("2d");
-      mctx.drawImage(logoImg, 0, 0, logoW, logoH);
-
-      const fade = mctx.createRadialGradient(
-        logoW / 2, logoH / 2, Math.min(logoW, logoH) * 0.30,
-        logoW / 2, logoH / 2, Math.min(logoW, logoH) * 0.52
-      );
-      fade.addColorStop(0, "rgba(0,0,0,1)");
-      fade.addColorStop(1, "rgba(0,0,0,0)");
-      mctx.globalCompositeOperation = "destination-in";
-      mctx.fillStyle = fade;
-      mctx.fillRect(0, 0, logoW, logoH);
-
-      ctx.drawImage(mask, lx, ly, logoW, logoH);
+      // Drawn straight on — the logo's own pink matches the background, so a
+      // mask isn't needed and a hard edge is invisible.
+      ctx.drawImage(logoImg, lx, ly, logoW, logoH);
     }
 
     if (heading) {
-      // Left aligned at the top, clear of the logo.
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 60px Poppins, Arial, sans-serif";
       ctx.textAlign = "left";
-      ctx.shadowColor = "rgba(150,20,70,0.35)";
-      ctx.shadowBlur = 12;
-      ctx.fillText(heading, 46, 132);
+
+      // Small chip above the heading — gives the top-left corner a second level
+      // of hierarchy instead of one lonely line of text.
+      const chipText = `${usable.length} NEW ${usable.length === 1 ? "CARD" : "CARDS"}`;
+      ctx.font = "bold 22px Poppins, Arial, sans-serif";
+      const chipW = ctx.measureText(chipText).width + 34;
+      ctx.fillStyle = "rgba(255,255,255,0.22)";
+      ctx.beginPath();
+      ctx.moveTo(46 + 17, 44);
+      ctx.arcTo(46 + chipW, 44, 46 + chipW, 44 + 38, 19);
+      ctx.arcTo(46 + chipW, 44 + 38, 46, 44 + 38, 19);
+      ctx.arcTo(46, 44 + 38, 46, 44, 19);
+      ctx.arcTo(46, 44, 46 + chipW, 44, 19);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(chipText, 46 + 17, 70);
+
+      ctx.font = "bold 58px Poppins, Arial, sans-serif";
+      ctx.shadowColor = "rgba(150,20,70,0.30)";
+      ctx.shadowBlur = 14;
+      ctx.fillText(heading, 46, 146);
       ctx.shadowColor = "transparent";
     }
 
-    ctx.font = "28px Poppins, Arial, sans-serif";
-    ctx.fillStyle = "rgba(255,255,255,0.92)";
     ctx.textAlign = "center";
-    ctx.fillText("@fallacyministore_bot", PROMO_W / 2, height - 26);
+    ctx.font = "bold 30px Poppins, Arial, sans-serif";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText("Fallacy's Mini Store", PROMO_W / 2, height - 54);
+    ctx.font = "24px Poppins, Arial, sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.fillText("@fallacyministore_bot  ·  t.me/fallacytcg", PROMO_W / 2, height - 22);
     ctx.textAlign = "left";
 
     const rand = seededRandom(usable.length * 7919);
@@ -1327,11 +1348,12 @@ document.getElementById("promoBuildButton").onclick = async () => {
       let rotation = 0;
 
       if (style === "scatter") {
-        // Small offsets and tilts so the cards look laid out by hand rather
-        // than pasted into a spreadsheet.
-        x += (rand() - 0.5) * cardW * 0.12;
-        y += (rand() - 0.5) * cardH * 0.08;
-        rotation = (rand() - 0.5) * 0.16;
+        // Alternate rows are offset by half a card, like a dealt spread — the
+        // single biggest thing stopping it reading as a grid.
+        if (row % 2 === 1) x += (cardW + gap) * 0.5;
+        x += (rand() - 0.5) * cardW * 0.10;
+        y += (rand() - 0.5) * cardH * 0.06;
+        rotation = (rand() - 0.5) * 0.20;
       }
 
       drawCardImage(ctx, entry.img, x, y, cardW, cardH, 14, rotation);
