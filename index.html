@@ -550,19 +550,6 @@ h2 {
 
 .field-hint-warn { color: #c0392b; font-weight: 600; }
 
-.faq-link {
-  display: inline-block;
-  margin: 0 0 12px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--pink-deep);
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  text-decoration: underline;
-}
-
 .stock-warning {
   font-size: 11px;
   color: #c0392b;
@@ -708,7 +695,6 @@ footer .btn { width: auto; flex-shrink: 0; }
       <span id="promoText"></span>
     </div>
     <p class="stock-note">Note: All photos are for reference only and do not reflect actual condition stated.</p>
-    <button type="button" id="faqLink" class="faq-link">Questions? Read our FAQ</button>
     <p id="statusText" class="status-text">Loading inventory…</p>
 
     <div class="toolbar">
@@ -2374,23 +2360,6 @@ paynowConfirmButtonEl.onclick = async () => {
   isConfirmingOrder = false;
   paynowConfirmButtonEl.disabled = false;
   paynowConfirmButtonEl.textContent = confirmLabel;
-};
-
-// Pinned FAQ message in the Telegram channel.
-//
-// REPLACE THIS with the link to your pinned FAQ message: open the message in
-// Telegram, tap "Copy Link", and paste it here. It looks like
-// https://t.me/fallacytcg/123 (the number is the message id).
-const FAQ_MESSAGE_URL = "https://t.me/fallacytcg";
-
-document.getElementById("faqLink").onclick = () => {
-  // openTelegramLink keeps the buyer inside Telegram rather than bouncing them
-  // out to a browser; falls back to a normal link outside the Mini App.
-  if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openTelegramLink) {
-    window.Telegram.WebApp.openTelegramLink(FAQ_MESSAGE_URL);
-  } else {
-    window.open(FAQ_MESSAGE_URL, "_blank");
-  }
 };
 
 modalCloseButtonEl.onclick = () => {
