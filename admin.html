@@ -2066,6 +2066,18 @@ function renderDripStatus(status) {
         <span class="muted">releases ${fmtDateTime(r.releaseAt)}</span></div>`).join(""));
   }
 
+  // Always says something. An absent section is indistinguishable from a broken
+  // feature, which is precisely the wrong signal for a diagnostic panel.
+  if (status.newlyTracked && !status.newlyTracked.length) {
+    sections.push(
+      `<div style="margin-top:14px;"><strong>Stock tracking</strong></div>` +
+      `<div class="muted" style="font-size:12px;">
+         All listings already have a stock record — nothing needed tracking on
+         this request, so no restock can be absorbed unnoticed.
+       </div>`
+    );
+  }
+
   if (status.newlyTracked && status.newlyTracked.length) {
     sections.push(
       `<div style="margin-top:14px;"><strong>Newly tracked this request (${status.newlyTracked.length})</strong></div>` +
