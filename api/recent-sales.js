@@ -28,6 +28,7 @@ const ALLOWED_EVENTS = new Set([
   "telegram_prefill",
   "view_social_proof",
   "cart_nudge_shown",
+  "reservation_rescued",
   "join_channel_click",
 ]);
 
