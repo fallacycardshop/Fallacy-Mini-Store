@@ -2481,13 +2481,13 @@ async function openSocialProof() {
     const tiles = [
       stats.cards ? `<div class="proof-stat"><strong>${stats.cards.toLocaleString()}+</strong><span>cards sold</span></div>` : "",
       stats.customers ? `<div class="proof-stat"><strong>${stats.customers.toLocaleString()}+</strong><span>customers</span></div>` : "",
-      stats.sinceLabel ? `<div class="proof-stat"><strong>${stats.sinceLabel}</strong><span>trading since</span></div>` : "",
+      stats.sinceLabel ? `<div class="proof-stat"><strong>${stats.sinceLabel}</strong><span>active since</span></div>` : "",
     ].filter(Boolean).join("");
 
     subEl.textContent = "Across our auction channel and mini store.";
 
     const rows = sales.length
-      ? `<p class="proof-sub proof-heading">Sold here in the last 3 days</p>` +
+      ? `<p class="proof-sub proof-heading">Some of the cards we have sold recently!</p>` +
         sales.map(sale => `
           <div class="proof-row">
             <span>${sale.name}</span>
