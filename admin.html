@@ -2216,14 +2216,20 @@ function renderDaySummary(orders, wantedDate) {
   const money = str => Number(String(str || "").replace(/[^0-9.]/g, "")) || 0;
   const revenue = orders.reduce((sum, e) => sum + money((e.record || {}).Total), 0);
 
-  // Blocks are concatenated in order, so they stay row-aligned with each other
-  // exactly as they do for a single order.
-  const blockA = orders
+  // Copy blocks run OLDEST FIRST, so pasting appends to the spreadsheet in
+  // chronological order. The list and summary above stay newest-first, which is
+  // what you want on screen — only the paste order is reversed.
+  //
+  // Both blocks use the same reversed array, so they stay row-aligned with each
+  // other exactly as they do for a single order.
+  const chronological = [...orders].reverse();
+
+  const blockA = chronological
     .map(e => (e.record || {})["PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition"] || "")
     .filter(Boolean)
     .join("\n");
 
-  const blockF = orders
+  const blockF = chronological
     .map(e => {
       const r = e.record || {};
       return (
