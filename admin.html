@@ -379,6 +379,32 @@
 </div>
 
 <div class="card">
+  <h1>Shopfront Proof Figures</h1>
+  <p>
+    The headline numbers shoppers see when they tap the recent-sales ticker.
+    Entered by hand because they cover the whole business &mdash; the auction
+    channel as well as this store &mdash; which nothing here can measure.
+    Confirmed store orders are added on top automatically, so the cards figure
+    keeps climbing between updates.
+  </p>
+  <input type="password" id="statsPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
+  <div class="field-row">
+    <div>
+      <label class="field-label">Cards sold (all channels)</label>
+      <input type="number" id="statsCards" min="0" placeholder="3700">
+    </div>
+    <div>
+      <label class="field-label">Customers</label>
+      <input type="number" id="statsCustomers" min="0" placeholder="360">
+    </div>
+  </div>
+  <label class="field-label">Trading since</label>
+  <input type="text" id="statsSince" maxlength="40" placeholder="May 2026">
+  <button id="statsSaveButton">Save Proof Figures</button>
+  <p id="statsResultText"></p>
+</div>
+
+<div class="card">
   <h1>Sales History</h1>
   <p>
     Every card sold, with the date, condition and the price it actually went for
@@ -1054,6 +1080,58 @@ function renderSalesHistory() {
 
 document.getElementById("historySearch").oninput = () => {
   if (window.__salesHistory) renderSalesHistory();
+};
+
+document.getElementById("statsSaveButton").onclick = async () => {
+  const key = document.getElementById("statsPassphrase").value.trim();
+  const resultEl = document.getElementById("statsResultText");
+
+  if (!key) {
+    resultEl.textContent = "Please enter the passphrase.";
+    resultEl.className = "error";
+    return;
+  }
+
+  resultEl.textContent = "Saving...";
+  resultEl.className = "";
+
+  try {
+    const res = await fetch("/api/recent-sales", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        key,
+        action: "setStats",
+        baseCards: document.getElementById("statsCards").value,
+        baseCustomers: document.getElementById("statsCustomers").value,
+        sinceLabel: document.getElementById("statsSince").value,
+      }),
+    });
+
+    const raw = await res.text();
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      resultEl.textContent = raw.trim().startsWith("<")
+        ? `The /api/recent-sales endpoint isn't deployed (HTTP ${res.status}).`
+        : `Unexpected response from the server (HTTP ${res.status}).`;
+      resultEl.className = "error";
+      return;
+    }
+
+    if (!res.ok) {
+      resultEl.textContent = data.error || `Something went wrong (HTTP ${res.status}).`;
+      resultEl.className = "error";
+      return;
+    }
+
+    resultEl.textContent = "Saved — shoppers see the new figures straight away.";
+    resultEl.className = "success";
+  } catch (err) {
+    resultEl.textContent = "Network error — please try again.";
+    resultEl.className = "error";
+  }
 };
 
 document.getElementById("historyLoadButton").onclick = async () => {
