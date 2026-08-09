@@ -1809,17 +1809,33 @@ document.getElementById("promoBuildButton").onclick = async () => {
 
     const rand = seededRandom(usable.length * 7919);
 
+    const totalRows = Math.ceil(usable.length / cols);
+    const lastRowCount = usable.length - (totalRows - 1) * cols;
+
     usable.forEach((entry, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
-      let x = pad + col * (cardW + gap);
+      const isLastRow = row === totalRows - 1;
+
+      // A part-filled last row is centred rather than left-aligned, so the
+      // composition doesn't end with a ragged gap on the right.
+      const rowCount = isLastRow ? lastRowCount : cols;
+      const rowWidth = rowCount * cardW + (rowCount - 1) * gap;
+      const rowStart = isLastRow && rowCount < cols
+        ? (PROMO_W - rowWidth) / 2
+        : pad;
+
+      let x = rowStart + col * (cardW + gap);
       let y = headingH + pad + row * (cardH + gap);
       let rotation = 0;
 
       if (style === "scatter") {
         // Alternate rows are offset by half a card, like a dealt spread — the
-        // single biggest thing stopping it reading as a grid.
-        if (row % 2 === 1) x += (cardW + gap) * 0.5;
+        // single biggest thing stopping it reading as a grid. Skipped on a
+        // centred last row, which would otherwise be pushed off-centre.
+        if (row % 2 === 1 && !(isLastRow && rowCount < cols)) {
+          x += (cardW + gap) * 0.5;
+        }
         x += (rand() - 0.5) * cardW * 0.10;
         y += (rand() - 0.5) * cardH * 0.06;
         rotation = (rand() - 0.5) * 0.20;
