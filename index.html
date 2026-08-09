@@ -607,6 +607,69 @@ h2 {
 
 .field-hint-warn { color: #c0392b; font-weight: 600; }
 
+/* Little speech bubble above the cart button, shown once when someone returns
+   with items already in their cart. */
+.cart-nudge {
+  position: fixed;
+  right: 16px;
+  bottom: calc(74px + var(--safe-bottom));
+  z-index: 12;
+  max-width: 260px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: #fff;
+  color: var(--pink-deep);
+  border: 1px solid var(--pink-soft);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  box-shadow: 0 4px 14px rgba(168, 48, 95, 0.22);
+  animation: nudgeIn 0.3s ease;
+}
+
+.cart-nudge::after {
+  content: "";
+  position: absolute;
+  right: 26px;
+  bottom: -7px;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-right: 1px solid var(--pink-soft);
+  border-bottom: 1px solid var(--pink-soft);
+  transform: rotate(45deg);
+}
+
+.cart-nudge button {
+  background: none;
+  border: none;
+  color: #bbb;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+@keyframes nudgeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.last-one {
+  display: inline-block;
+  background: #fdeceb;
+  color: #c0392b;
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  vertical-align: middle;
+}
+
 .stock-warning {
   font-size: 11px;
   color: #c0392b;
@@ -901,6 +964,11 @@ footer .btn { width: auto; flex-shrink: 0; }
     <button class="btn btn-primary" id="proofJoinButton">Join our channel!</button>
     <button class="btn btn-secondary" id="proofCloseButton">Close</button>
   </div>
+</div>
+
+<div class="cart-nudge" id="cartNudge" style="display:none;">
+  <span id="cartNudgeText"></span>
+  <button type="button" id="cartNudgeClose" aria-label="Dismiss">&times;</button>
 </div>
 
 <footer>
@@ -1558,6 +1626,27 @@ function renderSetFilter() {
   if (sets.includes(previousValue)) setFilterEl.value = previousValue;
 }
 
+// Card photos are ~270KB each but display at 92px wide in the grid — roughly
+// ten times more data than needed, times 390 listings. Thumbnails live beside
+// the originals in images/thumbs/ and are used everywhere except the lightbox.
+//
+// If a thumbnail is missing the img falls back to the full-size original, so
+// the store works whether or not the thumbs have been generated.
+function thumbUrl(photo) {
+  if (!photo) return "";
+  return photo.replace("/images/", "/images/thumbs/");
+}
+
+function cardImgHtml(photo, alt, extraClass) {
+  const placeholder = "https://via.placeholder.com/300x420?text=Card";
+  if (!photo) {
+    return `<img src="${placeholder}" loading="lazy" alt="${alt}" class="${extraClass || ""}">`;
+  }
+  return `<img src="${thumbUrl(photo)}" loading="lazy" decoding="async" alt="${alt}"
+    class="${extraClass || ""}"
+    onerror="this.onerror=null;this.src='${photo}';">`;
+}
+
 function buildProductActionsHtml(stock, inCart) {
   const remaining = stock - inCart;
   if (stock <= 0) {
@@ -1593,7 +1682,10 @@ function updateProductCardState(card) {
 
   const stockLine = card.querySelector(".product-stock-line");
   if (stockLine) {
-    stockLine.textContent = `Stock: ${stock}${inCart > 0 ? ` (${inCart} in your cart)` : ""}`;
+    stockLine.innerHTML =
+      `Stock: ${stock}` +
+      (stock === 1 ? ' <span class="last-one">Last one</span>' : "") +
+      (inCart > 0 ? ` (${inCart} in your cart)` : "");
   }
 
   const actions = card.querySelector(".product-actions");
@@ -1623,13 +1715,15 @@ function buildProductCard(p) {
   const setExpanded = expandedFields.has(fieldKey(p, "set")) ? " text-expanded" : "";
   card.innerHTML = `
     <div class="photo-wrap">
-      <img src="${p.photo || 'https://via.placeholder.com/300x420?text=Card'}" loading="lazy" alt="${p.name}">
+      ${cardImgHtml(p.photo, p.name)}
       <span class="photo-watermark">@fallacycardshop</span>
     </div>
     <div class="product-info">
       <div class="product-name${nameExpanded}">${p.name}</div>
       <div class="product-price">$${Number(p.price || 0).toFixed(2)}</div>
-      <div class="product-stock-line${stockExpanded}">Stock: ${stock}${inCart > 0 ? ` (${inCart} in your cart)` : ""}</div>
+      <div class="product-stock-line${stockExpanded}">Stock: ${stock}${
+        stock === 1 ? ' <span class="last-one">Last one</span>' : ""
+      }${inCart > 0 ? ` (${inCart} in your cart)` : ""}</div>
       <div class="product-desc${descExpanded}">${p.description || ""}</div>
       <div class="product-meta${rarityExpanded}" data-field="rarity">Rarity: ${p.category || "Uncategorized"}</div>
       <div class="product-meta${setExpanded}" data-field="set">${p.set || "N/A"}</div>
@@ -2030,7 +2124,7 @@ function renderCart() {
 
       item.innerHTML = `
         <div class="photo-wrap">
-          <img src="${product.photo || 'https://via.placeholder.com/300x420?text=Card'}" loading="lazy" alt="${product.name}">
+          ${cardImgHtml(product.photo, product.name)}
           <span class="photo-watermark">@fallacycardshop</span>
         </div>
         <div class="cart-info">
@@ -2628,6 +2722,33 @@ async function loadRecentSales() {
 
 loadProducts();
 loadRecentSales();
+
+// If someone returns with a cart still saved, say so once — the cart survives
+// in localStorage but nothing acknowledged it, so it was easy to forget.
+function showCartNudge() {
+  const count = Object.values(cart).reduce((sum, { quantity }) => sum + quantity, 0);
+  if (count === 0) return;
+
+  const nudgeEl = document.getElementById("cartNudge");
+  const textEl = document.getElementById("cartNudgeText");
+  textEl.textContent = `You still have ${count} card${count === 1 ? "" : "s"} in your cart — ready when you are.`;
+  nudgeEl.style.display = "flex";
+
+  trackEvent("cart_nudge_shown", { items: count });
+
+  const dismiss = () => { nudgeEl.style.display = "none"; };
+  document.getElementById("cartNudgeClose").onclick = dismiss;
+  nudgeEl.onclick = e => {
+    if (e.target.id === "cartNudgeClose") return;
+    dismiss();
+    showCart();
+  };
+
+  // Fades itself out — a permanent banner would just become furniture.
+  setTimeout(dismiss, 9000);
+}
+
+setTimeout(showCartNudge, 1200);
 
 // Counted once per page load (not on the 60s refresh), giving the funnel a
 // top-of-funnel number to measure the other steps against.
