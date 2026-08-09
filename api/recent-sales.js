@@ -27,6 +27,7 @@ const ALLOWED_EVENTS = new Set([
   "checkout_blocked",
   "telegram_prefill",
   "view_social_proof",
+  "cart_nudge_shown",
   "join_channel_click",
 ]);
 
