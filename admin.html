@@ -2066,6 +2066,22 @@ function renderDripStatus(status) {
         <span class="muted">releases ${fmtDateTime(r.releaseAt)}</span></div>`).join(""));
   }
 
+  if (status.newlyTracked && status.newlyTracked.length) {
+    sections.push(
+      `<div style="margin-top:14px;"><strong>Newly tracked this request (${status.newlyTracked.length})</strong></div>` +
+      `<div class="muted" style="font-size:12px;margin-bottom:6px;">
+         These listings had no stock record until now. If any were restocked in
+         the same CSV upload, that increase was absorbed into their baseline —
+         use &ldquo;Publish Stock Now&rdquo; on those to release it properly.
+       </div>` +
+      status.newlyTracked.slice(0, 30).map(r => `<div><strong>${r.name}</strong>
+        <span class="muted">${r.set ? r.set + " · " : ""}${r.condition}</span></div>`).join("") +
+      (status.newlyTracked.length > 30
+        ? `<div class="muted">…and ${status.newlyTracked.length - 30} more</div>`
+        : "")
+    );
+  }
+
   if (status.unscheduled.length) {
     sections.push(`<div style="margin-top:14px;"><strong>New CSV rows awaiting a schedule (${status.unscheduled.length})</strong></div>` +
       status.unscheduled.slice(0, 40).map(r => `<div><strong>${r.name}</strong>
