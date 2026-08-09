@@ -379,6 +379,33 @@
 </div>
 
 <div class="card">
+  <h1>Promo Image Generator</h1>
+  <p>
+    Builds a collage of everything currently in the &ldquo;Newly in stock!&rdquo; row,
+    ready to attach to a Telegram post. No passphrase needed &mdash; it reads the
+    same public catalogue shoppers see.
+  </p>
+  <div class="field-row">
+    <div>
+      <label class="field-label">Columns</label>
+      <input type="number" id="promoCols" min="2" max="8" value="5">
+    </div>
+    <div>
+      <label class="field-label">Style</label>
+      <select id="promoStyle">
+        <option value="scatter">Overlapping scatter</option>
+        <option value="grid">Neat grid</option>
+      </select>
+    </div>
+  </div>
+  <label class="field-label">Heading (blank for none)</label>
+  <input type="text" id="promoHeading" value="NEWLY IN STOCK" maxlength="40">
+  <button id="promoBuildButton">Build Promo Image</button>
+  <p id="promoResultText"></p>
+  <div id="promoSlot" class="card-image-slot"></div>
+</div>
+
+<div class="card">
   <h1>Shopfront Proof Figures</h1>
   <p>
     The headline numbers shoppers see when they tap the recent-sales ticker.
@@ -1082,6 +1109,186 @@ function renderSalesHistory() {
 
 document.getElementById("historySearch").oninput = () => {
   if (window.__salesHistory) renderSalesHistory();
+};
+
+// ---------------------------------------------------------------------------
+// Promo image generator
+//
+// Draws the current "Newly in stock!" cards onto a canvas so the result can be
+// copied or saved and attached to a Telegram post. Card images are served from
+// raw.githubusercontent.com with CORS open, so the canvas stays untainted and
+// can be exported.
+// ---------------------------------------------------------------------------
+const PROMO_W = 1400;
+const CARD_RATIO = 1.4;   // height / width of a Pokémon card
+const PROMO_BG = "#f6dbe7";
+
+function loadImage(src) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null); // a missing photo shouldn't kill the build
+    img.src = src;
+  });
+}
+
+// Deterministic pseudo-random so the same batch always lays out the same way.
+function seededRandom(seed) {
+  let a = seed;
+  return () => {
+    a = (a * 1664525 + 1013904223) % 4294967296;
+    return a / 4294967296;
+  };
+}
+
+function drawCardImage(ctx, img, x, y, w, h, radius, rotation) {
+  ctx.save();
+  ctx.translate(x + w / 2, y + h / 2);
+  if (rotation) ctx.rotate(rotation);
+  ctx.shadowColor = "rgba(0,0,0,0.35)";
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetY = 6;
+
+  ctx.beginPath();
+  const r = radius;
+  ctx.moveTo(-w / 2 + r, -h / 2);
+  ctx.arcTo(w / 2, -h / 2, w / 2, h / 2, r);
+  ctx.arcTo(w / 2, h / 2, -w / 2, h / 2, r);
+  ctx.arcTo(-w / 2, h / 2, -w / 2, -h / 2, r);
+  ctx.arcTo(-w / 2, -h / 2, w / 2, -h / 2, r);
+  ctx.closePath();
+
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+  ctx.shadowColor = "transparent";
+  ctx.clip();
+  if (img) ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  ctx.restore();
+}
+
+document.getElementById("promoBuildButton").onclick = async () => {
+  const resultEl = document.getElementById("promoResultText");
+  const slot = document.getElementById("promoSlot");
+  const cols = Math.min(Math.max(Number(document.getElementById("promoCols").value) || 5, 2), 8);
+  const style = document.getElementById("promoStyle").value;
+  const heading = document.getElementById("promoHeading").value.trim();
+
+  resultEl.textContent = "Fetching newly in stock cards...";
+  resultEl.className = "";
+  slot.innerHTML = "";
+
+  try {
+    const res = await fetch("/api/products");
+    const payload = await res.json();
+    const products = Array.isArray(payload) ? payload : payload.products || [];
+    const newCards = products.filter(p => p.isNew && p.photo);
+
+    if (newCards.length === 0) {
+      resultEl.textContent = "Nothing is in the Newly in stock row right now.";
+      resultEl.className = "error";
+      return;
+    }
+
+    resultEl.textContent = `Loading ${newCards.length} card image(s)...`;
+    const images = await Promise.all(newCards.map(p => loadImage(p.photo)));
+    const usable = images.map((img, i) => ({ img, card: newCards[i] })).filter(x => x.img);
+
+    if (usable.length === 0) {
+      resultEl.textContent = "None of those card images could be loaded.";
+      resultEl.className = "error";
+      return;
+    }
+
+    // Layout maths
+    const gap = style === "grid" ? 18 : -18; // negative gap = overlap
+    const pad = 40;
+    const headingH = heading ? 96 : 24;
+    const cardW = Math.floor((PROMO_W - pad * 2 - gap * (cols - 1)) / cols);
+    const cardH = Math.round(cardW * CARD_RATIO);
+    const rows = Math.ceil(usable.length / cols);
+    const height = headingH + pad + rows * cardH + (rows - 1) * gap + pad;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = PROMO_W;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+
+    ctx.fillStyle = PROMO_BG;
+    ctx.fillRect(0, 0, PROMO_W, height);
+
+    if (heading) {
+      ctx.fillStyle = "#a8305f";
+      ctx.font = "bold 58px Poppins, Arial, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(heading, PROMO_W / 2, 68);
+      ctx.font = "26px Poppins, Arial, sans-serif";
+      ctx.fillStyle = "#b8657f";
+      ctx.fillText("@fallacyministore_bot", PROMO_W / 2, height - 18);
+      ctx.textAlign = "left";
+    }
+
+    const rand = seededRandom(usable.length * 7919);
+
+    usable.forEach((entry, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      let x = pad + col * (cardW + gap);
+      let y = headingH + pad + row * (cardH + gap);
+      let rotation = 0;
+
+      if (style === "scatter") {
+        // Small offsets and tilts so the cards look laid out by hand rather
+        // than pasted into a spreadsheet.
+        x += (rand() - 0.5) * cardW * 0.12;
+        y += (rand() - 0.5) * cardH * 0.08;
+        rotation = (rand() - 0.5) * 0.16;
+      }
+
+      drawCardImage(ctx, entry.img, x, y, cardW, cardH, 14, rotation);
+    });
+
+    slot.appendChild(canvas);
+
+    const actions = document.createElement("div");
+    actions.className = "card-image-actions";
+
+    const copyBtn = document.createElement("button");
+    copyBtn.className = "btn";
+    copyBtn.textContent = "Copy image";
+    copyBtn.onclick = async () => {
+      try {
+        const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+        copyBtn.textContent = "Copied";
+        setTimeout(() => (copyBtn.textContent = "Copy image"), 1500);
+      } catch (e) {
+        copyBtn.textContent = "Use Save instead";
+      }
+    };
+
+    const saveBtn = document.createElement("button");
+    saveBtn.className = "btn btn-neutral";
+    saveBtn.textContent = "Save image";
+    saveBtn.onclick = () => {
+      const link = document.createElement("a");
+      link.download = `newly-in-stock-${new Date().toISOString().slice(0, 10)}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    };
+
+    actions.appendChild(copyBtn);
+    actions.appendChild(saveBtn);
+    slot.appendChild(actions);
+
+    const skipped = newCards.length - usable.length;
+    resultEl.textContent =
+      `Built from ${usable.length} card(s)` + (skipped ? ` — ${skipped} image(s) failed to load.` : ".");
+    resultEl.className = skipped ? "error" : "success";
+  } catch (err) {
+    resultEl.textContent = "Couldn't build the image — please try again.";
+    resultEl.className = "error";
+  }
 };
 
 document.getElementById("statsSaveButton").onclick = async () => {
