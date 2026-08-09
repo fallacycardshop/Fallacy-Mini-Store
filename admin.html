@@ -445,6 +445,18 @@
       <input type="number" id="auctionTrim" min="0" max="12" step="0.5" value="4">
     </div>
   </div>
+  <div class="field-row">
+    <div>
+      <label class="field-label">Fan spread (° at each end)</label>
+      <input type="number" id="auctionTilt" min="0" max="45" step="1" value="17">
+    </div>
+    <div>
+      <label class="field-label">Fan overlap (%)</label>
+      <input type="number" id="auctionOverlap" min="10" max="80" step="1" value="58">
+    </div>
+  </div>
+  <label class="field-label">Fan arc &mdash; how much the outer cards dip (%)</label>
+  <input type="number" id="auctionArc" min="0" max="40" step="1" value="13">
   <button id="auctionBuildButton">Build Auction Image</button>
   <p id="auctionResultText"></p>
   <div id="auctionSlot" class="card-image-slot"></div>
@@ -1521,17 +1533,24 @@ document.getElementById("auctionBuildButton").onclick = async () => {
     // heavily and arc like a hand held out, which is what makes the cluster read
     // as physical cards laid on top rather than another row of the grid.
     if (front.length > 0) {
-      const overlap = cardW * 0.42;                       // how much each card covers the last
+      // All three read from the form, so the fan can be dialled in without
+      // rebuilding. Overlap is expressed as "% covered", so a higher number
+      // means a tighter cluster — hence the 1 - x.
+      const overlapPct = Math.min(Math.max(Number(document.getElementById("auctionOverlap").value) || 58, 10), 80);
+      const tiltDeg = Math.min(Math.max(Number(document.getElementById("auctionTilt").value) || 0, 0), 45);
+      const arcPct = Math.min(Math.max(Number(document.getElementById("auctionArc").value) || 0, 0), 40);
+
+      const overlap = cardW * (1 - overlapPct / 100);
       const spanW = cardW + (front.length - 1) * overlap;
       const startX = (PROMO_W - spanW) / 2;
       const centreY = height / 2;
-      const maxTilt = 0.30;                               // radians at the ends of the fan
+      const maxTilt = (tiltDeg * Math.PI) / 180;
 
       front.forEach((img, i) => {
         const t = front.length > 1 ? i / (front.length - 1) - 0.5 : 0; // -0.5 … +0.5
         const x = startX + i * overlap;
         // Ends dip lower than the middle, as a fanned hand does.
-        const y = centreY - cardH / 2 + Math.abs(t) * cardH * 0.13;
+        const y = centreY - cardH / 2 + Math.abs(t) * cardH * (arcPct / 100);
         const rotation = t * 2 * maxTilt;
 
         drawCardTrimmedRotated(ctx, img, x, y, cardW, cardH, 10, trim, rotation);
