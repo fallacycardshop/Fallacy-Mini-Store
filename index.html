@@ -1157,6 +1157,27 @@ function formatDateDDMMYYYY(timestamp) {
 
 // Builds the full order record. Used for BOTH the FormSubmit email and the
 // server-side backup, so the two can never drift apart.
+// Sanity check: do the order's own line items still add up to the subtotal it
+// was charged on? They must, and a mismatch means the cart changed after the
+// totals were captured — which is how one order was billed for a card that
+// wasn't in it. Logged loudly rather than silently producing a wrong receipt.
+function verifyOrderTotals(order) {
+  const lineSum = Object.values(order.cart).reduce(
+    (sum, { product, quantity }) => sum + Number(product.price || 0) * quantity,
+    0
+  );
+  const captured = Number(String(order.subtotal || "").replace(/[^0-9.]/g, "")) || 0;
+  const drift = Math.abs(lineSum - captured);
+
+  if (drift > 0.01) {
+    console.error(
+      `Order ${order.id}: items total $${lineSum.toFixed(2)} but subtotal says $${captured.toFixed(2)}`
+    );
+    trackEvent("order_total_mismatch", { drift: Number(drift.toFixed(2)) });
+  }
+  return { lineSum, captured, drift };
+}
+
 function buildOrderPayload(order) {
   {
     const telegramUsernameDisplay = telegramUser ? (telegramUser.username || "(no username set)") : "not available";
@@ -2368,7 +2389,14 @@ checkoutButtonEl.onclick = async () => {
     addressLine,
     unitNumber,
     postalCode,
-    cart,
+    // DEEP COPY, not a reference.
+    //
+    // The money fields below are captured as text at this moment, but `cart`
+    // used to point at the live cart object — so if an item left the cart
+    // afterwards (sold out during checkout, or dropped by a reservation
+    // conflict) the totals kept counting it while the item list didn't. One
+    // order was charged for a card that never appeared on its receipt.
+    cart: JSON.parse(JSON.stringify(cart)),
     subtotal: subtotalTextEl.textContent,
     discountCode: appliedDiscount ? appliedDiscount.code : "",
     discountAmount: computeDiscountAmount(currentSubtotal, appliedDiscount).toFixed(2),
@@ -2472,7 +2500,7 @@ paynowConfirmButtonEl.onclick = async () => {
       // from the admin page.
       body: JSON.stringify({
         reservationId: pendingOrder.reservationId,
-        record: buildOrderPayload(pendingOrder),
+        record: (verifyOrderTotals(pendingOrder), buildOrderPayload(pendingOrder)),
       }),
     });
     // EXPIRY RESCUE.
