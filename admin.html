@@ -858,7 +858,10 @@
       <input type="date" id="planStart">
     </div>
   </div>
-  <button id="planBuildButton">Build Weekly Plan</button>
+  <div class="button-row">
+    <button id="planBuildButton">Build Weekly Plan</button>
+    <button id="planJumpButton" type="button" class="btn-neutral">Jump to plan &darr;</button>
+  </div>
   <p id="planResultText"></p>
   <div id="planReport"></div>
 </div>
@@ -2470,6 +2473,11 @@ function suggestedQty(row) {
   return Math.max(1, Math.min(4, Math.round(weekly)));
 }
 
+// The restock report can run to a hundred rows, so give a way past it.
+document.getElementById("planJumpButton").onclick = () => {
+  document.getElementById("planBuildButton").scrollIntoView({ behavior: "smooth", block: "start" });
+};
+
 document.getElementById("planBuildButton").onclick = () => {
   const resultEl = document.getElementById("planResultText");
   const reportEl = document.getElementById("planReport");
@@ -2536,23 +2544,12 @@ document.getElementById("planBuildButton").onclick = () => {
   const totalNew = days.reduce((s, d) => s + d.placeholders.length, 0);
   const shortfall = queueIndex >= queue.length && totalRestock < days.reduce((s, d) => s + Math.round((d.target * restockPct) / 100), 0);
 
+  document.getElementById("planReport").scrollIntoView({ behavior: "smooth", block: "start" });
+
   resultEl.textContent =
     `${totalRestock + totalNew} cards over 7 days — ${totalRestock} restocks, ${totalNew} new` +
     (shortfall ? " (ran out of restock candidates; the rest became new slots)" : ".");
   resultEl.className = "success";
-
-  // A pasteable list: restock lines carry their Card ID, new ones are blank
-  // rows to fill in as you source them.
-  const planText = days.map(d => {
-    const lines = [`${d.label} — ${d.target} cards`];
-    d.restocks.forEach(({ row, qty }) => {
-      lines.push(`  RESTOCK  ${row.cardId}  ${row.name} (${row.condition})  x${qty}  @ $${row.price.toFixed(2)}`);
-    });
-    d.placeholders.forEach(n => {
-      lines.push(`  NEW #${n}    ________________  ______________  x__  @ $____`);
-    });
-    return lines.join("\n");
-  }).join("\n\n");
 
   reportEl.innerHTML =
     days.map(d => `
@@ -2576,11 +2573,7 @@ document.getElementById("planBuildButton").onclick = () => {
              </div>`
           : ""}
       </div>`).join("") +
-    `<button class="btn copy-btn" id="planCopyBtn" style="margin-top:12px;">Copy plan as text</button>
-     <pre id="planText">${escapeHtml(planText)}</pre>`;
-
-  document.getElementById("planCopyBtn").onclick = e =>
-    copyText(document.getElementById("planText").textContent, e.target);
+    "";
 };
 
 document.getElementById("restockLoadButton").onclick = async () => {
