@@ -29,6 +29,7 @@ const ALLOWED_EVENTS = new Set([
   "view_social_proof",
   "cart_nudge_shown",
   "reservation_rescued",
+  "order_total_mismatch",
   "join_channel_click",
 ]);
 
