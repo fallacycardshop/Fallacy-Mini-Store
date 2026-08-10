@@ -217,6 +217,36 @@
   }
   .day-summary h2 { font-size: 16px; margin: 0 0 4px; }
   .day-summary .day-stats { font-size: 13px; color: #555; margin-bottom: 10px; }
+  .rs-row {
+    border-top: 1px solid #eee;
+    padding: 10px 0;
+  }
+  .rs-row:first-child { border-top: none; }
+  .rs-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .rs-name { font-size: 14px; font-weight: 700; }
+  .rs-score {
+    font-size: 12px;
+    font-weight: 800;
+    color: #fff;
+    background: #d1447b;
+    border-radius: 999px;
+    padding: 2px 9px;
+    white-space: nowrap;
+  }
+  .rs-score.cool { background: #b9a3ae; }
+  .rs-sub { font-size: 11px; color: #888; margin: 2px 0 6px; }
+  .rs-stats { display: flex; flex-wrap: wrap; gap: 6px; }
+  .rs-stat {
+    background: #faf5f8;
+    border-radius: 7px;
+    padding: 4px 8px;
+    font-size: 11px;
+    color: #555;
+  }
+  .rs-stat strong { color: #a8305f; font-size: 12px; }
+  .rs-gone { background: #fdeceb; }
+  .rs-gone strong { color: #c0392b; }
+
   .hist-card { border-top: 1px solid #eee; padding: 10px 0; }
   .hist-card:first-child { border-top: none; }
   .hist-head { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; font-weight: 700; }
@@ -769,6 +799,41 @@
 </div>
 
 <div class="card">
+  <h1>Restocking</h1>
+  <p>
+    What&rsquo;s gone, how fast it went, and how often you&rsquo;ve had to reorder it.
+    Sorted by a demand score combining units sold, how quickly they sold, and
+    how recently &mdash; so the top of the list is what to buy again first.
+  </p>
+  <input type="password" id="restockPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
+  <div class="field-row">
+    <div>
+      <label class="field-label">Show</label>
+      <select id="restockFilter">
+        <option value="soldout">Sold out only</option>
+        <option value="low">Sold out + low stock (1 left)</option>
+        <option value="all">Everything that has sold</option>
+      </select>
+    </div>
+    <div>
+      <label class="field-label">Sort by</label>
+      <select id="restockSort">
+        <option value="score">Demand score</option>
+        <option value="units">Units sold</option>
+        <option value="speed">Sold fastest</option>
+        <option value="recent">Sold most recently</option>
+        <option value="restocks">Most restocked</option>
+        <option value="revenue">Revenue</option>
+      </select>
+    </div>
+  </div>
+  <input type="text" id="restockSearch" placeholder="Filter by name, Card ID or set" autocomplete="off">
+  <button id="restockLoadButton">Load Restocking Report</button>
+  <p id="restockResultText"></p>
+  <div id="restockReport"></div>
+</div>
+
+<div class="card">
   <h1>Sales History</h1>
   <p>
     Every card sold, with the date, condition and the price it actually went for
@@ -873,6 +938,7 @@ document.addEventListener("DOMContentLoaded", () => {
     "Auction Promo Image": "Auction image",
     "Promo Image Generator": "Store image",
     "Shopfront Proof Figures": "Proof figures",
+    "Restocking": "Restock",
     "Sales History": "Sales history",
     "Recent Orders": "Orders",
     "Slow Release Scheduling": "Drip",
@@ -2212,6 +2278,195 @@ document.getElementById("statsSaveButton").onclick = async () => {
 
     resultEl.textContent = "Saved — shoppers see the new figures straight away.";
     resultEl.className = "success";
+  } catch (err) {
+    resultEl.textContent = "Network error — please try again.";
+    resultEl.className = "error";
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Restocking report
+//
+// Two sources: the drip endpoint for live stock, lifetime sold counts, release
+// dates and restock counts; the orders list for WHEN things sold. Sold counters
+// alone can't tell you speed or recency, which is most of what matters when
+// deciding what to buy again.
+// ---------------------------------------------------------------------------
+const DAY_MS = 86400000;
+
+function buildRestockRows(listings, orders, now) {
+  // Sale dates per listing, from stored orders.
+  const salesByKey = new Map();
+  orders.forEach(entry => {
+    const r = entry.record || {};
+    const lines = String(r["PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition"] || "")
+      .split("\n").map(l => l.trim()).filter(Boolean);
+    lines.forEach(line => {
+      const [, cardId, condition] = line.split("|").map(p => p.trim());
+      const key = `${cardId}::${condition}`;
+      if (!salesByKey.has(key)) salesByKey.set(key, []);
+      salesByKey.get(key).push(entry.savedAt);
+    });
+  });
+
+  return listings.map(l => {
+    const dates = (salesByKey.get(l.groupKey) || []).slice().sort((a, b) => a - b);
+    const lastSoldAt = dates.length ? dates[dates.length - 1] : null;
+    const daysSinceSale = lastSoldAt ? (now - lastSoldAt) / DAY_MS : null;
+
+    // Days on sale: from release (or first recorded sale) to selling out, or to
+    // now if still available.
+    const startedAt = l.releaseAt || (dates.length ? dates[0] : null);
+    const endedAt = l.available <= 0 && lastSoldAt ? lastSoldAt : now;
+    const daysListed = startedAt ? Math.max((endedAt - startedAt) / DAY_MS, 0.25) : null;
+
+    // Units per day while it was on sale — the cleanest measure of "went fast".
+    const velocity = daysListed && l.sold ? l.sold / daysListed : 0;
+
+    // Demand score: volume × speed, decayed by how long ago it last sold, with
+    // a nudge for anything you've already had to reorder.
+    const recency = daysSinceSale === null ? 0.35 : Math.max(0.25, 1 - daysSinceSale / 45);
+    const score = (l.sold * 1.0 + velocity * 6) * recency * (1 + l.restocks * 0.15);
+
+    return {
+      ...l,
+      salesCount: dates.length,
+      lastSoldAt,
+      daysSinceSale,
+      daysListed,
+      velocity,
+      revenue: l.sold * l.price,
+      score,
+    };
+  });
+}
+
+function renderRestockReport() {
+  const rows = window.__restockRows || [];
+  const filter = document.getElementById("restockFilter").value;
+  const sort = document.getElementById("restockSort").value;
+  const term = document.getElementById("restockSearch").value.trim().toLowerCase();
+
+  let shown = rows.filter(r => r.sold > 0);
+  if (filter === "soldout") shown = shown.filter(r => r.available <= 0);
+  else if (filter === "low") shown = shown.filter(r => r.available <= 1);
+
+  if (term) {
+    shown = shown.filter(r =>
+      `${r.name} ${r.cardId} ${r.set} ${r.rarity} ${r.condition}`.toLowerCase().includes(term));
+  }
+
+  const sorters = {
+    score: (a, b) => b.score - a.score,
+    units: (a, b) => b.sold - a.sold,
+    speed: (a, b) => b.velocity - a.velocity,
+    recent: (a, b) => (b.lastSoldAt || 0) - (a.lastSoldAt || 0),
+    restocks: (a, b) => b.restocks - a.restocks || b.sold - a.sold,
+    revenue: (a, b) => b.revenue - a.revenue,
+  };
+  shown.sort(sorters[sort] || sorters.score);
+
+  const totalUnits = shown.reduce((s, r) => s + r.sold, 0);
+  const totalRevenue = shown.reduce((s, r) => s + r.revenue, 0);
+  document.getElementById("restockResultText").textContent =
+    `${shown.length} listing(s) · ${totalUnits} sold · $${totalRevenue.toFixed(2)}`;
+  document.getElementById("restockResultText").className = "success";
+
+  const top = shown.length ? shown[0].score || 1 : 1;
+
+  document.getElementById("restockReport").innerHTML = shown.length
+    ? shown.slice(0, 120).map(r => {
+        const hot = r.score >= top * 0.45;
+        const days = r.daysListed ? `${r.daysListed.toFixed(r.daysListed < 10 ? 1 : 0)}d` : "—";
+        const since = r.daysSinceSale === null
+          ? "never"
+          : r.daysSinceSale < 1 ? "today" : `${Math.round(r.daysSinceSale)}d ago`;
+
+        return `
+          <div class="rs-row">
+            <div class="rs-head">
+              <span class="rs-name">${escapeHtml(r.name)}</span>
+              <span class="rs-score${hot ? "" : " cool"}">${Math.round(r.score)}</span>
+            </div>
+            <div class="rs-sub">
+              ${escapeHtml(r.cardId)} · ${escapeHtml(r.condition)} · ${escapeHtml(r.set)}
+              ${r.rarity ? " · " + escapeHtml(r.rarity) : ""} · $${r.price.toFixed(2)}
+            </div>
+            <div class="rs-stats">
+              <span class="rs-stat ${r.available <= 0 ? "rs-gone" : ""}">
+                <strong>${r.available <= 0 ? "SOLD OUT" : r.available + " left"}</strong>
+              </span>
+              <span class="rs-stat"><strong>${r.sold}</strong> sold</span>
+              <span class="rs-stat"><strong>${r.velocity ? r.velocity.toFixed(2) : "—"}</strong>/day</span>
+              <span class="rs-stat">sold over <strong>${days}</strong></span>
+              <span class="rs-stat">last sale <strong>${since}</strong></span>
+              <span class="rs-stat"><strong>${r.restocks}</strong> restock${r.restocks === 1 ? "" : "s"}</span>
+              <span class="rs-stat"><strong>$${r.revenue.toFixed(2)}</strong></span>
+            </div>
+          </div>`;
+      }).join("") + (shown.length > 120 ? `<p class="muted">…and ${shown.length - 120} more</p>` : "")
+    : '<p class="muted">Nothing matches that filter.</p>';
+}
+
+["restockFilter", "restockSort", "restockSearch"].forEach(id => {
+  const el = document.getElementById(id);
+  const handler = () => { if (window.__restockRows) renderRestockReport(); };
+  el.onchange = handler;
+  el.oninput = handler;
+});
+
+document.getElementById("restockLoadButton").onclick = async () => {
+  const key = document.getElementById("restockPassphrase").value.trim();
+  const resultEl = document.getElementById("restockResultText");
+
+  if (!key) {
+    resultEl.textContent = "Please enter the passphrase.";
+    resultEl.className = "error";
+    return;
+  }
+
+  resultEl.textContent = "Loading...";
+  resultEl.className = "";
+
+  try {
+    const [dripRes, ordersRes] = await Promise.all([
+      fetch("/api/drip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, action: "restockReport" }),
+      }),
+      fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, limit: 300 }),
+      }),
+    ]);
+
+    const dripRaw = await dripRes.text();
+    let dripData;
+    try {
+      dripData = JSON.parse(dripRaw);
+    } catch (e) {
+      resultEl.textContent = dripRaw.trim().startsWith("<")
+        ? `The /api/drip endpoint isn't deployed (HTTP ${dripRes.status}).`
+        : `Unexpected response from the server (HTTP ${dripRes.status}).`;
+      resultEl.className = "error";
+      return;
+    }
+    if (!dripRes.ok) {
+      resultEl.textContent = dripData.error || `Something went wrong (HTTP ${dripRes.status}).`;
+      resultEl.className = "error";
+      return;
+    }
+
+    const ordersData = ordersRes.ok ? await ordersRes.json().catch(() => ({ orders: [] })) : { orders: [] };
+
+    window.__restockRows = buildRestockRows(
+      dripData.listings || [],
+      ordersData.orders || [],
+      dripData.now || Date.now()
+    );
+    renderRestockReport();
   } catch (err) {
     resultEl.textContent = "Network error — please try again.";
     resultEl.className = "error";
