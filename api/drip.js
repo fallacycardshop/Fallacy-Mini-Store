@@ -14,6 +14,9 @@ import {
 
 const redis = Redis.fromEnv();
 
+// One hash: groupKey -> how many times that listing has been restocked.
+const RESTOCK_COUNTS_KEY = "restock:counts";
+
 // Actions:
 //   status     — config + what's live, new, and pending
 //   initialize — mark everything currently in the CSV as already released
@@ -351,6 +354,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, scheduled: 0, status: buildStatus() });
       }
       const restockKeys = new Set(unscheduledRestocks.map(r => r.groupKey));
+      const restocked = [];
       buildDripSchedule(unscheduled, state.config, now, firstSlotAt, plan).forEach(entry => {
         const group = groups.get(entry.groupKey);
         if (restockKeys.has(entry.groupKey)) {
@@ -358,6 +362,9 @@ export default async function handler(req, res) {
           // current published level until then.
           state.levels[entry.groupKey].pendingStock = group.baseStock;
           state.levels[entry.groupKey].pendingAt = entry.releaseAt;
+          // Nothing recorded how often a card gets restocked, which is exactly
+          // the signal worth having when deciding what to buy again.
+          restocked.push(entry.groupKey);
         } else {
           // Brand-new listing: hidden entirely until its moment.
           state.releases[entry.groupKey] = entry.releaseAt;
@@ -446,6 +453,43 @@ export default async function handler(req, res) {
         released: targets.length,
         status: buildStatus(),
       });
+    }
+
+    // -------------------------------------------------------- restockReport --
+    // Everything needed to decide what to buy again, in one request:
+    // every listing with its live stock, lifetime sales, release date and
+    // restock count. Sold counts come back in a single MGET.
+    if (action === "restockReport") {
+      const allKeys = Array.from(groups.keys());
+      const soldValues = allKeys.length ? await redis.mget(...allKeys.map(k => `sold:${k}`)) : [];
+      const restockCounts = (await redis.hgetall(RESTOCK_COUNTS_KEY)) || {};
+
+      const listings = allKeys.map((groupKey, i) => {
+        const group = groups.get(groupKey);
+        const sold = Number(soldValues[i]) || 0;
+        const published = getEffectiveStock(state, groupKey, group.baseStock, now);
+        const released = isListingReleased(state, groupKey, now);
+        const releaseAt = state.releases[groupKey] || null;
+
+        return {
+          groupKey,
+          cardId: group.cardId,
+          name: group.name,
+          set: group.set || "",
+          condition: group.description || "",
+          rarity: group.category || "",
+          price: Number(group.price || 0),
+          csvStock: group.baseStock,
+          published,
+          sold,
+          available: released ? Math.max(published - sold, 0) : 0,
+          released,
+          releaseAt,
+          restocks: Number(restockCounts[groupKey]) || 0,
+        };
+      });
+
+      return res.status(200).json({ ok: true, listings, now });
     }
 
     // ------------------------------------------------------- alignNewWindow --
@@ -543,6 +587,7 @@ export default async function handler(req, res) {
         if (newestInRow > 0) publishAt = newestInRow;
       }
 
+      const manualRestocks = [];
       const updated = targets.map(groupKey => {
         const group = groups.get(groupKey);
         const before = state.levels[groupKey] ? state.levels[groupKey].published : null;
@@ -561,12 +606,20 @@ export default async function handler(req, res) {
           state.releases[groupKey] = publishAt;
         }
 
+        if (before !== null && group.baseStock > before) manualRestocks.push(groupKey);
+
         return {
           ...describe(groupKey),
           from: before,
           to: group.baseStock,
         };
       });
+
+      if (manualRestocks.length > 0) {
+        await Promise.all(
+          manualRestocks.map(k => redis.hincrby(RESTOCK_COUNTS_KEY, k, 1))
+        );
+      }
 
       state.initialized = true;
       await saveDripState(redis, state);
