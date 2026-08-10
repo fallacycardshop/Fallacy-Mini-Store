@@ -1628,7 +1628,29 @@ function reconcileCartWithStock() {
     cart[id].product = fresh;
   });
 
-  if (changed) saveCart();
+  if (changed) {
+    saveCart();
+
+    // CRITICAL: currentSubtotal is only recalculated inside renderCart, so
+    // dropping an item here without re-rendering left the totals counting a
+    // card that was no longer in the cart. One buyer was charged for four
+    // cards and received three.
+    //
+    // This runs on every 60s inventory refresh, so it can fire while the buyer
+    // is sitting on the checkout screen.
+    updateCartBadge();
+    if (currentScreen === "cart") {
+      renderCart();
+    } else {
+      // Not on the cart screen: recompute the subtotal directly so the figure
+      // is already correct whenever they arrive there.
+      currentSubtotal = Object.values(cart).reduce(
+        (sum, { product, quantity }) => sum + Number(product.price || 0) * quantity,
+        0
+      );
+      updateTotals();
+    }
+  }
 }
 
 function renderCategoryFilter() {
