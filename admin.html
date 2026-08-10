@@ -831,6 +831,36 @@
   <button id="restockLoadButton">Load Restocking Report</button>
   <p id="restockResultText"></p>
   <div id="restockReport"></div>
+
+  <h3 class="drip-step">Weekly stocking plan</h3>
+  <p class="config-note">
+    Turns the report above into a day-by-day buying list. Restock slots are filled
+    from the highest-demand sold-out cards; the rest are left as blank
+    placeholders for new stock you&rsquo;re sourcing.
+  </p>
+  <div class="field-row">
+    <div>
+      <label class="field-label">Cards per weekday</label>
+      <input type="number" id="planWeekday" min="1" max="200" value="35">
+    </div>
+    <div>
+      <label class="field-label">Cards per weekend day</label>
+      <input type="number" id="planWeekend" min="1" max="200" value="55">
+    </div>
+  </div>
+  <div class="field-row">
+    <div>
+      <label class="field-label">Restocks (% of each day)</label>
+      <input type="number" id="planRestockPct" min="0" max="100" value="35">
+    </div>
+    <div>
+      <label class="field-label">Week starting</label>
+      <input type="date" id="planStart">
+    </div>
+  </div>
+  <button id="planBuildButton">Build Weekly Plan</button>
+  <p id="planResultText"></p>
+  <div id="planReport"></div>
 </div>
 
 <div class="card">
@@ -2414,6 +2444,144 @@ function renderRestockReport() {
   el.onchange = handler;
   el.oninput = handler;
 });
+
+// ---------------------------------------------------------------------------
+// Weekly stocking plan
+//
+// Splits each day's target between proven restocks (taken in demand order from
+// the report above) and blank slots for new stock. The blanks are the point:
+// most of what you list is new, so the plan has to leave room for it rather
+// than pretending restocks fill the week.
+// ---------------------------------------------------------------------------
+function nextMonday() {
+  const d = new Date(Date.now() + 8 * 3600000);
+  const day = d.getUTCDay();                 // 0 Sun … 6 Sat
+  const add = day === 1 ? 0 : (8 - day) % 7; // today if it's Monday
+  d.setUTCDate(d.getUTCDate() + add);
+  return d.toISOString().slice(0, 10);
+}
+
+document.getElementById("planStart").value = nextMonday();
+
+// How many copies to reorder: roughly a week's worth at the rate it sold,
+// capped so one hot card can't swallow the whole day.
+function suggestedQty(row) {
+  const weekly = row.velocity ? row.velocity * 7 : row.sold;
+  return Math.max(1, Math.min(4, Math.round(weekly)));
+}
+
+document.getElementById("planBuildButton").onclick = () => {
+  const resultEl = document.getElementById("planResultText");
+  const reportEl = document.getElementById("planReport");
+  const rows = window.__restockRows || [];
+
+  if (rows.length === 0) {
+    resultEl.textContent = "Load the restocking report first.";
+    resultEl.className = "error";
+    return;
+  }
+
+  const perWeekday = Number(document.getElementById("planWeekday").value) || 35;
+  const perWeekend = Number(document.getElementById("planWeekend").value) || 55;
+  const restockPct = Math.min(Math.max(Number(document.getElementById("planRestockPct").value) || 0, 0), 100);
+  const startStr = document.getElementById("planStart").value || nextMonday();
+
+  // Restock candidates: sold out or down to the last copy, best demand first.
+  const candidates = rows
+    .filter(r => r.sold > 0 && r.available <= 1)
+    .sort((a, b) => b.score - a.score);
+
+  let queue = [];
+  candidates.forEach(r => {
+    const qty = suggestedQty(r);
+    for (let i = 0; i < qty; i++) queue.push(r);
+  });
+
+  const start = new Date(startStr + "T00:00:00Z");
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const days = [];
+  let queueIndex = 0;
+  let placeholderNo = 1;
+
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(start.getTime() + i * DAY_MS);
+    const dow = date.getUTCDay();
+    const isWeekend = dow === 0 || dow === 6;
+    const target = isWeekend ? perWeekend : perWeekday;
+    const restockTarget = Math.round((target * restockPct) / 100);
+
+    // Group repeats of the same card into one line with a quantity.
+    const picked = new Map();
+    let taken = 0;
+    while (taken < restockTarget && queueIndex < queue.length) {
+      const r = queue[queueIndex++];
+      picked.set(r.groupKey, { row: r, qty: (picked.get(r.groupKey)?.qty || 0) + 1 });
+      taken++;
+    }
+
+    const newCount = target - taken;
+    const placeholders = [];
+    for (let n = 0; n < newCount; n++) placeholders.push(placeholderNo++);
+
+    days.push({
+      label: `${dayNames[dow]} ${date.toISOString().slice(0, 10)}`,
+      target,
+      restocks: Array.from(picked.values()),
+      restockCount: taken,
+      placeholders,
+    });
+  }
+
+  const totalRestock = days.reduce((s, d) => s + d.restockCount, 0);
+  const totalNew = days.reduce((s, d) => s + d.placeholders.length, 0);
+  const shortfall = queueIndex >= queue.length && totalRestock < days.reduce((s, d) => s + Math.round((d.target * restockPct) / 100), 0);
+
+  resultEl.textContent =
+    `${totalRestock + totalNew} cards over 7 days — ${totalRestock} restocks, ${totalNew} new` +
+    (shortfall ? " (ran out of restock candidates; the rest became new slots)" : ".");
+  resultEl.className = "success";
+
+  // A pasteable list: restock lines carry their Card ID, new ones are blank
+  // rows to fill in as you source them.
+  const planText = days.map(d => {
+    const lines = [`${d.label} — ${d.target} cards`];
+    d.restocks.forEach(({ row, qty }) => {
+      lines.push(`  RESTOCK  ${row.cardId}  ${row.name} (${row.condition})  x${qty}  @ $${row.price.toFixed(2)}`);
+    });
+    d.placeholders.forEach(n => {
+      lines.push(`  NEW #${n}    ________________  ______________  x__  @ $____`);
+    });
+    return lines.join("\n");
+  }).join("\n\n");
+
+  reportEl.innerHTML =
+    days.map(d => `
+      <div class="rs-row">
+        <div class="rs-head">
+          <span class="rs-name">${escapeHtml(d.label)}</span>
+          <span class="rs-score${d.restockCount ? "" : " cool"}">${d.target}</span>
+        </div>
+        <div class="rs-sub">${d.restockCount} restock(s) · ${d.placeholders.length} new</div>
+        ${d.restocks.map(({ row, qty }) => `
+          <div class="rs-stats" style="margin-bottom:4px;">
+            <span class="rs-stat rs-gone"><strong>x${qty}</strong></span>
+            <span class="rs-stat">${escapeHtml(row.name)} <strong>${escapeHtml(row.cardId)}</strong></span>
+            <span class="rs-stat">${escapeHtml(row.condition)}</span>
+            <span class="rs-stat">$${row.price.toFixed(2)}</span>
+            <span class="rs-stat">${row.sold} sold · ${row.velocity ? row.velocity.toFixed(2) : "—"}/day</span>
+          </div>`).join("")}
+        ${d.placeholders.length
+          ? `<div class="muted" style="font-size:12px;margin-top:4px;">
+               + ${d.placeholders.length} new card slot(s) — #${d.placeholders[0]}–#${d.placeholders[d.placeholders.length - 1]}
+             </div>`
+          : ""}
+      </div>`).join("") +
+    `<button class="btn copy-btn" id="planCopyBtn" style="margin-top:12px;">Copy plan as text</button>
+     <pre id="planText">${escapeHtml(planText)}</pre>`;
+
+  document.getElementById("planCopyBtn").onclick = e =>
+    copyText(document.getElementById("planText").textContent, e.target);
+};
 
 document.getElementById("restockLoadButton").onclick = async () => {
   const key = document.getElementById("restockPassphrase").value.trim();
