@@ -619,7 +619,7 @@
   <div class="field-row">
     <div>
       <label class="field-label">Trim card edges (%)</label>
-      <input type="number" id="promoTrim" min="0" max="12" step="0.5" value="4">
+      <input type="number" id="promoTrim" min="0" max="12" step="0.5" value="2.5">
     </div>
     <div>
       <label class="field-label">Sold-out cards</label>
@@ -828,7 +828,10 @@
     </div>
   </div>
   <input type="text" id="restockSearch" placeholder="Filter by name, Card ID or set" autocomplete="off">
-  <button id="restockLoadButton">Load Restocking Report</button>
+  <div class="button-row">
+    <button id="restockLoadButton">Load Restocking Report</button>
+    <button id="planJumpButton" type="button" class="btn-neutral">Jump to plan &darr;</button>
+  </div>
   <p id="restockResultText"></p>
   <div id="restockReport"></div>
 
@@ -841,11 +844,11 @@
   <div class="field-row">
     <div>
       <label class="field-label">Cards per weekday</label>
-      <input type="number" id="planWeekday" min="1" max="200" value="35">
+      <input type="number" id="planWeekday" min="0" max="200" value="35">
     </div>
     <div>
       <label class="field-label">Cards per weekend day</label>
-      <input type="number" id="planWeekend" min="1" max="200" value="55">
+      <input type="number" id="planWeekend" min="0" max="200" value="55">
     </div>
   </div>
   <div class="field-row">
@@ -858,10 +861,7 @@
       <input type="date" id="planStart">
     </div>
   </div>
-  <div class="button-row">
-    <button id="planBuildButton">Build Weekly Plan</button>
-    <button id="planJumpButton" type="button" class="btn-neutral">Jump to plan &darr;</button>
-  </div>
+  <button id="planBuildButton">Build Weekly Plan</button>
   <p id="planResultText"></p>
   <div id="planReport"></div>
 </div>
@@ -1241,21 +1241,60 @@ const PINK_SOFT = "#fdeef4";
 function parseItemsSummary(text) {
   // Lines look like:
   //   Name [CardID] (Rarity, Condition) x2 @ $12.00 = $24.00
+  //
+  // Parsed from the RIGHT, not with one rigid pattern. Card names contain
+  // brackets and parentheses of their own — "Pikachu (Gym Event Campaign
+  // Promo)" — and a left-to-right match on those delimiters silently dropped
+  // such lines from receipts while the totals still counted them.
   return String(text || "")
     .split("\n")
     .map(line => line.trim())
     .filter(Boolean)
     .map(line => {
-      const m = line.match(/^(.*?)\s*\[(.*?)\]\s*\((.*?)\)\s*x(\d+)\s*@\s*\$([\d.]+)\s*=\s*\$([\d.]+)$/);
-      if (!m) return { name: line, qty: "", line: "" };
-      const [, name, cardId, meta, qty, , lineTotal] = m;
-      const condition = (meta.split(",")[1] || "").trim();
+      // Everything after the LAST "= $" is the line total.
+      const eq = line.lastIndexOf("= $");
+      const lineTotal = eq !== -1 ? line.slice(eq + 3).trim() : "";
+      const head = eq !== -1 ? line.slice(0, eq).trim() : line;
+
+      // Then the last "@ $" gives the unit price, and the last " x" the qty.
+      const at = head.lastIndexOf("@ $");
+      const beforePrice = at !== -1 ? head.slice(0, at).trim() : head;
+
+      const qtyMatch = beforePrice.match(/x(\d+)\s*$/);
+      const qty = qtyMatch ? qtyMatch[1] : "";
+      const beforeQty = qtyMatch
+        ? beforePrice.slice(0, beforePrice.length - qtyMatch[0].length).trim()
+        : beforePrice;
+
+      // The LAST parenthesised group is (Rarity, Condition); the last bracketed
+      // group before it is the CardID. Anything left is the card's own name.
+      let condition = "";
+      let meta = "";
+      let rest = beforeQty;
+      if (rest.endsWith(")")) {
+        const open = rest.lastIndexOf("(");
+        if (open !== -1) {
+          meta = rest.slice(open + 1, rest.length - 1);
+          condition = (meta.split(",")[1] || "").trim();
+          rest = rest.slice(0, open).trim();
+        }
+      }
+
+      let cardId = "";
+      if (rest.endsWith("]")) {
+        const open = rest.lastIndexOf("[");
+        if (open !== -1) {
+          cardId = rest.slice(open + 1, rest.length - 1).trim();
+          rest = rest.slice(0, open).trim();
+        }
+      }
+
       return {
-        name: name.trim(),
-        cardId: cardId.trim(),
+        name: rest || line,
+        cardId,
         condition,
         qty,
-        line: `$${lineTotal}`,
+        line: lineTotal ? `$${lineTotal}` : "",
       };
     });
 }
@@ -1719,7 +1758,7 @@ function defaultPromoHeading() {
     year: "numeric",
     timeZone: "UTC",
   });
-  return `Newly in stock on ${label}!`;
+  return `${label} drops!`;
 }
 
 document.getElementById("promoHeading").value = defaultPromoHeading();
@@ -2473,9 +2512,10 @@ function suggestedQty(row) {
   return Math.max(1, Math.min(4, Math.round(weekly)));
 }
 
-// The restock report can run to a hundred rows, so give a way past it.
+// Sits at the top of the panel so the hundred-row report can be skipped
+// before you've scrolled into it.
 document.getElementById("planJumpButton").onclick = () => {
-  document.getElementById("planBuildButton").scrollIntoView({ behavior: "smooth", block: "start" });
+  document.getElementById("planWeekday").scrollIntoView({ behavior: "smooth", block: "start" });
 };
 
 document.getElementById("planBuildButton").onclick = () => {
@@ -2489,8 +2529,11 @@ document.getElementById("planBuildButton").onclick = () => {
     return;
   }
 
-  const perWeekday = Number(document.getElementById("planWeekday").value) || 35;
-  const perWeekend = Number(document.getElementById("planWeekend").value) || 55;
+  // Read with Number() alone: "|| 35" turned a deliberate 0 back into 35.
+  const rawWeekday = document.getElementById("planWeekday").value;
+  const rawWeekend = document.getElementById("planWeekend").value;
+  const perWeekday = rawWeekday === "" ? 35 : Math.max(Number(rawWeekday) || 0, 0);
+  const perWeekend = rawWeekend === "" ? 55 : Math.max(Number(rawWeekend) || 0, 0);
   const restockPct = Math.min(Math.max(Number(document.getElementById("planRestockPct").value) || 0, 0), 100);
   const startStr = document.getElementById("planStart").value || nextMonday();
 
@@ -2516,6 +2559,21 @@ document.getElementById("planBuildButton").onclick = () => {
     const dow = date.getUTCDay();
     const isWeekend = dow === 0 || dow === 6;
     const target = isWeekend ? perWeekend : perWeekday;
+
+    // A target of 0 means "no listing that day" — skip it entirely rather than
+    // falling back to the weekday figure.
+    if (target <= 0) {
+      days.push({
+        label: `${dayNames[dow]} ${date.toISOString().slice(0, 10)}`,
+        target: 0,
+        restocks: [],
+        restockCount: 0,
+        placeholders: [],
+        skipped: true,
+      });
+      continue;
+    }
+
     const restockTarget = Math.round((target * restockPct) / 100);
 
     // Group repeats of the same card into one line with a quantity.
@@ -2556,9 +2614,9 @@ document.getElementById("planBuildButton").onclick = () => {
       <div class="rs-row">
         <div class="rs-head">
           <span class="rs-name">${escapeHtml(d.label)}</span>
-          <span class="rs-score${d.restockCount ? "" : " cool"}">${d.target}</span>
+          <span class="rs-score${d.skipped || !d.restockCount ? " cool" : ""}">${d.skipped ? "—" : d.target}</span>
         </div>
-        <div class="rs-sub">${d.restockCount} restock(s) · ${d.placeholders.length} new</div>
+        <div class="rs-sub">${d.skipped ? "No listing this day" : `${d.restockCount} restock(s) · ${d.placeholders.length} new`}</div>
         ${d.restocks.map(({ row, qty }) => `
           <div class="rs-stats" style="margin-bottom:4px;">
             <span class="rs-stat rs-gone"><strong>x${qty}</strong></span>
