@@ -209,6 +209,26 @@
     padding: 0 16px;
   }
 
+  .cutoff-row { margin-bottom: 12px; }
+  .cutoff-state { font-size: 12px; color: #555; margin: 4px 0 0; }
+  .cutoff-state.set { color: #2f6b3a; }
+
+  .orders-section { margin-top: 18px; }
+  .orders-section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+  }
+  .orders-section-head.before { background: #fdeef4; color: #a8305f; }
+  .orders-section-head.after { background: #eaf6ec; color: #2f6b3a; }
+  .orders-section-head .count { font-weight: 500; font-size: 12px; }
+
   .day-summary {
     background: #faf5f8;
     border-radius: 12px;
@@ -550,6 +570,17 @@
   <div class="date-row">
     <input type="date" id="ordersDate">
     <button id="ordersClearDate" class="btn-neutral">All dates</button>
+  </div>
+  <div id="ordersCutoffRow" class="cutoff-row" style="display:none;">
+    <label class="field-label">
+      Auction closed at (SGT) &mdash; splits the selected day into before / after
+    </label>
+    <div class="date-row">
+      <input type="time" id="ordersCutoffTime">
+      <button id="ordersCutoffNow" type="button" class="btn-neutral">Mark now</button>
+      <button id="ordersCutoffClear" type="button" class="btn-neutral">Clear</button>
+    </div>
+    <p id="ordersCutoffState" class="cutoff-state"></p>
   </div>
   <button id="ordersLoadButton">Load Recent Orders</button>
   <div id="ordersDaySummary"></div>
@@ -2797,6 +2828,9 @@ document.getElementById("ordersLoadButton").onclick = async () => {
     }
 
     window.__allOrders = data.orders;
+    // Auction-close markers travel back with the orders, so the day can be
+    // split without a second request.
+    window.__orderCutoffs = data.cutoffs || {};
     renderOrders();
   } catch (err) {
     ordersResultEl.textContent = "Network error — please try again.";
@@ -2885,12 +2919,12 @@ function orderDateKey(savedAt) {
   return new Date(savedAt + 8 * 3600000).toISOString().slice(0, 10);
 }
 
-// Aggregated view for a whole day: every line item and every buyer in one
-// copiable block, so a day's sales go into the spreadsheet in one paste.
-function renderDaySummary(orders, wantedDate) {
-  const slot = document.getElementById("ordersDaySummary");
-  const label = wantedDate || "all loaded orders";
-
+// Aggregated view for a set of orders: every line item and every buyer in one
+// copiable block, so a batch of sales goes into the spreadsheet in one paste.
+// Returns an HTML string (no DOM writes) so it can be reused for the whole day
+// or for each side of the auction-close split. `prefix` keeps the copy-block
+// element IDs unique when two summaries are shown at once.
+function daySummaryHtml(orders, label, prefix) {
   const money = str => Number(String(str || "").replace(/[^0-9.]/g, "")) || 0;
   const revenue = orders.reduce((sum, e) => sum + money((e.record || {}).Total), 0);
 
@@ -2947,13 +2981,13 @@ function renderDaySummary(orders, wantedDate) {
                 : ""
             }
           </div>
-          ${addressChipsHtml(r, "sum" + i)}
+          ${addressChipsHtml(r, prefix + "-sum" + i)}
           <ul class="summary-items">${items}</ul>
         </div>`;
     })
     .join("");
 
-  slot.innerHTML = `
+  return `
     <div class="day-summary">
       <h2>Day summary — ${escapeHtml(label)}</h2>
       <div class="day-stats">
@@ -2962,22 +2996,71 @@ function renderDaySummary(orders, wantedDate) {
 
       <div class="summary-orders">${rundown}</div>
 
-      <button class="btn copy-btn" data-daycopy="a">Copy all columns A–C</button>
-      <pre id="day-a">${escapeHtml(blockA)}</pre>
+      <button class="btn copy-btn" data-copy-target="${prefix}-a">Copy all columns A–C</button>
+      <pre id="${prefix}-a">${escapeHtml(blockA)}</pre>
 
-      <button class="btn copy-btn" data-daycopy="f">Copy all columns F–H</button>
-      <pre id="day-f">${escapeHtml(blockF)}</pre>
+      <button class="btn copy-btn" data-copy-target="${prefix}-f">Copy all columns F–H</button>
+      <pre id="${prefix}-f">${escapeHtml(blockF)}</pre>
     </div>`;
+}
 
-  wireAddressChips(slot);
+// One order block. `i` is the order's index within the FULL filtered list
+// (window.__orderRecords), so the copy and image buttons stay correctly wired
+// even when the list is split into before / after sections.
+function orderBlockHtml(entry, i) {
+  const r = entry.record || {};
+  const blockA = r["PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition"] || "";
+  // New three-column format, falling back to the old two-column key so orders
+  // stored before that change still display.
+  const blockF =
+    r["PASTE_INTO_COLUMNS_F_to_H_Buyer_Price_OrderID"] ||
+    r["PASTE_INTO_COLUMNS_F_to_G_Buyer_Price"] ||
+    "";
+  return `
+    <div class="order-block">
+      <div class="order-head">#${escapeHtml(r.Order_ID)} — ${escapeHtml(r.Buyer_Name)} — ${escapeHtml(r.Total)}</div>
+      <div class="order-meta">
+        saved ${new Date(entry.savedAt).toLocaleString("en-SG", { dateStyle: "medium", timeStyle: "short" })}<br>
+        ${escapeHtml(r.Telegram_Username)}<br>
+        ${mailPreferenceHtml(r.Mail_Preference)}
+        ${r.Discount_Code ? ` · discount ${escapeHtml(r.Discount_Code)} ${escapeHtml(r.Discount_Amount)}` : ""}
+      </div>
+      ${addressChipsHtml(r, "ord" + i)}
+      <pre>${escapeHtml(r.Items_Readable)}</pre>
+      <button class="btn copy-btn" data-card="${i}" data-kind="confirmation">Order confirmation image</button>
+      <button class="btn copy-btn" data-card="${i}" data-kind="receipt">Receipt image</button>
+      <div class="card-image-slot" id="cardimg-${i}"></div>
+      <button class="btn copy-btn" data-copy-target="copy-${i}-a">Copy columns A–C</button>
+      <pre id="copy-${i}-a">${escapeHtml(blockA)}</pre>
+      <button class="btn copy-btn" data-copy-target="copy-${i}-f">Copy columns F–H</button>
+      <pre id="copy-${i}-f">${escapeHtml(blockF)}</pre>
+    </div>`;
+}
 
-  slot.querySelectorAll(".copy-btn").forEach(btn => {
+// Wires every copy / address / image button inside a freshly rendered root.
+// Handles both plain copy buttons (data-copy-target = element id to copy) and
+// the canvas image buttons (data-kind + data-card).
+function wireOrdersDom(root) {
+  if (!root) return;
+  wireAddressChips(root);
+  root.querySelectorAll(".copy-btn").forEach(btn => {
     btn.onclick = () => {
-      const map = { a: "day-a", f: "day-f" };
-      const target = document.getElementById(map[btn.dataset.daycopy]);
+      if (btn.dataset.kind) {
+        renderOrderCard(Number(btn.dataset.card), btn.dataset.kind);
+        return;
+      }
+      const target = document.getElementById(btn.dataset.copyTarget);
       if (target) copyText(target.textContent, btn);
     };
   });
+}
+
+// Section header shown above each side of the auction-close split.
+function sectionHeadHtml(label, cls, count) {
+  return `<div class="orders-section-head ${cls}">
+    <span>${escapeHtml(label)}</span>
+    <span class="count">${count} order(s)</span>
+  </div>`;
 }
 
 function renderOrders() {
@@ -2987,12 +3070,17 @@ function renderOrders() {
 
   window.__orderRecords = orders.map(e => e.record || {});
 
+  const summarySlot = document.getElementById("ordersDaySummary");
+
+  // The auction-close split only applies to a single selected day.
+  updateCutoffControls(wanted);
+
   if (orders.length === 0) {
     ordersResultEl.textContent = wanted
       ? `No orders on ${wanted}.`
       : "No stored orders yet.";
     ordersResultEl.className = "success";
-    document.getElementById("ordersDaySummary").innerHTML = "";
+    summarySlot.innerHTML = "";
     ordersListEl.innerHTML = "";
     return;
   }
@@ -3002,51 +3090,146 @@ function renderOrders() {
     : `Showing the ${orders.length} most recent order(s).`;
   ordersResultEl.className = "success";
 
-  renderDaySummary(orders, wanted);
+  // Pair each order with its index in the full filtered list, so the split
+  // sections can render while keeping every button / image index stable.
+  const indexed = orders.map((entry, i) => ({ entry, i }));
+  const cutoff = wanted ? (window.__orderCutoffs || {})[wanted] : null;
 
-  ordersListEl.innerHTML = orders.map((entry, i) => {
-      const r = entry.record || {};
-      const blockA = r["PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition"] || "";
-      // New three-column format, falling back to the old two-column key so
-      // orders stored before this change still display.
-      const blockF =
-        r["PASTE_INTO_COLUMNS_F_to_H_Buyer_Price_OrderID"] ||
-        r["PASTE_INTO_COLUMNS_F_to_G_Buyer_Price"] ||
-        "";
-      return `
-        <div class="order-block">
-          <div class="order-head">#${escapeHtml(r.Order_ID)} — ${escapeHtml(r.Buyer_Name)} — ${escapeHtml(r.Total)}</div>
-          <div class="order-meta">
-            saved ${new Date(entry.savedAt).toLocaleString("en-SG", { dateStyle: "medium", timeStyle: "short" })}<br>
-            ${escapeHtml(r.Telegram_Username)}<br>
-            ${mailPreferenceHtml(r.Mail_Preference)}
-            ${r.Discount_Code ? ` · discount ${escapeHtml(r.Discount_Code)} ${escapeHtml(r.Discount_Amount)}` : ""}
-          </div>
-          ${addressChipsHtml(r, "ord" + i)}
-          <pre>${escapeHtml(r.Items_Readable)}</pre>
-          <button class="btn copy-btn" data-card="${i}" data-kind="confirmation">Order confirmation image</button>
-          <button class="btn copy-btn" data-card="${i}" data-kind="receipt">Receipt image</button>
-          <div class="card-image-slot" id="cardimg-${i}"></div>
-          <button class="btn copy-btn" data-copy="${i}-a">Copy columns A–C</button>
-          <pre id="copy-${i}-a">${escapeHtml(blockA)}</pre>
-          <button class="btn copy-btn" data-copy="${i}-f">Copy columns F–H</button>
-          <pre id="copy-${i}-f">${escapeHtml(blockF)}</pre>
-        </div>`;
-    }).join("");
+  if (cutoff) {
+    const before = indexed.filter(x => x.entry.savedAt < cutoff);
+    const after = indexed.filter(x => x.entry.savedAt >= cutoff);
+    const t = new Date(cutoff).toLocaleTimeString("en-SG", { hour: "2-digit", minute: "2-digit" });
 
-    wireAddressChips(ordersListEl);
+    const summaryFor = (rows, label, cls, prefix) =>
+      `<div class="orders-section">${sectionHeadHtml(label, cls, rows.length)}${
+        rows.length
+          ? daySummaryHtml(rows.map(x => x.entry), `${wanted} · ${label.toLowerCase()}`, prefix)
+          : `<p class="cutoff-state">None in this window.</p>`
+      }</div>`;
 
-    ordersListEl.querySelectorAll(".copy-btn").forEach(btn => {
-      btn.onclick = () => {
-        if (btn.dataset.kind) {
-          renderOrderCard(Number(btn.dataset.card), btn.dataset.kind);
-          return;
-        }
-        const target = document.getElementById("copy-" + btn.dataset.copy);
-        if (target) copyText(target.textContent, btn);
-      };
-    });
+    const listFor = (rows, label, cls) =>
+      `<div class="orders-section">${sectionHeadHtml(label, cls, rows.length)}${
+        rows.length
+          ? rows.map(x => orderBlockHtml(x.entry, x.i)).join("")
+          : `<p class="cutoff-state">None in this window.</p>`
+      }</div>`;
+
+    summarySlot.innerHTML =
+      summaryFor(before, `Before ${t}`, "before", "day-before") +
+      summaryFor(after, `After ${t}`, "after", "day-after");
+
+    ordersListEl.innerHTML =
+      listFor(before, "Sold before auction close", "before") +
+      listFor(after, "Sold after auction close", "after");
+  } else {
+    summarySlot.innerHTML = daySummaryHtml(orders, wanted || "all loaded orders", "day");
+    ordersListEl.innerHTML = indexed.map(x => orderBlockHtml(x.entry, x.i)).join("");
+  }
+
+  wireOrdersDom(summarySlot);
+  wireOrdersDom(ordersListEl);
 }
+
+// ---------------------------------------------------------------------------
+// Auction-close cutoff
+//
+// The moment an auction ends is recorded, not assumed — anti-snipe makes it
+// unpredictable. Store orders placed before that moment are the reconciliation
+// risk: the buyer might still win a lot afterwards and need their mailing
+// consolidated. The cutoff splits the day's orders around it, per SGT date.
+// ---------------------------------------------------------------------------
+
+// "HH:MM" wall-clock on the given SGT date -> epoch ms (interpreted as UTC+8,
+// matching how orders are bucketed into days).
+function cutoffFromTime(dateStr, timeStr) {
+  const m = /^(\d{2}):(\d{2})$/.exec(String(timeStr || ""));
+  if (!dateStr || !m) return null;
+  const [y, mo, d] = dateStr.split("-").map(Number);
+  return Date.UTC(y, mo - 1, d, Number(m[1]), Number(m[2]), 0) - 8 * 3600000;
+}
+
+// Epoch ms -> "HH:MM" SGT wall-clock, for the time input.
+function timeFromCutoff(ts) {
+  return new Date(ts + 8 * 3600000).toISOString().slice(11, 16);
+}
+
+function updateCutoffControls(wanted) {
+  const row = document.getElementById("ordersCutoffRow");
+  const timeEl = document.getElementById("ordersCutoffTime");
+  const stateEl = document.getElementById("ordersCutoffState");
+
+  // Only meaningful for a single selected day — an all-dates view has no single
+  // auction to split around.
+  if (!wanted) {
+    row.style.display = "none";
+    return;
+  }
+  row.style.display = "";
+
+  const cutoff = (window.__orderCutoffs || {})[wanted];
+  if (cutoff) {
+    timeEl.value = timeFromCutoff(cutoff);
+    stateEl.textContent = `Splitting at ${new Date(cutoff).toLocaleString("en-SG", { dateStyle: "medium", timeStyle: "short" })}.`;
+    stateEl.className = "cutoff-state set";
+  } else {
+    timeEl.value = "";
+    stateEl.textContent = "No auction-close time set — showing one combined list.";
+    stateEl.className = "cutoff-state";
+  }
+}
+
+async function saveCutoff(dateStr, cutoffMs) {
+  const key = ordersPassphraseEl.value.trim();
+  if (!key) {
+    ordersResultEl.textContent = "Enter the passphrase first.";
+    ordersResultEl.className = "error";
+    return;
+  }
+  try {
+    const res = await fetch("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, action: "setCutoff", date: dateStr, cutoff: cutoffMs }),
+    });
+    const raw = await res.text();
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      ordersResultEl.textContent = `Unexpected response saving the cutoff (HTTP ${res.status}).`;
+      ordersResultEl.className = "error";
+      return;
+    }
+    if (!res.ok) {
+      ordersResultEl.textContent = data.error || `Couldn't save the cutoff (HTTP ${res.status}).`;
+      ordersResultEl.className = "error";
+      return;
+    }
+    window.__orderCutoffs = data.cutoffs || {};
+    renderOrders();
+  } catch (e) {
+    ordersResultEl.textContent = "Network error saving the cutoff — please try again.";
+    ordersResultEl.className = "error";
+  }
+}
+
+document.getElementById("ordersCutoffNow").onclick = () => {
+  const wanted = document.getElementById("ordersDate").value;
+  if (!wanted) return;
+  saveCutoff(wanted, Date.now());
+};
+document.getElementById("ordersCutoffClear").onclick = () => {
+  const wanted = document.getElementById("ordersDate").value;
+  if (!wanted) return;
+  saveCutoff(wanted, null);
+};
+document.getElementById("ordersCutoffTime").onchange = () => {
+  const wanted = document.getElementById("ordersDate").value;
+  if (!wanted) return;
+  const timeEl = document.getElementById("ordersCutoffTime");
+  const ms = cutoffFromTime(wanted, timeEl.value);
+  saveCutoff(wanted, ms); // ms === null when the field is cleared -> removes the marker
+};
 
 // Long-output panels get a sticky Hide bar as soon as they have content.
 [
