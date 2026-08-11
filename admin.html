@@ -1131,7 +1131,21 @@ document.getElementById("funnelLoadButton").onclick = async () => {
       <div class="funnel-headline">Last ${data.reportDays} days · ${conversion}% of visits became orders${t.revenue ? ` · $${t.revenue.toFixed(2)} taken` : ""}</div>
       ${bars}
       ${t.checkout_failed ? `<p class="muted" style="font-size:12px;">${t.checkout_failed} checkout(s) failed on an expired reservation.</p>` : ""}
-      ${t.checkout_blocked ? `<p class="muted" style="font-size:12px;">${t.checkout_blocked} checkout attempt(s) blocked before payment (missing details, or stock already claimed).</p>` : ""}
+      ${t.checkout_blocked ? `
+        <p class="muted" style="font-size:12px;margin-bottom:4px;">
+          ${t.checkout_blocked} checkout attempt(s) blocked before payment:
+        </p>
+        <div class="rs-stats" style="margin-bottom:10px;">
+          ${[
+            ["blocked:missing_telegram", "no Telegram handle"],
+            ["blocked:missing_details", "missing name/phone/address"],
+            ["blocked:stock_gone", "stock already claimed"],
+            ["blocked:reserve_failed", "reservation rejected"],
+            ["blocked:network", "connection dropped"],
+          ].filter(([k]) => t[k]).map(([k, label]) =>
+            `<span class="rs-stat"><strong>${t[k]}</strong> ${label}</span>`
+          ).join("") || '<span class="rs-stat muted">reasons recorded from now on</span>'}
+        </div>` : ""}
       <div class="funnel-headline">By day</div>
       <table class="listing-table">
         <thead><tr><th>Date</th><th class="num">Visits</th><th class="num">Carts</th><th class="num">Checkouts</th><th class="num">Orders</th><th class="num">Revenue</th></tr></thead>
