@@ -2073,6 +2073,8 @@ function trackEvent(name, data) {
       body: JSON.stringify({
         event: name,
         revenue: data && data.total ? data.total : undefined,
+        // Sent top-level so the tracker can count it as its own sub-counter.
+        reason: data && data.reason ? data.reason : undefined,
       }),
       keepalive: true,
     }).catch(() => {});
