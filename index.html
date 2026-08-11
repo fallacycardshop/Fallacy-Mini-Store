@@ -1573,6 +1573,10 @@ async function loadProducts() {
     renderSetFilter();
     reconcileCartWithStock();
 
+    // Now the cart has been checked against real stock, so anything left is
+    // genuinely buyable and worth mentioning.
+    if (!cartNudgeShown) setTimeout(showCartNudge, 600);
+
     if (!unchanged) {
       // Something did change. Hold the scroll position across the rebuild so
       // the page doesn't jump under the shopper's thumb.
@@ -2833,9 +2837,22 @@ loadRecentSales();
 
 // If someone returns with a cart still saved, say so once — the cart survives
 // in localStorage but nothing acknowledged it, so it was easy to forget.
+let cartNudgeShown = false;
+
 function showCartNudge() {
-  const count = Object.values(cart).reduce((sum, { quantity }) => sum + quantity, 0);
+  // Only ever once per visit.
+  if (cartNudgeShown) return;
+
+  // Counts only entries that are actually valid. A saved cart can hold items
+  // that have since sold out or left the catalogue; those are stripped by
+  // reconcileCartWithStock, which can't run until the inventory has loaded.
+  const count = Object.values(cart).reduce(
+    (sum, { product, quantity }) => (product && quantity > 0 ? sum + quantity : sum),
+    0
+  );
   if (count === 0) return;
+
+  cartNudgeShown = true;
 
   const nudgeEl = document.getElementById("cartNudge");
   const textEl = document.getElementById("cartNudgeText");
@@ -2856,7 +2873,10 @@ function showCartNudge() {
   setTimeout(dismiss, 9000);
 }
 
-setTimeout(showCartNudge, 1200);
+// Deliberately NOT on a timer. Firing before the inventory loaded meant
+// counting a stale saved cart that reconciliation was about to empty — one
+// shopper was told they had items when they had none.
+// It's triggered from loadProducts instead, after reconciliation has run.
 
 // Counted once per page load (not on the 60s refresh), giving the funnel a
 // top-of-funnel number to measure the other steps against.
