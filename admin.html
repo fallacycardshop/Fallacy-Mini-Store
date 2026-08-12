@@ -232,6 +232,37 @@
     margin: 14px 0 4px;
   }
   .split-note { font-size: 11px; color: #6d8ba6; margin: 0 0 6px; }
+  .drip-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid #f2eef1;
+  }
+  .drip-row-noimg { background: #fffaf0; }
+  .drip-thumb {
+    flex: 0 0 auto;
+    width: 42px;
+    height: 59px;
+    object-fit: cover;
+    border-radius: 5px;
+    background: #f4f4f4;
+  }
+  .drip-thumb-none {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1.1;
+    color: #c0392b;
+    background: #fdeceb;
+    border: 1px dashed #e8a7a1;
+  }
+  .drip-row-text { min-width: 0; font-size: 13px; line-height: 1.4; }
+  .drip-row-text .muted { font-size: 11px; display: block; }
+
   .rs-row {
     border-top: 1px solid #eee;
     padding: 10px 0;
@@ -3122,6 +3153,29 @@ const dripInitEl = document.getElementById("dripInit");
 const dripResultEl = document.getElementById("dripResultText");
 const dripListEl = document.getElementById("dripList");
 
+// Thumbnail for a drip list entry. Uses images/thumbs/ with a fallback to the
+// full-size original, matching the storefront — and shows an explicit "no
+// image" tile when the CSV row has no photo, since a card going live without
+// one is worth catching before release.
+function dripThumbHtml(photo) {
+  if (!photo) return '<span class="drip-thumb drip-thumb-none">no<br>image</span>';
+  const thumb = photo.replace("/images/", "/images/thumbs/");
+  return `<img class="drip-thumb" src="${thumb}" loading="lazy" alt=""
+    onerror="this.onerror=null;this.src='${photo}';">`;
+}
+
+function dripRowHtml(r, extraHtml) {
+  return `
+    <div class="drip-row${r.photo ? "" : " drip-row-noimg"}">
+      ${dripThumbHtml(r.photo)}
+      <div class="drip-row-text">
+        <strong>${escapeHtml(r.name || "")}</strong>
+        <span class="muted">${r.set ? escapeHtml(r.set) + " · " : ""}${escapeHtml(r.condition || "")}</span>
+        ${extraHtml || ""}
+      </div>
+    </div>`;
+}
+
 function fmtDateTime(ts) {
   return new Date(ts).toLocaleString("en-SG", {
     dateStyle: "medium",
@@ -3187,16 +3241,14 @@ function renderDripStatus(status) {
 
   if (status.newlyIn.length) {
     sections.push(`<div style="margin-top:14px;"><strong>In &ldquo;Newly in stock!&rdquo; right now (${status.newlyIn.length})</strong></div>` +
-      status.newlyIn.map(r => `<div><strong>${r.name}</strong>
-        <span class="muted">${r.set ? r.set + " · " : ""}${r.condition}</span><br>
-        <span class="muted">released ${fmtDateTime(r.releaseAt)}</span></div>`).join(""));
+      status.newlyIn.map(r => dripRowHtml(r,
+        `<span class="muted">released ${fmtDateTime(r.releaseAt)}</span>`)).join(""));
   }
 
   if (status.pending.length) {
     sections.push(`<div style="margin-top:14px;"><strong>Scheduled, not yet visible (${status.pending.length})</strong></div>` +
-      status.pending.map(r => `<div><strong>${r.name}</strong>
-        <span class="muted">${r.set ? r.set + " · " : ""}${r.condition}</span><br>
-        <span class="muted">releases ${fmtDateTime(r.releaseAt)}</span></div>`).join(""));
+      status.pending.map(r => dripRowHtml(r,
+        `<span class="muted">releases ${fmtDateTime(r.releaseAt)}</span>`)).join(""));
   }
 
   // Always says something. An absent section is indistinguishable from a broken
@@ -3219,8 +3271,7 @@ function renderDripStatus(status) {
          the same CSV upload, that increase was absorbed into their baseline —
          use &ldquo;Publish Stock Now&rdquo; on those to release it properly.
        </div>` +
-      status.newlyTracked.slice(0, 30).map(r => `<div><strong>${r.name}</strong>
-        <span class="muted">${r.set ? r.set + " · " : ""}${r.condition}</span></div>`).join("") +
+      status.newlyTracked.slice(0, 30).map(r => dripRowHtml(r)).join("") +
       (status.newlyTracked.length > 30
         ? `<div class="muted">…and ${status.newlyTracked.length - 30} more</div>`
         : "")
@@ -3229,8 +3280,7 @@ function renderDripStatus(status) {
 
   if (status.unscheduled.length) {
     sections.push(`<div style="margin-top:14px;"><strong>New CSV rows awaiting a schedule (${status.unscheduled.length})</strong></div>` +
-      status.unscheduled.slice(0, 40).map(r => `<div><strong>${r.name}</strong>
-        <span class="muted">${r.set ? r.set + " · " : ""}${r.condition}</span></div>`).join("") +
+      status.unscheduled.slice(0, 40).map(r => dripRowHtml(r)).join("") +
       (status.unscheduled.length > 40 ? `<div class="muted">…and ${status.unscheduled.length - 40} more</div>` : ""));
   }
 
@@ -3342,7 +3392,7 @@ document.getElementById("dripPreviewButton").onclick = async () => {
       `<div style="margin-top:14px;"><strong>Proposed: ${data.proposed.length} listings over ${data.days} day(s)</strong></div>` +
       Object.entries(byDay).map(([day, rows]) => `
         <div style="margin-top:10px;"><strong>${day}</strong>
-        ${rows.map(r => `<div class="muted">${r.name}${r.set ? " · " + r.set : ""} (${r.condition})</div>`).join("")}
+        ${rows.map(r => dripRowHtml(r)).join("")}
         </div>`).join("");
 
     dripResultEl.textContent = data.startRejected
@@ -3443,8 +3493,7 @@ document.getElementById("dropPreviewButton").onclick = async () => {
 
     dripListEl.innerHTML =
       `<div style="margin-top:14px;"><strong>Would remove ${data.dropped.length} listing(s):</strong></div>` +
-      data.dropped.map(d => `<div><strong>${d.name}</strong>
-        <span class="muted">${d.set ? d.set + " · " : ""}${d.condition}</span></div>`).join("");
+      data.dropped.map(d => dripRowHtml(d)).join("");
 
     dripResultEl.textContent = "Preview only — nothing changed. Press Remove to apply.";
     dripResultEl.className = "success";
