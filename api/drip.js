@@ -479,6 +479,9 @@ export default async function handler(req, res) {
           cardId: group.cardId,
           name: group.name,
           set: group.set || "",
+          // The picking list reads this report for thumbnails; without it every
+          // card rendered as "no image".
+          photo: group.photo || "",
           condition: group.description || "",
           rarity: group.category || "",
           price: Number(group.price || 0),
