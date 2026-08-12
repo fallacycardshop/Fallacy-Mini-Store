@@ -102,6 +102,9 @@ export default async function handler(req, res) {
         condition: group ? group.description || "" : "",
         stock: group ? group.baseStock : 0,
         publishedStock: group ? getEffectiveStock(state, groupKey, group.baseStock, now) : 0,
+        // So the admin previews can show a thumbnail, and flag a listing that
+        // has no image before it goes live.
+        photo: group ? group.photo || "" : "",
       };
     };
 
