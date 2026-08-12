@@ -929,13 +929,17 @@
       <input type="date" id="pickDate">
     </div>
     <div>
-      <label class="field-label">Cut-off (SGT)</label>
+      <label class="field-label">From (SGT)</label>
+      <input type="time" id="pickStart" value="00:00">
+    </div>
+    <div>
+      <label class="field-label">To (SGT)</label>
       <input type="time" id="pickCutoff" value="23:59">
     </div>
   </div>
   <p class="config-note">
-    Only orders placed <strong>before the cut-off</strong> are listed &mdash; set it to
-    23:59 for the whole day, or earlier to pack what came in before a given time.
+    Lists orders placed <strong>between these times</strong> &mdash; 00:00 to 23:59 for
+    the whole day, or narrow the window to pack a batch. Both ends are included.
   </p>
   <button id="pickLoadButton">Build Picking List</button>
   <p id="pickResultText"></p>
@@ -2899,8 +2903,18 @@ document.getElementById("pickLoadButton").onclick = async () => {
   }
 
   const wantedDate = document.getElementById("pickDate").value;
+  const startTime = document.getElementById("pickStart").value || "00:00";
   const cutoff = document.getElementById("pickCutoff").value || "23:59";
+  const [startH, startM] = startTime.split(":").map(Number);
   const [cutH, cutM] = cutoff.split(":").map(Number);
+  const startMins = startH * 60 + startM;
+  const cutMins = cutH * 60 + cutM;
+
+  if (startMins > cutMins) {
+    resultEl.textContent = "The start time is after the cut-off — swap them round.";
+    resultEl.className = "error";
+    return;
+  }
 
   resultEl.textContent = "Loading...";
   resultEl.className = "";
@@ -2941,7 +2955,10 @@ document.getElementById("pickLoadButton").onclick = async () => {
     (ordersData.orders || []).forEach(entry => {
       const local = new Date(entry.savedAt + 8 * 3600000);
       if (local.toISOString().slice(0, 10) !== wantedDate) return;
-      if (local.getUTCHours() * 60 + local.getUTCMinutes() > cutH * 60 + cutM) return;
+      // Inclusive at both ends, so an order at exactly the start or cut-off
+      // time is picked up rather than falling between two windows.
+      const mins = local.getUTCHours() * 60 + local.getUTCMinutes();
+      if (mins < startMins || mins > cutMins) return;
 
       orderCount++;
       const r = entry.record || {};
@@ -2970,14 +2987,15 @@ document.getElementById("pickLoadButton").onclick = async () => {
 
     const rows = Array.from(picks.values());
     if (rows.length === 0) {
-      resultEl.textContent = `No orders on ${wantedDate} before ${cutoff}.`;
+      resultEl.textContent = `No orders on ${wantedDate} between ${startTime} and ${cutoff}.`;
       resultEl.className = "error";
       return;
     }
 
     const totalCards = rows.reduce((s, r) => s + r.qty, 0);
     resultEl.textContent =
-      `${totalCards} card(s) across ${orderCount} order(s) · ${rows.length} distinct listing(s)`;
+      `${totalCards} card(s) across ${orderCount} order(s) · ${rows.length} distinct listing(s)` +
+      (startTime !== "00:00" || cutoff !== "23:59" ? ` · ${startTime}–${cutoff}` : "");
     resultEl.className = "success";
 
     // Group, then sort within each group by Card ID so the walk is predictable.
