@@ -277,14 +277,17 @@
   .pick-name { font-size: 15px; font-weight: 700; line-height: 1.25; }
   .pick-meta { font-size: 11px; color: #888; }
   .pick-cond {
-    display: inline-block;
-    background: #eef4fb;
-    color: #2c5b8f;
-    border-radius: 5px;
-    padding: 1px 7px;
-    font-size: 11px;
-    font-weight: 700;
-    margin-top: 3px;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 40px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    padding: 7px 6px;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
   }
   .pick-qty {
     flex: 0 0 auto;
@@ -298,7 +301,7 @@
     font-weight: 800;
     line-height: 1;
   }
-  .pick-qty.one { background: #f0e2ea; color: #a8305f; }
+
   .pick-done { opacity: 0.4; }
 
   .drip-row {
@@ -2844,6 +2847,36 @@ function pickRank(cardId) {
   return 90;
 }
 
+// Short codes with their own colour each, so condition is read at a glance
+// while picking rather than by reading words.
+const CONDITION_CODES = {
+  "near mint":        { code: "NM", bg: "#e6f4ea", fg: "#1e7a3c", bd: "#a9dcbb" },
+  "lightly played":   { code: "LP", bg: "#e8f0fb", fg: "#2c5b8f", bd: "#aecbe8" },
+  "moderately played":{ code: "MP", bg: "#fff4e0", fg: "#8a6100", bd: "#f0d08a" },
+  "heavily played":   { code: "HP", bg: "#fdeceb", fg: "#b3352b", bd: "#f0aaa4" },
+};
+
+function conditionChip(condition) {
+  const key = String(condition || "").trim().toLowerCase();
+  const c = CONDITION_CODES[key];
+  if (!c) {
+    // Unknown condition: show it in full rather than inventing an abbreviation.
+    return `<span class="pick-cond" style="background:#f2f2f2;color:#666;border-color:#ddd;">${escapeHtml(condition || "?")}</span>`;
+  }
+  return `<span class="pick-cond" style="background:${c.bg};color:${c.fg};border-color:${c.bd};"
+    title="${escapeHtml(condition)}">${c.code}</span>`;
+}
+
+// Quantity colour scales with the number, so a x4 pull is obvious from across
+// the room and a single is visually quiet.
+function qtyStyle(qty) {
+  if (qty >= 5) return "background:#7b1fa2;color:#fff;";
+  if (qty === 4) return "background:#c2185b;color:#fff;";
+  if (qty === 3) return "background:#e8590c;color:#fff;";
+  if (qty === 2) return "background:#f2a33c;color:#4a2f00;";
+  return "background:#f0e2ea;color:#a8305f;";
+}
+
 function pickThumbHtml(photo) {
   if (!photo) return '<span class="pick-thumb pick-thumb-none">no<br>image</span>';
   const thumb = photo.replace("/images/", "/images/thumbs/");
@@ -2971,9 +3004,9 @@ document.getElementById("pickLoadButton").onclick = async () => {
                 <div class="pick-body">
                   <div class="pick-name">${escapeHtml(r.name)}</div>
                   <div class="pick-meta">${escapeHtml(r.cardId)}${r.set ? " · " + escapeHtml(r.set) : ""}</div>
-                  <span class="pick-cond">${escapeHtml(r.condition)}</span>
                 </div>
-                <div class="pick-qty${r.qty === 1 ? " one" : ""}">×${r.qty}</div>
+                ${conditionChip(r.condition)}
+                <div class="pick-qty" style="${qtyStyle(r.qty)}">×${r.qty}</div>
               </div>`).join("")}
           </div>`;
       }).join("");
