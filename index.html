@@ -1657,17 +1657,43 @@ function reconcileCartWithStock() {
   }
 }
 
+// Special filters use a "__" prefix so they can't collide with a rarity value
+// from the CSV.
+const SPECIAL_FILTERS = {
+  __featured: p => p.featured,
+  __new: p => p.isNew,
+};
+
 function renderCategoryFilter() {
   const categories = [...new Set(products.map(p => p.category))].filter(Boolean).sort((a, b) => a.localeCompare(b));
   const previousValue = categoryFilterEl.value;
   categoryFilterEl.innerHTML = '<option value="">All categories</option>';
+
+  // Featured and newly-in sit at the top of the same dropdown, above the
+  // rarities — they're the two rows shoppers actually look for, and adding a
+  // fourth control to the toolbar would crowd it.
+  if (products.some(p => p.isNew)) {
+    const opt = document.createElement("option");
+    opt.value = "__new";
+    opt.textContent = newTitle;
+    categoryFilterEl.appendChild(opt);
+  }
+  if (products.some(p => p.featured)) {
+    const opt = document.createElement("option");
+    opt.value = "__featured";
+    opt.textContent = featuredTitle;
+    categoryFilterEl.appendChild(opt);
+  }
+
   categories.forEach(cat => {
     const opt = document.createElement("option");
     opt.value = cat;
     opt.textContent = cat;
     categoryFilterEl.appendChild(opt);
   });
-  if (categories.includes(previousValue)) categoryFilterEl.value = previousValue;
+  if (categories.includes(previousValue) || SPECIAL_FILTERS[previousValue]) {
+    categoryFilterEl.value = previousValue;
+  }
 }
 
 function renderSetFilter() {
@@ -1988,7 +2014,11 @@ function renderProducts() {
       !search ||
       p.name.toLowerCase().includes(search) ||
       (p.description || "").toLowerCase().includes(search);
-    const matchesCategory = !category || p.category === category;
+    const matchesCategory = !category
+      ? true
+      : SPECIAL_FILTERS[category]
+        ? SPECIAL_FILTERS[category](p)
+        : p.category === category;
     const matchesSet = !setValue || p.set === setValue;
     return matchesSearch && matchesCategory && matchesSet;
   });
