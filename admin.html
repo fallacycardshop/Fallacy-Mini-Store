@@ -232,6 +232,75 @@
     margin: 14px 0 4px;
   }
   .split-note { font-size: 11px; color: #6d8ba6; margin: 0 0 6px; }
+  .pick-group { margin-top: 16px; }
+  .pick-group-head {
+    position: sticky;
+    top: 46px;
+    z-index: 4;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 11px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 6px;
+  }
+  .pick-card {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 8px 4px;
+    border-bottom: 1px solid #f2eef1;
+  }
+  .pick-thumb {
+    flex: 0 0 auto;
+    width: 50px;
+    height: 70px;
+    object-fit: cover;
+    border-radius: 6px;
+    background: #f4f4f4;
+  }
+  .pick-thumb-none {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 9px;
+    font-weight: 700;
+    color: #c0392b;
+    background: #fdeceb;
+    border: 1px dashed #e8a7a1;
+  }
+  .pick-body { flex: 1; min-width: 0; }
+  .pick-name { font-size: 15px; font-weight: 700; line-height: 1.25; }
+  .pick-meta { font-size: 11px; color: #888; }
+  .pick-cond {
+    display: inline-block;
+    background: #eef4fb;
+    color: #2c5b8f;
+    border-radius: 5px;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-top: 3px;
+  }
+  .pick-qty {
+    flex: 0 0 auto;
+    min-width: 46px;
+    text-align: center;
+    background: #d1447b;
+    color: #fff;
+    border-radius: 9px;
+    padding: 7px 4px;
+    font-size: 19px;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .pick-qty.one { background: #f0e2ea; color: #a8305f; }
+  .pick-done { opacity: 0.4; }
+
   .drip-row {
     display: flex;
     align-items: center;
@@ -845,6 +914,32 @@
 </div>
 
 <div class="card">
+  <h1>Picking List</h1>
+  <p>
+    Everything sold today, grouped by set so you can walk the boxes in order.
+    Quantity and condition are called out for each card.
+  </p>
+  <input type="password" id="pickPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
+  <div class="field-row">
+    <div>
+      <label class="field-label">Date</label>
+      <input type="date" id="pickDate">
+    </div>
+    <div>
+      <label class="field-label">Cut-off (SGT)</label>
+      <input type="time" id="pickCutoff" value="23:59">
+    </div>
+  </div>
+  <p class="config-note">
+    Only orders placed <strong>before the cut-off</strong> are listed &mdash; set it to
+    23:59 for the whole day, or earlier to pack what came in before a given time.
+  </p>
+  <button id="pickLoadButton">Build Picking List</button>
+  <p id="pickResultText"></p>
+  <div id="pickReport"></div>
+</div>
+
+<div class="card">
   <h1>Restocking</h1>
   <p>
     What&rsquo;s gone, how fast it went, and how often you&rsquo;ve had to reorder it.
@@ -1017,6 +1112,7 @@ document.addEventListener("DOMContentLoaded", () => {
     "Auction Promo Image": "Auction image",
     "Promo Image Generator": "Store image",
     "Shopfront Proof Figures": "Proof figures",
+    "Picking List": "Picking",
     "Restocking": "Restock",
     "Sales History": "Sales history",
     "Recent Orders": "Orders",
@@ -2692,6 +2788,204 @@ document.getElementById("planBuildButton").onclick = () => {
           : ""}
       </div>`).join("") +
     "";
+};
+
+// ---------------------------------------------------------------------------
+// Picking list
+//
+// Groups the day's sold cards by set, in the physical order the boxes are
+// stored in, so packing is one walk rather than a search per card. Quantities
+// are aggregated across orders — three buyers taking the same card is one line
+// reading x3, not three lines to find separately.
+// ---------------------------------------------------------------------------
+const PICK_GROUPS = [
+  { rank: 0, label: "S12", colour: "#c2185b" },
+  ...Array.from({ length: 11 }, (_, i) => ({
+    rank: 11 + i, label: `SV${i + 1}`, colour: i % 2 ? "#2c5b8f" : "#3d76ab",
+  })),
+  ...Array.from({ length: 5 }, (_, i) => ({
+    rank: 41 + i, label: `M${i + 1}`, colour: i % 2 ? "#2e7d5b" : "#3f9e74",
+  })),
+  { rank: 70, label: "Other S sets", colour: "#8a6100" },
+  { rank: 80, label: "SVP promos", colour: "#7b4bab" },
+  { rank: 90, label: "Everything else", colour: "#666" },
+];
+
+// Which group a Card ID belongs to.
+//
+// Order of checks matters: SVP is tested before SV<number>, or "SVP291" would
+// read as SV followed by "P291". Set numbers are also parsed from a digit run
+// that includes the card number ("SV9105" is SV9, card 105), so anything above
+// the valid range is narrowed to its leading one or two digits.
+function pickRank(cardId) {
+  const c = String(cardId || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (/^SVP/.test(c)) return 80;
+
+  const sv = c.match(/^SV(\d+)/);
+  if (sv) {
+    let n = Number(sv[1]);
+    if (n > 11) {
+      const two = Number(sv[1].slice(0, 2));
+      n = two >= 1 && two <= 11 ? two : Number(sv[1].slice(0, 1));
+    }
+    if (n >= 1 && n <= 11) return 10 + n;
+  }
+
+  const m = c.match(/^M(\d+)/);
+  if (m) {
+    let n = Number(m[1]);
+    if (n > 5) n = Number(m[1].slice(0, 1));
+    if (n >= 1 && n <= 5) return 40 + n;
+  }
+
+  const sNum = c.match(/^S(\d+)/);
+  if (sNum) return Number(sNum[1].slice(0, 2)) === 12 ? 0 : 70;
+
+  return 90;
+}
+
+function pickThumbHtml(photo) {
+  if (!photo) return '<span class="pick-thumb pick-thumb-none">no<br>image</span>';
+  const thumb = photo.replace("/images/", "/images/thumbs/");
+  return `<img class="pick-thumb" src="${thumb}" loading="lazy" alt=""
+    onerror="this.onerror=null;this.src='${photo}';">`;
+}
+
+document.getElementById("pickDate").value = new Date(Date.now() + 8 * 3600000)
+  .toISOString().slice(0, 10);
+
+document.getElementById("pickLoadButton").onclick = async () => {
+  const key = document.getElementById("pickPassphrase").value.trim();
+  const resultEl = document.getElementById("pickResultText");
+  const reportEl = document.getElementById("pickReport");
+
+  if (!key) {
+    resultEl.textContent = "Please enter the passphrase.";
+    resultEl.className = "error";
+    return;
+  }
+
+  const wantedDate = document.getElementById("pickDate").value;
+  const cutoff = document.getElementById("pickCutoff").value || "23:59";
+  const [cutH, cutM] = cutoff.split(":").map(Number);
+
+  resultEl.textContent = "Loading...";
+  resultEl.className = "";
+  reportEl.innerHTML = "";
+
+  try {
+    // Orders give the sales; the drip report gives photos and card names.
+    const [ordersRes, dripRes] = await Promise.all([
+      fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, limit: 300 }),
+      }),
+      fetch("/api/drip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, action: "restockReport" }),
+      }),
+    ]);
+
+    if (!ordersRes.ok) {
+      const err = await ordersRes.json().catch(() => ({}));
+      resultEl.textContent = err.error || `Couldn't load orders (HTTP ${ordersRes.status}).`;
+      resultEl.className = "error";
+      return;
+    }
+
+    const ordersData = await ordersRes.json();
+    const dripData = dripRes.ok ? await dripRes.json().catch(() => ({ listings: [] })) : { listings: [] };
+
+    const info = new Map();
+    (dripData.listings || []).forEach(l => info.set(l.groupKey, l));
+
+    // Aggregate every physical card sold, by listing.
+    const picks = new Map();
+    let orderCount = 0;
+
+    (ordersData.orders || []).forEach(entry => {
+      const local = new Date(entry.savedAt + 8 * 3600000);
+      if (local.toISOString().slice(0, 10) !== wantedDate) return;
+      if (local.getUTCHours() * 60 + local.getUTCMinutes() > cutH * 60 + cutM) return;
+
+      orderCount++;
+      const r = entry.record || {};
+      String(r["PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition"] || "")
+        .split("\n").map(l => l.trim()).filter(Boolean)
+        .forEach(line => {
+          const [, cardId, condition] = line.split("|").map(p => p.trim());
+          const gk = `${cardId}::${condition}`;
+          if (!picks.has(gk)) {
+            const meta = info.get(gk) || {};
+            picks.set(gk, {
+              cardId,
+              condition,
+              qty: 0,
+              name: meta.name || cardId,
+              set: meta.set || "",
+              photo: meta.photo || "",
+              buyers: new Set(),
+            });
+          }
+          const p = picks.get(gk);
+          p.qty += 1;
+          if (r.Buyer_Name) p.buyers.add(r.Buyer_Name);
+        });
+    });
+
+    const rows = Array.from(picks.values());
+    if (rows.length === 0) {
+      resultEl.textContent = `No orders on ${wantedDate} before ${cutoff}.`;
+      resultEl.className = "error";
+      return;
+    }
+
+    const totalCards = rows.reduce((s, r) => s + r.qty, 0);
+    resultEl.textContent =
+      `${totalCards} card(s) across ${orderCount} order(s) · ${rows.length} distinct listing(s)`;
+    resultEl.className = "success";
+
+    // Group, then sort within each group by Card ID so the walk is predictable.
+    const grouped = new Map();
+    rows.forEach(r => {
+      const rank = pickRank(r.cardId);
+      if (!grouped.has(rank)) grouped.set(rank, []);
+      grouped.get(rank).push(r);
+    });
+
+    reportEl.innerHTML = PICK_GROUPS
+      .filter(g => grouped.has(g.rank))
+      .map(g => {
+        const list = grouped.get(g.rank).sort((a, b) => a.cardId.localeCompare(b.cardId));
+        const count = list.reduce((s, r) => s + r.qty, 0);
+        return `
+          <div class="pick-group">
+            <div class="pick-group-head" style="background:${g.colour};">
+              <span>${g.label}</span><span>${count} card${count === 1 ? "" : "s"}</span>
+            </div>
+            ${list.map(r => `
+              <div class="pick-card" data-pick>
+                ${pickThumbHtml(r.photo)}
+                <div class="pick-body">
+                  <div class="pick-name">${escapeHtml(r.name)}</div>
+                  <div class="pick-meta">${escapeHtml(r.cardId)}${r.set ? " · " + escapeHtml(r.set) : ""}</div>
+                  <span class="pick-cond">${escapeHtml(r.condition)}</span>
+                </div>
+                <div class="pick-qty${r.qty === 1 ? " one" : ""}">×${r.qty}</div>
+              </div>`).join("")}
+          </div>`;
+      }).join("");
+
+    // Tap a card to grey it out as you pull it from the box.
+    reportEl.querySelectorAll("[data-pick]").forEach(el => {
+      el.onclick = () => el.classList.toggle("pick-done");
+    });
+  } catch (err) {
+    resultEl.textContent = "Network error — please try again.";
+    resultEl.className = "error";
+  }
 };
 
 document.getElementById("restockLoadButton").onclick = async () => {
