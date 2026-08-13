@@ -305,8 +305,14 @@ export default async function handler(req, res) {
           from: e.published,
           to: e.pendingStock,
           isRestock: true,
-          // Explicit, so the client never has to infer it from from/to.
-          releaseQty: Math.max((e.pendingStock || 0) - (e.published || 0), 0),
+          // NO releaseQty override here.
+          //
+          // This used to recompute it from the queued pendingStock, overwriting
+          // the value describe() had already worked out — and pendingStock is
+          // frozen at whatever the CSV said when the restock was scheduled. A
+          // card restocked at 4 and later raised to 6 kept showing the old
+          // increase. describe() measures against the current CSV and the sold
+          // counter, which is also how the audit does it, so the two agree.
         }))
         .sort(byTimeThenCsv);
 
