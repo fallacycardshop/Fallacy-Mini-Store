@@ -2972,6 +2972,341 @@ function renderRestockReport() {
   el.oninput = handler;
 });
 
+// ---------------------------------------------------------------------------
+// Picking list
+//
+// Groups the day's sold cards by set, in the physical order the boxes are
+// stored in, so packing is one walk rather than a search per card. Quantities
+// are aggregated across orders — three buyers taking the same card is one line
+// reading x3, not three lines to find separately.
+// ---------------------------------------------------------------------------
+const PICK_GROUPS = [
+  { rank: 0, label: "S12", colour: "#c2185b" },
+  ...Array.from({ length: 11 }, (_, i) => ({
+    rank: 11 + i, label: `SV${i + 1}`, colour: i % 2 ? "#2c5b8f" : "#3d76ab",
+  })),
+  ...Array.from({ length: 5 }, (_, i) => ({
+    rank: 41 + i, label: `M${i + 1}`, colour: i % 2 ? "#2e7d5b" : "#3f9e74",
+  })),
+  { rank: 70, label: "Other S sets", colour: "#8a6100" },
+  { rank: 80, label: "SVP promos", colour: "#7b4bab" },
+  { rank: 90, label: "Everything else", colour: "#666" },
+];
+
+// Which group a Card ID belongs to.
+//
+// Order of checks matters: SVP is tested before SV<number>, or "SVP291" would
+// read as SV followed by "P291". Set numbers are parsed from a digit run that
+// includes the card number ("SV9105" is SV9, card 105), so anything above the
+// valid range is narrowed to its leading one or two digits.
+function pickRank(cardId) {
+  const c = String(cardId || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (/^SVP/.test(c)) return 80;
+
+  const sv = c.match(/^SV(\d+)/);
+  if (sv) {
+    let n = Number(sv[1]);
+    if (n > 11) {
+      const two = Number(sv[1].slice(0, 2));
+      n = two >= 1 && two <= 11 ? two : Number(sv[1].slice(0, 1));
+    }
+    if (n >= 1 && n <= 11) return 10 + n;
+  }
+
+  const m = c.match(/^M(\d+)/);
+  if (m) {
+    let n = Number(m[1]);
+    if (n > 5) n = Number(m[1].slice(0, 1));
+    if (n >= 1 && n <= 5) return 40 + n;
+  }
+
+  const sNum = c.match(/^S(\d+)/);
+  if (sNum) return Number(sNum[1].slice(0, 2)) === 12 ? 0 : 70;
+
+  return 90;
+}
+
+// Short codes with their own colour each, so condition is read at a glance
+// while picking rather than by reading words.
+const CONDITION_CODES = {
+  "near mint":         { code: "NM", bg: "#e6f4ea", fg: "#1e7a3c", bd: "#a9dcbb" },
+  "lightly played":    { code: "LP", bg: "#e8f0fb", fg: "#2c5b8f", bd: "#aecbe8" },
+  "moderately played": { code: "MP", bg: "#fff4e0", fg: "#8a6100", bd: "#f0d08a" },
+  "heavily played":    { code: "HP", bg: "#fdeceb", fg: "#b3352b", bd: "#f0aaa4" },
+};
+
+function conditionChip(condition) {
+  const key = String(condition || "").trim().toLowerCase();
+  const c = CONDITION_CODES[key];
+  if (!c) {
+    return `<span class="pick-cond" style="background:#f2f2f2;color:#666;border-color:#ddd;">${escapeHtml(condition || "?")}</span>`;
+  }
+  return `<span class="pick-cond" style="background:${c.bg};color:${c.fg};border-color:${c.bd};"
+    title="${escapeHtml(condition)}">${c.code}</span>`;
+}
+
+// Quantity colour scales with the number, so a x4 pull is obvious and a single
+// is visually quiet.
+function qtyStyle(qty) {
+  if (qty >= 5) return "background:#7b1fa2;color:#fff;";
+  if (qty === 4) return "background:#c2185b;color:#fff;";
+  if (qty === 3) return "background:#e8590c;color:#fff;";
+  if (qty === 2) return "background:#f2a33c;color:#4a2f00;";
+  return "background:#f0e2ea;color:#a8305f;";
+}
+
+function pickThumbHtml(photo) {
+  if (!photo) return '<span class="pick-thumb pick-thumb-none">no<br>image</span>';
+  const thumb = photo.replace("/images/", "/images/thumbs/");
+  return `<img class="pick-thumb" src="${thumb}" loading="lazy" alt=""
+    onerror="this.onerror=null;this.src='${photo}';">`;
+}
+
+document.getElementById("pickDate").value = new Date(Date.now() + 8 * 3600000)
+  .toISOString().slice(0, 10);
+
+document.getElementById("pickLoadButton").onclick = async () => {
+  const key = document.getElementById("pickPassphrase").value.trim();
+  const resultEl = document.getElementById("pickResultText");
+
+  if (!key) {
+    resultEl.textContent = "Please enter the passphrase.";
+    resultEl.className = "error";
+    return;
+  }
+
+  const wantedDate = document.getElementById("pickDate").value;
+  const startTime = document.getElementById("pickStart").value || "00:00";
+  const cutoff = document.getElementById("pickCutoff").value || "23:59";
+  const [startH, startM] = startTime.split(":").map(Number);
+  const [cutH, cutM] = cutoff.split(":").map(Number);
+  const startMins = startH * 60 + startM;
+  const cutMins = cutH * 60 + cutM;
+
+  if (startMins > cutMins) {
+    resultEl.textContent = "The start time is after the cut-off — swap them round.";
+    resultEl.className = "error";
+    return;
+  }
+
+  resultEl.textContent = "Loading...";
+  resultEl.className = "";
+  document.getElementById("pickReport").innerHTML = "";
+
+  try {
+    let ordersRes;
+    try {
+      ordersRes = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, limit: 300 }),
+      });
+    } catch (e) {
+      resultEl.textContent = `Couldn't reach /api/orders — ${e.message || "request failed"}.`;
+      resultEl.className = "error";
+      return;
+    }
+
+    if (!ordersRes.ok) {
+      const err = await ordersRes.json().catch(() => ({}));
+      resultEl.textContent = err.error || `Couldn't load orders (HTTP ${ordersRes.status}).`;
+      resultEl.className = "error";
+      return;
+    }
+
+    const ordersData = await ordersRes.json();
+
+    let dripData = { listings: [] };
+    try {
+      const dripRes = await fetch("/api/drip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, action: "restockReport" }),
+      });
+      if (dripRes.ok) dripData = await dripRes.json();
+    } catch (e) {
+      console.error("drip fetch failed:", e);
+    }
+
+    const info = new Map();
+    (dripData.listings || []).forEach(l => info.set(l.groupKey, l));
+
+    const windowOrders = (ordersData.orders || []).filter(entry => {
+      const local = new Date(entry.savedAt + 8 * 3600000);
+      if (local.toISOString().slice(0, 10) !== wantedDate) return false;
+      const mins = local.getUTCHours() * 60 + local.getUTCMinutes();
+      return mins >= startMins && mins <= cutMins;
+    });
+
+    window.__pickOrders = windowOrders;
+    window.__pickInfo = info;
+    window.__pickWindow = { wantedDate, startTime, cutoff };
+    renderPickingList();
+  } catch (err) {
+    console.error("Picking list failed:", err);
+    resultEl.textContent = `Couldn't build the list — ${err.message || "unexpected error"}.`;
+    resultEl.className = "error";
+  }
+};
+
+// Orders unticked in the picking checklist.
+const excludedPicks = new Set();
+
+function renderPickChecklist(orders) {
+  const wrap = document.getElementById("pickChecklist");
+  if (orders.length === 0) { wrap.innerHTML = ""; return; }
+
+  const included = orders.filter(e => !excludedPicks.has(orderKey(e)));
+
+  wrap.innerHTML = `
+    <div class="order-check-wrap">
+      <div class="order-check-head">
+        <span>Pick for orders (${included.length} of ${orders.length})</span>
+        <span>
+          <button type="button" data-pick-all>All</button>
+          <button type="button" data-pick-none>None</button>
+        </span>
+      </div>
+      ${orders.map(e => {
+        const r = e.record || {};
+        const id = orderKey(e);
+        const on = !excludedPicks.has(id);
+        return `
+          <label class="order-check${on ? "" : " off"}">
+            <input type="checkbox" data-pick-id="${escapeHtml(id)}" ${on ? "checked" : ""}>
+            <span class="oc-time">${orderTimeLabel(e.savedAt)}</span>
+            <span class="oc-name">${escapeHtml(r.Telegram_Username || r.Buyer_Name || id)}</span>
+            <span class="oc-total">${escapeHtml(r.Total || "")}</span>
+          </label>`;
+      }).join("")}
+    </div>`;
+
+  // Updates the count and dimming WITHOUT rewriting the inputs — rebuilding the
+  // markup from inside a checkbox's own handler destroys that checkbox.
+  const refreshChrome = () => {
+    const on = orders.filter(e => !excludedPicks.has(orderKey(e))).length;
+    const head = wrap.querySelector(".order-check-head span");
+    if (head) head.textContent = `Pick for orders (${on} of ${orders.length})`;
+    wrap.querySelectorAll("input[data-pick-id]").forEach(b => {
+      b.closest(".order-check").classList.toggle("off", !b.checked);
+    });
+  };
+
+  wrap.querySelectorAll("input[data-pick-id]").forEach(box => {
+    box.onchange = () => {
+      const id = box.dataset.pickId;
+      if (box.checked) excludedPicks.delete(id);
+      else excludedPicks.add(id);
+      refreshChrome();
+      renderPickedCards();
+    };
+  });
+  wrap.querySelector("[data-pick-all]").onclick = () => {
+    orders.forEach(e => excludedPicks.delete(orderKey(e)));
+    wrap.querySelectorAll("input[data-pick-id]").forEach(b => { b.checked = true; });
+    refreshChrome();
+    renderPickedCards();
+  };
+  wrap.querySelector("[data-pick-none]").onclick = () => {
+    orders.forEach(e => excludedPicks.add(orderKey(e)));
+    wrap.querySelectorAll("input[data-pick-id]").forEach(b => { b.checked = false; });
+    refreshChrome();
+    renderPickedCards();
+  };
+}
+
+function renderPickingList() {
+  renderPickChecklist(window.__pickOrders || []);
+  renderPickedCards();
+}
+
+function renderPickedCards() {
+  const resultEl = document.getElementById("pickResultText");
+  const reportEl = document.getElementById("pickReport");
+  const windowOrders = window.__pickOrders || [];
+  const info = window.__pickInfo || new Map();
+  const { wantedDate, startTime, cutoff } = window.__pickWindow || {};
+
+  const selected = windowOrders.filter(e => !excludedPicks.has(orderKey(e)));
+
+  const picks = new Map();
+  let orderCount = 0;
+
+  selected.forEach(entry => {
+    orderCount++;
+    const r = entry.record || {};
+    String(r["PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition"] || "")
+      .split("\n").map(l => l.trim()).filter(Boolean)
+      .forEach(line => {
+        const [, cardId, condition] = line.split("|").map(p => p.trim());
+        const gk = `${cardId}::${condition}`;
+        if (!picks.has(gk)) {
+          const meta = info.get(gk) || {};
+          picks.set(gk, {
+            cardId, condition, qty: 0,
+            name: meta.name || cardId,
+            set: meta.set || "",
+            photo: meta.photo || "",
+          });
+        }
+        picks.get(gk).qty += 1;
+      });
+  });
+
+  const rows = Array.from(picks.values());
+  if (rows.length === 0) {
+    reportEl.innerHTML = "";
+    resultEl.textContent = windowOrders.length
+      ? "No orders ticked — select at least one above."
+      : `No orders on ${wantedDate} between ${startTime} and ${cutoff}.`;
+    resultEl.className = "error";
+    return;
+  }
+
+  const totalCards = rows.reduce((s, r) => s + r.qty, 0);
+  const excludedCount = windowOrders.length - selected.length;
+  resultEl.textContent =
+    `${totalCards} card(s) across ${orderCount} order(s) · ${rows.length} distinct listing(s)` +
+    (startTime !== "00:00" || cutoff !== "23:59" ? ` · ${startTime}–${cutoff}` : "") +
+    (excludedCount ? ` · ${excludedCount} order(s) excluded` : "");
+  resultEl.className = "success";
+
+  const grouped = new Map();
+  rows.forEach(r => {
+    const rank = pickRank(r.cardId);
+    if (!grouped.has(rank)) grouped.set(rank, []);
+    grouped.get(rank).push(r);
+  });
+
+  reportEl.innerHTML = PICK_GROUPS
+    .filter(g => grouped.has(g.rank))
+    .map(g => {
+      const list = grouped.get(g.rank).sort((a, b) => a.cardId.localeCompare(b.cardId));
+      const count = list.reduce((s, r) => s + r.qty, 0);
+      return `
+        <div class="pick-group">
+          <div class="pick-group-head" style="background:${g.colour};">
+            <span>${g.label}</span><span>${count} card${count === 1 ? "" : "s"}</span>
+          </div>
+          ${list.map(r => `
+            <div class="pick-card" data-pick>
+              ${pickThumbHtml(r.photo)}
+              <div class="pick-body">
+                <div class="pick-name">${escapeHtml(r.name)}</div>
+                <div class="pick-meta">${escapeHtml(r.cardId)}${r.set ? " · " + escapeHtml(r.set) : ""}</div>
+              </div>
+              ${conditionChip(r.condition)}
+              <div class="pick-qty" style="${qtyStyle(r.qty)}">×${r.qty}</div>
+            </div>`).join("")}
+        </div>`;
+    }).join("");
+
+  // Tap a card to grey it out as you pull it from the box.
+  reportEl.querySelectorAll("[data-pick]").forEach(el => {
+    el.onclick = () => el.classList.toggle("pick-done");
+  });
+}
+
 document.getElementById("restockLoadButton").onclick = async () => {
   const key = document.getElementById("restockPassphrase").value.trim();
   const resultEl = document.getElementById("restockResultText");
