@@ -4186,8 +4186,11 @@ function dripRowHtml(r, extraHtml) {
   // How many copies this release actually puts on sale. For a pending restock
   // that's the increase (pendingStock - published); for a listing that has
   // never been released it's everything it has.
+  // releaseQty is authoritative — the endpoint knows whether this is a first
+  // release or a top-up. from/to is only a fallback for older payloads.
   const qty = Number(
-    r.releaseQty !== undefined ? r.releaseQty
+    r.releaseQty !== undefined && r.releaseQty !== null
+      ? r.releaseQty
       : (r.to !== undefined && r.from !== undefined ? r.to - r.from : r.stock)
   ) || 0;
 
