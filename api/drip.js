@@ -131,9 +131,14 @@ export default async function handler(req, res) {
           // Never released: the whole listing goes live at its moment.
           if (!released) return group.baseStock;
 
-          // Live already, with a queued increase: only the increase is new.
-          if (level && level.pendingStock !== null && level.pendingAt !== null && level.pendingAt > now) {
-            return Math.max(level.pendingStock - level.published, 0);
+          // Live already, with a queued increase.
+          //
+          // The increase is measured against the CURRENT CSV stock, not the
+          // figure captured when the restock was queued. Raising the CSV after
+          // scheduling left pendingStock frozen at the old number, so the badge
+          // understated the release and the release itself published too few.
+          if (level && level.pendingAt !== null && level.pendingAt > now) {
+            return Math.max(group.baseStock - level.published, 0);
           }
 
           // Live with unpublished stock (a detected but unscheduled restock).
@@ -151,7 +156,13 @@ export default async function handler(req, res) {
     Object.entries(state.levels).forEach(([groupKey, entry]) => {
       if (entry.pendingAt !== null && entry.pendingAt <= now && entry.pendingStock !== null) {
         const landedAt = entry.pendingAt;
-        entry.published = entry.pendingStock;
+        // Publish what the CSV says NOW, not what it said when this was
+        // queued — otherwise raising the stock after scheduling silently
+        // leaves the extra copies held back forever.
+        const group = groups.get(groupKey);
+        entry.published = group
+          ? Math.max(entry.pendingStock, group.baseStock)
+          : entry.pendingStock;
         entry.pendingStock = null;
         entry.pendingAt = null;
 
