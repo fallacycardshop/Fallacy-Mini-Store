@@ -780,6 +780,54 @@ footer .btn { width: auto; flex-shrink: 0; }
 .modal p { font-size: 14px; color: var(--text-soft); }
 .modal .btn { margin-top: 10px; }
 
+.conflict-modal { max-width: 380px; width: 100%; text-align: left; }
+.conflict-modal h3 { margin-bottom: 4px; }
+
+.conflict-sub {
+  font-size: 13px;
+  color: var(--text-soft, #777);
+  margin: 0 0 14px;
+}
+
+.conflict-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: #fff6e6;
+  border: 1px solid #f0d98a;
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+
+.conflict-item img {
+  width: 38px;
+  height: 53px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex: 0 0 auto;
+  background: #fff;
+}
+
+.conflict-item-text { min-width: 0; font-size: 13px; line-height: 1.4; }
+.conflict-item-name { font-weight: 700; color: #6b4a00; }
+.conflict-item-meta { font-size: 11px; color: #8a6100; }
+
+.conflict-total {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pink-deep);
+  text-align: center;
+  margin: 14px 0 4px;
+}
+
+.btn-plain {
+  background: none;
+  color: var(--text-soft, #888);
+  border: none;
+  box-shadow: none;
+}
+
 /* Small phones (iPhone SE and similar, ~375px and under) */
 @media (max-width: 380px) {
   .top-bar-title { font-size: 16px; line-height: 1.05; }
@@ -963,6 +1011,18 @@ footer .btn { width: auto; flex-shrink: 0; }
   </section>
 
 </main>
+
+<div class="modal-backdrop" id="stockConflictBackdrop" style="display:none;">
+  <div class="modal conflict-modal">
+    <h3 id="conflictTitle">Someone just bought one first</h3>
+    <p class="conflict-sub" id="conflictSub">The rest of your cart is still available.</p>
+    <div id="conflictList"></div>
+    <p class="conflict-total" id="conflictTotal"></p>
+    <button class="btn btn-primary" id="conflictContinue">Continue</button>
+    <button class="btn btn-secondary" id="conflictRemove">Remove it and continue</button>
+    <button class="btn btn-plain" id="conflictBack">Back to cart</button>
+  </div>
+</div>
 
 <div class="modal-backdrop" id="proofBackdrop" style="display:none;">
   <div class="modal proof-modal">
@@ -2373,6 +2433,108 @@ backToCartButtonEl.onclick = async () => {
   showCart();
 };
 
+// Shown when part of the cart sold while the buyer was filling in their
+// details. Adjusts the cart to what's actually left and reserves immediately —
+// the new total is stated on the dialogue, so nothing changes behind their back.
+function showStockConflict(unavailable) {
+  const backdrop = document.getElementById("stockConflictBackdrop");
+  const listEl = document.getElementById("conflictList");
+  const titleEl = document.getElementById("conflictTitle");
+  const subEl = document.getElementById("conflictSub");
+  const totalEl = document.getElementById("conflictTotal");
+  const continueBtn = document.getElementById("conflictContinue");
+  const removeBtn = document.getElementById("conflictRemove");
+
+  // Some stock left on at least one line means "continue with fewer" is
+  // meaningful; if everything is gone, removal is the only sensible action.
+  const anyPartial = unavailable.some(u => Number(u.available) > 0);
+  const multiple = unavailable.length > 1;
+
+  titleEl.textContent = multiple
+    ? "Some cards just sold"
+    : "Someone just bought one first";
+  subEl.textContent = "The rest of your cart is still available.";
+
+  listEl.innerHTML = unavailable.map(u => {
+    const item = cart[u.key];
+    const wanted = item ? item.quantity : 0;
+    const left = Math.max(Number(u.available) || 0, 0);
+    const photo = item && item.product ? item.product.photo : "";
+    return `
+      <div class="conflict-item">
+        ${photo ? `<img src="${thumbUrl(photo)}" alt="" loading="lazy"
+          onerror="this.onerror=null;this.src='${photo}';">` : ""}
+        <div class="conflict-item-text">
+          <div class="conflict-item-name">${u.name}</div>
+          <div class="conflict-item-meta">${u.key.split("::")[0]}${
+            item && item.product ? " · " + (item.product.description || "") : ""
+          }</div>
+          <div class="conflict-item-meta">${
+            left > 0 ? `You wanted ${wanted} · only ${left} left` : "No longer available"
+          }</div>
+        </div>
+      </div>`;
+  }).join("");
+
+  // What the cart would come to under each choice.
+  const totalIf = mode => {
+    let sum = 0;
+    Object.entries(cart).forEach(([key, { product, quantity }]) => {
+      const hit = unavailable.find(u => u.key === key);
+      let qty = quantity;
+      if (hit) qty = mode === "trim" ? Math.max(Number(hit.available) || 0, 0) : 0;
+      sum += Number(product.price || 0) * qty;
+    });
+    return sum;
+  };
+
+  const applyAndReserve = mode => {
+    unavailable.forEach(u => {
+      const left = Math.max(Number(u.available) || 0, 0);
+      if (mode === "trim" && left > 0) cart[u.key].quantity = left;
+      else delete cart[u.key];
+    });
+    saveCart();
+    updateCartBadge();
+    refreshProductCards();
+    backdrop.style.display = "none";
+
+    if (Object.keys(cart).length === 0) {
+      alert("Your cart is now empty.");
+      loadProducts();
+      showCart();
+      return;
+    }
+
+    trackEvent("stock_conflict_resolved", { mode });
+    // Straight back into checkout with the corrected cart.
+    checkoutButtonEl.click();
+  };
+
+  continueBtn.style.display = anyPartial ? "block" : "none";
+  // "Continue with 1" reads clearly for a single card; listing several numbers
+  // ("Continue with 1, 2") does not.
+  continueBtn.textContent = !anyPartial
+    ? "Continue"
+    : multiple
+      ? "Continue with what's left"
+      : `Continue with ${unavailable[0].available}`;
+  totalEl.textContent = `New total: $${(anyPartial ? totalIf("trim") : totalIf("drop")).toFixed(2)}`;
+
+  continueBtn.onclick = () => applyAndReserve("trim");
+  removeBtn.textContent = multiple ? "Remove them and continue" : "Remove it and continue";
+  removeBtn.onclick = () => applyAndReserve("drop");
+
+  document.getElementById("conflictBack").onclick = () => {
+    backdrop.style.display = "none";
+    loadProducts();
+    renderCart();
+    showCart();
+  };
+
+  backdrop.style.display = "flex";
+}
+
 checkoutButtonEl.onclick = async () => {
   const telegramUsername = telegramUsernameInputEl.value.trim();
   const hasHold = holdCheckboxEl.checked;
@@ -2498,15 +2660,15 @@ checkoutButtonEl.onclick = async () => {
   if (!reserveRes.ok) {
     const errData = await reserveRes.json().catch(() => ({}));
     if (reserveRes.status === 409 && Array.isArray(errData.unavailable)) {
-      const names = errData.unavailable
-        .map(u => `${u.name} (only ${u.available} left)`)
-        .join(", ");
       trackEvent("checkout_blocked", { reason: "stock_gone", items: errData.unavailable.length });
-      alert(`Sorry, someone else just claimed part of your order before you: ${names}. Please adjust your cart and try again.`);
-    } else {
-      trackEvent("checkout_blocked", { reason: "reserve_failed" });
-      alert("Something went wrong reserving your items. Please try again.");
+      // Offer to fix the cart rather than sending them back to do it by hand.
+      // They've already filled in their details at this point, so every extra
+      // step is somewhere to give up.
+      showStockConflict(errData.unavailable);
+      return;
     }
+    trackEvent("checkout_blocked", { reason: "reserve_failed" });
+    alert("Something went wrong reserving your items. Please try again.");
     loadProducts();
     renderCart();
     return;
