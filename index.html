@@ -2343,6 +2343,10 @@ function showCart() {
   paynowScreenEl.style.display = "none";
   syncFooterButton();
   applyRecentSalesVisibility();
+  // Fetch on arrival, so the cart is checked against live stock immediately
+  // rather than up to a minute later.
+  lastStockRefresh = Date.now();
+  loadProducts();
   renderCart();
   window.scrollTo(0, 0);
 }
@@ -3118,25 +3122,46 @@ flushOrderNotifications();
 updateCartBadge();
 showProducts();
 
-// Quietly refresh stock every 20 seconds while browsing the shop, so changes
-// made by other buyers (someone else's reservation expiring, a sale going
-// through, etc.) show up without needing to navigate away and back.
+// Background stock refresh.
+//
+// Two rates, because staleness costs differently by screen. Someone browsing
+// can wait a minute; someone sitting on the cart screen is about to commit to
+// specific cards, so a copy released by an abandoned checkout should reach them
+// quickly. The cart screen is also the rarest place to be, so the faster rate
+// costs little — a minute of cart-screen polling is a handful of requests, not
+// one per browsing visitor.
+//
+// Both are gated on tab visibility: background tabs never poll.
+const REFRESH_BROWSING_MS = 60000;
+const REFRESH_CART_MS = 15000;
+
+let lastStockRefresh = 0;
+
 setInterval(() => {
-  // Only refresh when the shop screen is open AND the tab is visible. Polling
-  // every 20s in background tabs multiplied Redis load for no benefit.
-  if (currentScreen === "products" && !document.hidden) {
-    loadProducts();
-    loadRecentSales();
-  }
-}, 60000);
+  if (document.hidden) return;
+
+  const wanted =
+    currentScreen === "cart" ? REFRESH_CART_MS
+      : currentScreen === "products" ? REFRESH_BROWSING_MS
+        : 0; // PayNow: stock is already reserved, nothing to gain
+
+  if (wanted === 0) return;
+  if (Date.now() - lastStockRefresh < wanted) return;
+
+  lastStockRefresh = Date.now();
+  loadProducts();
+
+  // The ticker only shows while browsing, so don't fetch it from the cart.
+  if (currentScreen === "products") loadRecentSales();
+}, 5000);
 
 // Refresh immediately on returning to the tab, so the longer interval never
 // means looking at stale stock.
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden && currentScreen === "products") {
-    loadProducts();
-    loadRecentSales();
-  }
+  if (document.hidden || currentScreen === "paynow") return;
+  lastStockRefresh = Date.now();
+  loadProducts();
+  if (currentScreen === "products") loadRecentSales();
 });
 </script>
 
