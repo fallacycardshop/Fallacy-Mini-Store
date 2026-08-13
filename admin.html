@@ -354,9 +354,12 @@
     border-radius: 11px;
     padding: 0 10px 6px;
     margin-top: 10px;
-    overflow: hidden;
+    /* Was overflow:hidden purely to round the header's corners; that clipped
+       any row taller than expected. The header is clipped on its own instead. */
+    overflow: visible;
   }
   .drip-day-head {
+    border-radius: 10px 10px 0 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -370,12 +373,17 @@
   }
   .drip-day .drip-row:last-child { border-bottom: none; }
 
+  .drip-day .drip-row,
+  .drip-day .drip-row div {
+    padding: 0;
+    border-bottom: none;
+  }
   .drip-row {
     display: flex;
     align-items: flex-start;
     gap: 10px;
-    padding: 7px 0;
-    border-bottom: 1px solid #f2eef1;
+    padding: 7px 0 !important;
+    border-bottom: 1px solid #f2eef1 !important;
   }
   .drip-row-noimg { background: #fffaf0; }
   .drip-thumb {
@@ -824,7 +832,14 @@
   }
 
   .hidden-list { margin-top: 14px; font-size: 13px; }
-  .hidden-list div { padding: 6px 0; border-bottom: 1px solid #eee; }
+  /* Scoped to DIRECT children only. As a descendant rule it also hit every div
+     inside the drip day panels — adding padding and borders to each row and its
+     inner text, which pushed content past the panel's overflow:hidden edge and
+     clipped it. */
+  .hidden-list > div:not(.drip-day) {
+    padding: 6px 0;
+    border-bottom: 1px solid #eee;
+  }
 </style>
 </head>
 <body>
