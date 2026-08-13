@@ -149,8 +149,11 @@
     color: #777;
     margin-bottom: 5px;
   }
-  .field-row { display: flex; gap: 10px; }
-  .field-row > div { flex: 1; }
+  /* Wraps rather than overflowing: three fields (date + two times) can't fit
+     across a 460px card, and without this they spilled outside the panel. */
+  .field-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .field-row > div { flex: 1 1 130px; min-width: 0; }
+  .field-row input, .field-row select { width: 100%; box-sizing: border-box; }
   .drip-step {
     margin: 22px 0 4px;
     font-size: 15px;
@@ -923,11 +926,9 @@
     Quantity and condition are called out for each card.
   </p>
   <input type="password" id="pickPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
+  <label class="field-label">Date</label>
+  <input type="date" id="pickDate">
   <div class="field-row">
-    <div>
-      <label class="field-label">Date</label>
-      <input type="date" id="pickDate">
-    </div>
     <div>
       <label class="field-label">From (SGT)</label>
       <input type="time" id="pickStart" value="00:00">
