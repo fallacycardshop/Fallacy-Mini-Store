@@ -384,6 +384,21 @@
     border-top: 1px solid #eee;
     padding: 10px 0;
   }
+  .rs-row-flex { display: flex; gap: 11px; align-items: flex-start; }
+  .rs-main { flex: 1; min-width: 0; }
+  .rs-price strong { color: #1e7a3c; }
+  .rs-verdict {
+    border-radius: 7px;
+    padding: 4px 9px;
+    font-size: 11px;
+    font-weight: 800;
+    color: #fff;
+  }
+  .rs-verdict-fast { background: #c2185b; }
+  .rs-verdict-good { background: #e8590c; }
+  .rs-verdict-ok   { background: #2e7d5b; }
+  .rs-verdict-slow { background: #8d9aa5; }
+  .rs-verdict-thin { background: #b9a3ae; }
   .rs-row:first-child { border-top: none; }
   .rs-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
   .rs-name { font-size: 14px; font-weight: 700; }
@@ -994,9 +1009,9 @@
 <div class="card">
   <h1>Restocking</h1>
   <p>
-    What&rsquo;s gone, how fast it went, and how often you&rsquo;ve had to reorder it.
-    Sorted by a demand score combining units sold, how quickly they sold, and
-    how recently &mdash; so the top of the list is what to buy again first.
+    Look up any card to see how it has performed here: how many sold, how fast,
+    at what price, and when it last moved. Search by name or Card ID when stock
+    lands, to decide pricing and whether it&rsquo;s worth listing again.
   </p>
   <input type="password" id="restockPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
   <div class="field-row">
@@ -1011,16 +1026,18 @@
     <div>
       <label class="field-label">Sort by</label>
       <select id="restockSort">
+        <option value="speed">Sells fastest</option>
         <option value="score">Demand score</option>
         <option value="units">Units sold</option>
-        <option value="speed">Sold fastest</option>
         <option value="recent">Sold most recently</option>
         <option value="restocks">Most restocked</option>
         <option value="revenue">Revenue</option>
+        <option value="price">Price (high to low)</option>
+        <option value="name">Name (A–Z)</option>
       </select>
     </div>
   </div>
-  <input type="text" id="restockSearch" placeholder="Filter by name, Card ID or set" autocomplete="off">
+  <input type="text" id="restockSearch" placeholder="Search name, Card ID or set — e.g. &quot;charizard&quot; or &quot;SV3A&quot;" autocomplete="off">
   <div class="button-row">
     <button id="restockLoadButton">Load Restocking Report</button>
     <button id="planJumpButton" type="button" class="btn-neutral">Jump to plan &darr;</button>
@@ -1028,35 +1045,6 @@
   <p id="restockResultText"></p>
   <div id="restockReport"></div>
 
-  <h3 class="drip-step">Weekly stocking plan</h3>
-  <p class="config-note">
-    Turns the report above into a day-by-day buying list. Restock slots are filled
-    from the highest-demand sold-out cards; the rest are left as blank
-    placeholders for new stock you&rsquo;re sourcing.
-  </p>
-  <div class="field-row">
-    <div>
-      <label class="field-label">Cards per weekday</label>
-      <input type="number" id="planWeekday" min="0" max="200" value="35">
-    </div>
-    <div>
-      <label class="field-label">Cards per weekend day</label>
-      <input type="number" id="planWeekend" min="0" max="200" value="55">
-    </div>
-  </div>
-  <div class="field-row">
-    <div>
-      <label class="field-label">Restocks (% of each day)</label>
-      <input type="number" id="planRestockPct" min="0" max="100" value="35">
-    </div>
-    <div>
-      <label class="field-label">Week starting</label>
-      <input type="date" id="planStart">
-    </div>
-  </div>
-  <button id="planBuildButton">Build Weekly Plan</button>
-  <p id="planResultText"></p>
-  <div id="planReport"></div>
 </div>
 
 <div class="card">
@@ -2643,8 +2631,10 @@ function renderRestockReport() {
     recent: (a, b) => (b.lastSoldAt || 0) - (a.lastSoldAt || 0),
     restocks: (a, b) => b.restocks - a.restocks || b.sold - a.sold,
     revenue: (a, b) => b.revenue - a.revenue,
+    price: (a, b) => b.price - a.price,
+    name: (a, b) => a.name.localeCompare(b.name),
   };
-  shown.sort(sorters[sort] || sorters.score);
+  shown.sort(sorters[sort] || sorters.speed);
 
   const totalUnits = shown.reduce((s, r) => s + r.sold, 0);
   const totalRevenue = shown.reduce((s, r) => s + r.revenue, 0);
@@ -2662,30 +2652,44 @@ function renderRestockReport() {
           ? "never"
           : r.daysSinceSale < 1 ? "today" : `${Math.round(r.daysSinceSale)}d ago`;
 
+        // Plain-language verdict, so a card can be judged at a glance without
+        // interpreting the numbers. This is the useful output when stock is
+        // whatever turns up rather than what you chose to buy.
+        let verdict = { label: "Slow mover", cls: "rs-verdict-slow" };
+        if (r.velocity >= 1) verdict = { label: "Sells same day", cls: "rs-verdict-fast" };
+        else if (r.velocity >= 0.34) verdict = { label: "Sells in days", cls: "rs-verdict-good" };
+        else if (r.velocity >= 0.1) verdict = { label: "Steady", cls: "rs-verdict-ok" };
+        if (r.sold <= 1) verdict = { label: "Only sold once", cls: "rs-verdict-thin" };
+
         return `
-          <div class="rs-row">
-            <div class="rs-head">
-              <span class="rs-name">${escapeHtml(r.name)}</span>
-              <span class="rs-score${hot ? "" : " cool"}">${Math.round(r.score)}</span>
-            </div>
-            <div class="rs-sub">
-              ${escapeHtml(r.cardId)} · ${escapeHtml(r.condition)} · ${escapeHtml(r.set)}
-              ${r.rarity ? " · " + escapeHtml(r.rarity) : ""} · $${r.price.toFixed(2)}
-            </div>
-            <div class="rs-stats">
-              <span class="rs-stat ${r.available <= 0 ? "rs-gone" : ""}">
-                <strong>${r.available <= 0 ? "SOLD OUT" : r.available + " left"}</strong>
-              </span>
-              <span class="rs-stat"><strong>${r.sold}</strong> sold</span>
-              <span class="rs-stat"><strong>${r.velocity ? r.velocity.toFixed(2) : "—"}</strong>/day</span>
-              <span class="rs-stat">sold over <strong>${days}</strong></span>
-              <span class="rs-stat">last sale <strong>${since}</strong></span>
-              <span class="rs-stat"><strong>${r.restocks}</strong> restock${r.restocks === 1 ? "" : "s"}</span>
-              <span class="rs-stat"><strong>$${r.revenue.toFixed(2)}</strong></span>
+          <div class="rs-row rs-row-flex">
+            ${pickThumbHtml(r.photo)}
+            <div class="rs-main">
+              <div class="rs-head">
+                <span class="rs-name">${escapeHtml(r.name)}</span>
+                <span class="rs-score${hot ? "" : " cool"}">${Math.round(r.score)}</span>
+              </div>
+              <div class="rs-sub">
+                ${escapeHtml(r.cardId)} · ${escapeHtml(r.condition)} · ${escapeHtml(r.set)}
+                ${r.rarity ? " · " + escapeHtml(r.rarity) : ""}
+              </div>
+              <div class="rs-stats">
+                <span class="rs-verdict ${verdict.cls}">${verdict.label}</span>
+                <span class="rs-stat rs-price"><strong>$${r.price.toFixed(2)}</strong> listed at</span>
+                <span class="rs-stat ${r.available <= 0 ? "rs-gone" : ""}">
+                  <strong>${r.available <= 0 ? "SOLD OUT" : r.available + " left"}</strong>
+                </span>
+                <span class="rs-stat"><strong>${r.sold}</strong> sold</span>
+                <span class="rs-stat"><strong>${r.velocity ? r.velocity.toFixed(2) : "—"}</strong>/day</span>
+                <span class="rs-stat">over <strong>${days}</strong></span>
+                <span class="rs-stat">last sale <strong>${since}</strong></span>
+                ${r.restocks ? `<span class="rs-stat"><strong>${r.restocks}</strong> restock${r.restocks === 1 ? "" : "s"}</span>` : ""}
+                <span class="rs-stat"><strong>$${r.revenue.toFixed(2)}</strong> total</span>
+              </div>
             </div>
           </div>`;
       }).join("") + (shown.length > 120 ? `<p class="muted">…and ${shown.length - 120} more</p>` : "")
-    : '<p class="muted">Nothing matches that filter.</p>';
+    : '<p class="muted">Nothing matches that search.</p>';
 }
 
 ["restockFilter", "restockSort", "restockSearch"].forEach(id => {
@@ -2694,497 +2698,6 @@ function renderRestockReport() {
   el.onchange = handler;
   el.oninput = handler;
 });
-
-// ---------------------------------------------------------------------------
-// Weekly stocking plan
-//
-// Splits each day's target between proven restocks (taken in demand order from
-// the report above) and blank slots for new stock. The blanks are the point:
-// most of what you list is new, so the plan has to leave room for it rather
-// than pretending restocks fill the week.
-// ---------------------------------------------------------------------------
-function nextMonday() {
-  const d = new Date(Date.now() + 8 * 3600000);
-  const day = d.getUTCDay();                 // 0 Sun … 6 Sat
-  const add = day === 1 ? 0 : (8 - day) % 7; // today if it's Monday
-  d.setUTCDate(d.getUTCDate() + add);
-  return d.toISOString().slice(0, 10);
-}
-
-document.getElementById("planStart").value = nextMonday();
-
-// How many copies to reorder: roughly a week's worth at the rate it sold,
-// capped so one hot card can't swallow the whole day.
-function suggestedQty(row) {
-  const weekly = row.velocity ? row.velocity * 7 : row.sold;
-  return Math.max(1, Math.min(4, Math.round(weekly)));
-}
-
-// Sits at the top of the panel so the hundred-row report can be skipped
-// before you've scrolled into it.
-document.getElementById("planJumpButton").onclick = () => {
-  document.getElementById("planWeekday").scrollIntoView({ behavior: "smooth", block: "start" });
-};
-
-document.getElementById("planBuildButton").onclick = () => {
-  const resultEl = document.getElementById("planResultText");
-  const reportEl = document.getElementById("planReport");
-  const rows = window.__restockRows || [];
-
-  if (rows.length === 0) {
-    resultEl.textContent = "Load the restocking report first.";
-    resultEl.className = "error";
-    return;
-  }
-
-  // Read with Number() alone: "|| 35" turned a deliberate 0 back into 35.
-  const rawWeekday = document.getElementById("planWeekday").value;
-  const rawWeekend = document.getElementById("planWeekend").value;
-  const perWeekday = rawWeekday === "" ? 35 : Math.max(Number(rawWeekday) || 0, 0);
-  const perWeekend = rawWeekend === "" ? 55 : Math.max(Number(rawWeekend) || 0, 0);
-  const restockPct = Math.min(Math.max(Number(document.getElementById("planRestockPct").value) || 0, 0), 100);
-  const startStr = document.getElementById("planStart").value || nextMonday();
-
-  // Restock candidates: sold out or down to the last copy, best demand first.
-  const candidates = rows
-    .filter(r => r.sold > 0 && r.available <= 1)
-    .sort((a, b) => b.score - a.score);
-
-  let queue = [];
-  candidates.forEach(r => {
-    const qty = suggestedQty(r);
-    for (let i = 0; i < qty; i++) queue.push(r);
-  });
-
-  const start = new Date(startStr + "T00:00:00Z");
-  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-  const days = [];
-  let queueIndex = 0;
-  let placeholderNo = 1;
-
-  for (let i = 0; i < 7; i++) {
-    const date = new Date(start.getTime() + i * DAY_MS);
-    const dow = date.getUTCDay();
-    const isWeekend = dow === 0 || dow === 6;
-    const target = isWeekend ? perWeekend : perWeekday;
-
-    // A target of 0 means "no listing that day" — skip it entirely rather than
-    // falling back to the weekday figure.
-    if (target <= 0) {
-      days.push({
-        label: `${dayNames[dow]} ${date.toISOString().slice(0, 10)}`,
-        target: 0,
-        restocks: [],
-        restockCount: 0,
-        placeholders: [],
-        skipped: true,
-      });
-      continue;
-    }
-
-    const restockTarget = Math.round((target * restockPct) / 100);
-
-    // Group repeats of the same card into one line with a quantity.
-    const picked = new Map();
-    let taken = 0;
-    while (taken < restockTarget && queueIndex < queue.length) {
-      const r = queue[queueIndex++];
-      picked.set(r.groupKey, { row: r, qty: (picked.get(r.groupKey)?.qty || 0) + 1 });
-      taken++;
-    }
-
-    const newCount = target - taken;
-    const placeholders = [];
-    for (let n = 0; n < newCount; n++) placeholders.push(placeholderNo++);
-
-    days.push({
-      label: `${dayNames[dow]} ${date.toISOString().slice(0, 10)}`,
-      target,
-      restocks: Array.from(picked.values()),
-      restockCount: taken,
-      placeholders,
-    });
-  }
-
-  const totalRestock = days.reduce((s, d) => s + d.restockCount, 0);
-  const totalNew = days.reduce((s, d) => s + d.placeholders.length, 0);
-  const shortfall = queueIndex >= queue.length && totalRestock < days.reduce((s, d) => s + Math.round((d.target * restockPct) / 100), 0);
-
-  document.getElementById("planReport").scrollIntoView({ behavior: "smooth", block: "start" });
-
-  resultEl.textContent =
-    `${totalRestock + totalNew} cards over 7 days — ${totalRestock} restocks, ${totalNew} new` +
-    (shortfall ? " (ran out of restock candidates; the rest became new slots)" : ".");
-  resultEl.className = "success";
-
-  reportEl.innerHTML =
-    days.map(d => `
-      <div class="rs-row">
-        <div class="rs-head">
-          <span class="rs-name">${escapeHtml(d.label)}</span>
-          <span class="rs-score${d.skipped || !d.restockCount ? " cool" : ""}">${d.skipped ? "—" : d.target}</span>
-        </div>
-        <div class="rs-sub">${d.skipped ? "No listing this day" : `${d.restockCount} restock(s) · ${d.placeholders.length} new`}</div>
-        ${d.restocks.map(({ row, qty }) => `
-          <div class="rs-stats" style="margin-bottom:4px;">
-            <span class="rs-stat rs-gone"><strong>x${qty}</strong></span>
-            <span class="rs-stat">${escapeHtml(row.name)} <strong>${escapeHtml(row.cardId)}</strong></span>
-            <span class="rs-stat">${escapeHtml(row.condition)}</span>
-            <span class="rs-stat">$${row.price.toFixed(2)}</span>
-            <span class="rs-stat">${row.sold} sold · ${row.velocity ? row.velocity.toFixed(2) : "—"}/day</span>
-          </div>`).join("")}
-        ${d.placeholders.length
-          ? `<div class="muted" style="font-size:12px;margin-top:4px;">
-               + ${d.placeholders.length} new card slot(s) — #${d.placeholders[0]}–#${d.placeholders[d.placeholders.length - 1]}
-             </div>`
-          : ""}
-      </div>`).join("") +
-    "";
-};
-
-// ---------------------------------------------------------------------------
-// Picking list
-//
-// Groups the day's sold cards by set, in the physical order the boxes are
-// stored in, so packing is one walk rather than a search per card. Quantities
-// are aggregated across orders — three buyers taking the same card is one line
-// reading x3, not three lines to find separately.
-// ---------------------------------------------------------------------------
-const PICK_GROUPS = [
-  { rank: 0, label: "S12", colour: "#c2185b" },
-  ...Array.from({ length: 11 }, (_, i) => ({
-    rank: 11 + i, label: `SV${i + 1}`, colour: i % 2 ? "#2c5b8f" : "#3d76ab",
-  })),
-  ...Array.from({ length: 5 }, (_, i) => ({
-    rank: 41 + i, label: `M${i + 1}`, colour: i % 2 ? "#2e7d5b" : "#3f9e74",
-  })),
-  { rank: 70, label: "Other S sets", colour: "#8a6100" },
-  { rank: 80, label: "SVP promos", colour: "#7b4bab" },
-  { rank: 90, label: "Everything else", colour: "#666" },
-];
-
-// Which group a Card ID belongs to.
-//
-// Order of checks matters: SVP is tested before SV<number>, or "SVP291" would
-// read as SV followed by "P291". Set numbers are also parsed from a digit run
-// that includes the card number ("SV9105" is SV9, card 105), so anything above
-// the valid range is narrowed to its leading one or two digits.
-function pickRank(cardId) {
-  const c = String(cardId || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (/^SVP/.test(c)) return 80;
-
-  const sv = c.match(/^SV(\d+)/);
-  if (sv) {
-    let n = Number(sv[1]);
-    if (n > 11) {
-      const two = Number(sv[1].slice(0, 2));
-      n = two >= 1 && two <= 11 ? two : Number(sv[1].slice(0, 1));
-    }
-    if (n >= 1 && n <= 11) return 10 + n;
-  }
-
-  const m = c.match(/^M(\d+)/);
-  if (m) {
-    let n = Number(m[1]);
-    if (n > 5) n = Number(m[1].slice(0, 1));
-    if (n >= 1 && n <= 5) return 40 + n;
-  }
-
-  const sNum = c.match(/^S(\d+)/);
-  if (sNum) return Number(sNum[1].slice(0, 2)) === 12 ? 0 : 70;
-
-  return 90;
-}
-
-// Short codes with their own colour each, so condition is read at a glance
-// while picking rather than by reading words.
-const CONDITION_CODES = {
-  "near mint":        { code: "NM", bg: "#e6f4ea", fg: "#1e7a3c", bd: "#a9dcbb" },
-  "lightly played":   { code: "LP", bg: "#e8f0fb", fg: "#2c5b8f", bd: "#aecbe8" },
-  "moderately played":{ code: "MP", bg: "#fff4e0", fg: "#8a6100", bd: "#f0d08a" },
-  "heavily played":   { code: "HP", bg: "#fdeceb", fg: "#b3352b", bd: "#f0aaa4" },
-};
-
-function conditionChip(condition) {
-  const key = String(condition || "").trim().toLowerCase();
-  const c = CONDITION_CODES[key];
-  if (!c) {
-    // Unknown condition: show it in full rather than inventing an abbreviation.
-    return `<span class="pick-cond" style="background:#f2f2f2;color:#666;border-color:#ddd;">${escapeHtml(condition || "?")}</span>`;
-  }
-  return `<span class="pick-cond" style="background:${c.bg};color:${c.fg};border-color:${c.bd};"
-    title="${escapeHtml(condition)}">${c.code}</span>`;
-}
-
-// Quantity colour scales with the number, so a x4 pull is obvious from across
-// the room and a single is visually quiet.
-function qtyStyle(qty) {
-  if (qty >= 5) return "background:#7b1fa2;color:#fff;";
-  if (qty === 4) return "background:#c2185b;color:#fff;";
-  if (qty === 3) return "background:#e8590c;color:#fff;";
-  if (qty === 2) return "background:#f2a33c;color:#4a2f00;";
-  return "background:#f0e2ea;color:#a8305f;";
-}
-
-function pickThumbHtml(photo) {
-  if (!photo) return '<span class="pick-thumb pick-thumb-none">no<br>image</span>';
-  const thumb = photo.replace("/images/", "/images/thumbs/");
-  return `<img class="pick-thumb" src="${thumb}" loading="lazy" alt=""
-    onerror="this.onerror=null;this.src='${photo}';">`;
-}
-
-document.getElementById("pickDate").value = new Date(Date.now() + 8 * 3600000)
-  .toISOString().slice(0, 10);
-
-document.getElementById("pickLoadButton").onclick = async () => {
-  const key = document.getElementById("pickPassphrase").value.trim();
-  const resultEl = document.getElementById("pickResultText");
-  const reportEl = document.getElementById("pickReport");
-
-  if (!key) {
-    resultEl.textContent = "Please enter the passphrase.";
-    resultEl.className = "error";
-    return;
-  }
-
-  const wantedDate = document.getElementById("pickDate").value;
-  const startTime = document.getElementById("pickStart").value || "00:00";
-  const cutoff = document.getElementById("pickCutoff").value || "23:59";
-  const [startH, startM] = startTime.split(":").map(Number);
-  const [cutH, cutM] = cutoff.split(":").map(Number);
-  const startMins = startH * 60 + startM;
-  const cutMins = cutH * 60 + cutM;
-
-  if (startMins > cutMins) {
-    resultEl.textContent = "The start time is after the cut-off — swap them round.";
-    resultEl.className = "error";
-    return;
-  }
-
-  resultEl.textContent = "Loading...";
-  resultEl.className = "";
-  reportEl.innerHTML = "";
-
-  try {
-    // Orders give the sales; the drip report gives photos and card names.
-    const [ordersRes, dripRes] = await Promise.all([
-      fetch("/api/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, limit: 300 }),
-      }),
-      fetch("/api/drip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, action: "restockReport" }),
-      }),
-    ]);
-
-    if (!ordersRes.ok) {
-      const err = await ordersRes.json().catch(() => ({}));
-      resultEl.textContent = err.error || `Couldn't load orders (HTTP ${ordersRes.status}).`;
-      resultEl.className = "error";
-      return;
-    }
-
-    const ordersData = await ordersRes.json();
-    const dripData = dripRes.ok ? await dripRes.json().catch(() => ({ listings: [] })) : { listings: [] };
-
-    const info = new Map();
-    (dripData.listings || []).forEach(l => info.set(l.groupKey, l));
-
-    // Orders inside the chosen date and time window. Kept so the checklist can
-    // re-render the list without refetching.
-    const windowOrders = (ordersData.orders || []).filter(entry => {
-      const local = new Date(entry.savedAt + 8 * 3600000);
-      if (local.toISOString().slice(0, 10) !== wantedDate) return false;
-      // Inclusive at both ends, so an order at exactly the start or cut-off
-      // time is picked up rather than falling between two windows.
-      const mins = local.getUTCHours() * 60 + local.getUTCMinutes();
-      return mins >= startMins && mins <= cutMins;
-    });
-
-    window.__pickOrders = windowOrders;
-    window.__pickInfo = info;
-    window.__pickWindow = { wantedDate, startTime, cutoff };
-    renderPickingList();
-  } catch (err) {
-    resultEl.textContent = "Network error — please try again.";
-    resultEl.className = "error";
-  }
-};
-
-// Orders unticked in the picking checklist.
-const excludedPicks = new Set();
-
-function renderPickChecklist(orders) {
-  const wrap = document.getElementById("pickChecklist");
-  if (orders.length === 0) { wrap.innerHTML = ""; return; }
-
-  const included = orders.filter(e => !excludedPicks.has(orderKey(e)));
-
-  wrap.innerHTML = `
-    <div class="order-check-wrap">
-      <div class="order-check-head">
-        <span>Pick for orders (${included.length} of ${orders.length})</span>
-        <span>
-          <button type="button" data-pick-all>All</button>
-          <button type="button" data-pick-none>None</button>
-        </span>
-      </div>
-      ${orders.map(e => {
-        const r = e.record || {};
-        const id = orderKey(e);
-        const on = !excludedPicks.has(id);
-        return `
-          <label class="order-check${on ? "" : " off"}">
-            <input type="checkbox" data-pick-id="${escapeHtml(id)}" ${on ? "checked" : ""}>
-            <span class="oc-time">${orderTimeLabel(e.savedAt)}</span>
-            <span class="oc-name">${escapeHtml(r.Telegram_Username || r.Buyer_Name || id)}</span>
-            <span class="oc-total">${escapeHtml(r.Total || "")}</span>
-          </label>`;
-      }).join("")}
-    </div>`;
-
-  // Updates the header count and row dimming WITHOUT rewriting the inputs.
-  //
-  // Rebuilding the checklist markup from inside a checkbox's own change handler
-  // destroys that checkbox mid-event, so the tick appeared to do nothing. Only
-  // the card list below is re-rendered on a change.
-  const refreshChecklistChrome = () => {
-    const on = orders.filter(e => !excludedPicks.has(orderKey(e))).length;
-    const head = wrap.querySelector(".order-check-head span");
-    if (head) head.textContent = `Pick for orders (${on} of ${orders.length})`;
-    wrap.querySelectorAll("input[data-pick-id]").forEach(b => {
-      b.closest(".order-check").classList.toggle("off", !b.checked);
-    });
-  };
-
-  wrap.querySelectorAll("input[data-pick-id]").forEach(box => {
-    box.onchange = () => {
-      const id = box.dataset.pickId;
-      if (box.checked) excludedPicks.delete(id);
-      else excludedPicks.add(id);
-      refreshChecklistChrome();
-      renderPickedCards();   // cards only — the checklist stays put
-    };
-  });
-
-  wrap.querySelector("[data-pick-all]").onclick = () => {
-    orders.forEach(e => excludedPicks.delete(orderKey(e)));
-    wrap.querySelectorAll("input[data-pick-id]").forEach(b => { b.checked = true; });
-    refreshChecklistChrome();
-    renderPickedCards();
-  };
-  wrap.querySelector("[data-pick-none]").onclick = () => {
-    orders.forEach(e => excludedPicks.add(orderKey(e)));
-    wrap.querySelectorAll("input[data-pick-id]").forEach(b => { b.checked = false; });
-    refreshChecklistChrome();
-    renderPickedCards();
-  };
-}
-
-// Full render: builds the checklist, then the cards. Used after a fetch.
-function renderPickingList() {
-  renderPickChecklist(window.__pickOrders || []);
-  renderPickedCards();
-}
-
-// Cards only. Used when a tick changes, so the checklist isn't rebuilt from
-// inside its own event handler.
-function renderPickedCards() {
-  const resultEl = document.getElementById("pickResultText");
-  const reportEl = document.getElementById("pickReport");
-  const windowOrders = window.__pickOrders || [];
-  const info = window.__pickInfo || new Map();
-  const { wantedDate, startTime, cutoff } = window.__pickWindow || {};
-
-  const selected = windowOrders.filter(e => !excludedPicks.has(orderKey(e)));
-
-  {
-    const picks = new Map();
-    let orderCount = 0;
-
-    selected.forEach(entry => {
-      orderCount++;
-      const r = entry.record || {};
-      String(r["PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition"] || "")
-        .split("\n").map(l => l.trim()).filter(Boolean)
-        .forEach(line => {
-          const [, cardId, condition] = line.split("|").map(p => p.trim());
-          const gk = `${cardId}::${condition}`;
-          if (!picks.has(gk)) {
-            const meta = info.get(gk) || {};
-            picks.set(gk, {
-              cardId,
-              condition,
-              qty: 0,
-              name: meta.name || cardId,
-              set: meta.set || "",
-              photo: meta.photo || "",
-              buyers: new Set(),
-            });
-          }
-          const p = picks.get(gk);
-          p.qty += 1;
-          if (r.Buyer_Name) p.buyers.add(r.Buyer_Name);
-        });
-    });
-
-    const rows = Array.from(picks.values());
-    if (rows.length === 0) {
-      resultEl.textContent = windowOrders.length
-        ? "No orders ticked — select at least one above."
-        : `No orders on ${wantedDate} between ${startTime} and ${cutoff}.`;
-      resultEl.className = "error";
-      return;
-    }
-
-    const totalCards = rows.reduce((s, r) => s + r.qty, 0);
-    const excludedCount = windowOrders.length - selected.length;
-    resultEl.textContent =
-      `${totalCards} card(s) across ${orderCount} order(s) · ${rows.length} distinct listing(s)` +
-      (startTime !== "00:00" || cutoff !== "23:59" ? ` · ${startTime}–${cutoff}` : "") +
-      (excludedCount ? ` · ${excludedCount} order(s) excluded` : "");
-    resultEl.className = "success";
-
-    // Group, then sort within each group by Card ID so the walk is predictable.
-    const grouped = new Map();
-    rows.forEach(r => {
-      const rank = pickRank(r.cardId);
-      if (!grouped.has(rank)) grouped.set(rank, []);
-      grouped.get(rank).push(r);
-    });
-
-    reportEl.innerHTML = PICK_GROUPS
-      .filter(g => grouped.has(g.rank))
-      .map(g => {
-        const list = grouped.get(g.rank).sort((a, b) => a.cardId.localeCompare(b.cardId));
-        const count = list.reduce((s, r) => s + r.qty, 0);
-        return `
-          <div class="pick-group">
-            <div class="pick-group-head" style="background:${g.colour};">
-              <span>${g.label}</span><span>${count} card${count === 1 ? "" : "s"}</span>
-            </div>
-            ${list.map(r => `
-              <div class="pick-card" data-pick>
-                ${pickThumbHtml(r.photo)}
-                <div class="pick-body">
-                  <div class="pick-name">${escapeHtml(r.name)}</div>
-                  <div class="pick-meta">${escapeHtml(r.cardId)}${r.set ? " · " + escapeHtml(r.set) : ""}</div>
-                </div>
-                ${conditionChip(r.condition)}
-                <div class="pick-qty" style="${qtyStyle(r.qty)}">×${r.qty}</div>
-              </div>`).join("")}
-          </div>`;
-      }).join("");
-
-    // Tap a card to grey it out as you pull it from the box.
-    reportEl.querySelectorAll("[data-pick]").forEach(el => {
-      el.onclick = () => el.classList.toggle("pick-done");
-    });
-  }
-}
 
 document.getElementById("restockLoadButton").onclick = async () => {
   const key = document.getElementById("restockPassphrase").value.trim();
