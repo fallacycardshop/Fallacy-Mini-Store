@@ -2330,6 +2330,7 @@ function showProducts() {
   cartScreenEl.style.display = "none";
   paynowScreenEl.style.display = "none";
   syncFooterButton();
+  applyRecentSalesVisibility();
   loadProducts(); // always pull the latest stock from the server, not just re-render cached data
   window.scrollTo(0, 0);
 }
@@ -2341,6 +2342,7 @@ function showCart() {
   cartScreenEl.style.display = "block";
   paynowScreenEl.style.display = "none";
   syncFooterButton();
+  applyRecentSalesVisibility();
   renderCart();
   window.scrollTo(0, 0);
 }
@@ -2351,6 +2353,7 @@ function showPayNow() {
   cartScreenEl.style.display = "none";
   paynowScreenEl.style.display = "block";
   syncFooterButton();
+  applyRecentSalesVisibility();
   window.scrollTo(0, 0);
 }
 
@@ -2931,7 +2934,11 @@ let keyboardLikelyOpen = false;
 const footerEl = document.querySelector("footer");
 
 function applyRecentSalesVisibility() {
-  const shouldShow = recentSales.length > 0 && !keyboardLikelyOpen;
+  // Shop screen only. On the cart and PayNow screens the buyer is concentrating
+  // on their order and a rotating ticker beside the total is a distraction at
+  // exactly the wrong moment.
+  const shouldShow =
+    recentSales.length > 0 && !keyboardLikelyOpen && currentScreen === "products";
   recentSalesBannerEl.style.display = shouldShow ? "flex" : "none";
 }
 
