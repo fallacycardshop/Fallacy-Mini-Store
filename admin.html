@@ -1885,11 +1885,15 @@ function buildSalesHistory(orders, listings) {
     const withheld = Number(l.withheld) || 0;
     const hidden = Boolean(l.hidden);
     const pendingRelease = Boolean(l.pendingRelease);
-    // A hidden card's whole remaining stock is off-sale, not just the withheld
-    // portion — nothing of it can be bought.
-    const offSale = hidden
-      ? Math.max(csvStock - soldCounter, 0)
-      : withheld;
+    // Off-sale stock, and — crucially — what's genuinely still buyable.
+    //
+    // `available` comes from the drip report, which doesn't account for auction
+    // hiding. So for a hidden card its remaining stock was being counted twice:
+    // once as available, once as off-sale. Hidden stock is forced to zero
+    // available, with the whole remainder shown as off-sale instead.
+    const remaining = Math.max(csvStock - soldCounter, 0);
+    const offSale = hidden ? remaining : withheld;
+    const onSale = hidden ? 0 : available;
 
     // A recorded correction closes a gap that has a known, legitimate cause —
     // a test order, a written-off card, a CSV fixed by hand.
@@ -1914,6 +1918,7 @@ function buildSalesHistory(orders, listings) {
       //   stockGap   — sold + available vs the stock the CSV says was listed
       withheld,
       hidden,
+      onSale,
       pendingRelease,
       offSale,
       counterGap: qty - soldCounter,
@@ -1921,8 +1926,8 @@ function buildSalesHistory(orders, listings) {
       // left over is genuinely unaccounted for.
       adjustment,
       adjustDelta,
-      rawGap: soldCounter + available + offSale - csvStock,
-      stockGap: soldCounter + available + offSale + adjustDelta - csvStock,
+      rawGap: soldCounter + onSale + offSale - csvStock,
+      stockGap: soldCounter + onSale + offSale + adjustDelta - csvStock,
       revenue: c.sales.reduce((s, x) => s + x.price, 0),
       sales: c.sales.sort((a, b) => b.savedAt - a.savedAt),
     };
@@ -1996,9 +2001,9 @@ function renderSalesHistory() {
       return c.stockGap !== 0 || (c.counterGap !== 0 && !pre);
     });
   }
-  else if (filter === "soldout") shown = shown.filter(c => c.available <= 0);
-  else if (filter === "instock") shown = shown.filter(c => c.available > 0);
-  else shown = shown.filter(c => c.qty > 0 || c.available > 0);
+  else if (filter === "soldout") shown = shown.filter(c => c.onSale <= 0);
+  else if (filter === "instock") shown = shown.filter(c => c.onSale > 0);
+  else shown = shown.filter(c => c.qty > 0 || c.onSale > 0 || c.offSale > 0);
 
   if (term) {
     shown = shown.filter(c =>
@@ -2006,7 +2011,7 @@ function renderSalesHistory() {
   }
 
   const totalSold = shown.reduce((s, c) => s + c.qty, 0);
-  const totalAvail = shown.reduce((s, c) => s + c.available, 0);
+  const totalAvail = shown.reduce((s, c) => s + c.onSale, 0);
   const totalRevenue = shown.reduce((s, c) => s + c.revenue, 0);
   const backfillStr = document.getElementById("historyBackfill").value;
   const backfillTs = backfillStr ? Date.parse(backfillStr + "T00:00:00Z") - 8 * 3600000 : null;
@@ -2038,7 +2043,7 @@ function renderSalesHistory() {
     ? PICK_GROUPS.filter(g => grouped.has(g.rank)).map(g => {
         const list = grouped.get(g.rank).sort((a, b) => a.cardId.localeCompare(b.cardId));
         const sold = list.reduce((s, c) => s + c.qty, 0);
-        const avail = list.reduce((s, c) => s + c.available, 0);
+        const avail = list.reduce((s, c) => s + c.onSale, 0);
         return `
           <div class="pick-group">
             <div class="pick-group-head" style="background:${g.colour};">
@@ -2072,14 +2077,14 @@ function renderSalesHistory() {
                     <div class="audit-row">
                       <span class="audit-cell"><strong>${c.soldCounter}</strong><span>sold</span></span>
                       <span class="audit-op">+</span>
-                      <span class="audit-cell"><strong>${c.available}</strong><span>on sale</span></span>
+                      <span class="audit-cell"><strong>${c.onSale}</strong><span>on sale</span></span>
                       ${c.offSale ? `
                         <span class="audit-op">+</span>
                         <span class="audit-cell audit-held"><strong>${c.offSale}</strong><span>${
                           c.hidden ? "hidden" : "not released"
                         }</span></span>` : ""}
                       <span class="audit-op">=</span>
-                      <span class="audit-cell audit-total"><strong>${c.soldCounter + c.available + c.offSale}</strong><span>of ${c.csvStock} in CSV</span></span>
+                      <span class="audit-cell audit-total"><strong>${c.soldCounter + c.onSale + c.offSale}</strong><span>of ${c.csvStock} in CSV</span></span>
                     </div>
                     ${preTracking ? `<div class="audit-note audit-pre">
                       ${Math.abs(c.counterGap)} sale(s) before order records began — counted, not stored.
