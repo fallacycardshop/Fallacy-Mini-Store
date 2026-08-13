@@ -2506,6 +2506,18 @@ function showStockConflict(unavailable) {
       return;
     }
 
+    // CRITICAL: recompute the money before re-entering checkout.
+    //
+    // currentSubtotal is only recalculated inside renderCart, so trimming the
+    // cart and going straight back to checkout captured the PRE-TRIM subtotal —
+    // the PayNow screen then showed a total for cards that had just been
+    // removed. Same fault as the reconcile path, different route in.
+    currentSubtotal = Object.values(cart).reduce(
+      (sum, { product, quantity }) => sum + Number(product.price || 0) * quantity,
+      0
+    );
+    updateTotals();
+
     trackEvent("stock_conflict_resolved", { mode });
     // Straight back into checkout with the corrected cart.
     checkoutButtonEl.click();
