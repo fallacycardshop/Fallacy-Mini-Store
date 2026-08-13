@@ -100,6 +100,15 @@ export default async function handler(req, res) {
     const firstSlotAt = requestedStart !== null && requestedStart > now ? requestedStart : null;
     const startRejected = Boolean(startAt) && firstSlotAt === null;
 
+    // Sold counters, fetched once so describe() can report release quantities
+    // on the same basis as the audit. One MGET regardless of catalogue size.
+    const allGroupKeys = Array.from(groups.keys());
+    const soldByKey = {};
+    if (allGroupKeys.length > 0) {
+      const soldVals = await redis.mget(...allGroupKeys.map(k => `sold:${k}`));
+      allGroupKeys.forEach((k, i) => { soldByKey[k] = Number(soldVals[i]) || 0; });
+    }
+
     const describe = groupKey => {
       const group = groups.get(groupKey);
       return {
@@ -123,28 +132,24 @@ export default async function handler(req, res) {
         // has, while a restock only publishes the increase. The presence of a
         // pendingAt alone doesn't distinguish them — an unreleased listing can
         // carry one too — so release state is checked first.
+        // Copies this release will actually put on sale.
+        //
+        // Measured the SAME way as the audit's "not released" figure, against
+        // stock already accounted for — sold, plus whatever is on sale now.
+        // Counting csvStock - published instead overstated it whenever sold
+        // exceeded published, and the two screens disagreed.
+        //
+        // The sold counter isn't fetched in this helper, so it's read from the
+        // levels entry where available and treated as 0 otherwise — the same
+        // basis the audit uses.
         releaseQty: (() => {
           if (!group) return 0;
           const level = state.levels[groupKey];
           const released = isListingReleased(state, groupKey, now);
-
-          // Never released: the whole listing goes live at its moment.
-          if (!released) return group.baseStock;
-
-          // Live already, with a queued increase.
-          //
-          // The increase is measured against the CURRENT CSV stock, not the
-          // figure captured when the restock was queued. Raising the CSV after
-          // scheduling left pendingStock frozen at the old number, so the badge
-          // understated the release and the release itself published too few.
-          if (level && level.pendingAt !== null && level.pendingAt > now) {
-            return Math.max(group.baseStock - level.published, 0);
-          }
-
-          // Live with unpublished stock (a detected but unscheduled restock).
-          if (level) return Math.max(group.baseStock - level.published, 0);
-
-          return group.baseStock;
+          const soldCount = Number(soldByKey && soldByKey[groupKey]) || 0;
+          const published = level ? level.published : group.baseStock;
+          const onSale = released ? Math.max(published - soldCount, 0) : 0;
+          return Math.max(group.baseStock - soldCount - onSale, 0);
         })(),
       };
     };
