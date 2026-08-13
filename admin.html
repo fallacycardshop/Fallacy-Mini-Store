@@ -496,6 +496,25 @@
   .audit-total { background: #eef4fb; }
   .audit-total strong { color: #2c5b8f; }
   .audit-op { font-size: 15px; font-weight: 800; color: #bbb; }
+  .audit-note {
+    background: #eaf6f0;
+    border-radius: 7px;
+    padding: 6px 9px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #1e6b4a;
+    margin-bottom: 5px;
+  }
+  .audit-fix {
+    width: auto;
+    margin: 0 0 6px;
+    padding: 5px 12px;
+    font-size: 11px;
+    min-height: 0;
+    background: #7d94a8;
+    border-radius: 7px;
+  }
+
   .audit-warn {
     background: #fdeceb;
     border-radius: 7px;
@@ -1864,6 +1883,11 @@ function buildSalesHistory(orders, listings) {
       ? Math.max(csvStock - soldCounter, 0)
       : withheld;
 
+    // A recorded correction closes a gap that has a known, legitimate cause —
+    // a test order, a written-off card, a CSV fixed by hand.
+    const adjustment = l.adjustment || null;
+    const adjustDelta = adjustment ? Number(adjustment.delta) || 0 : 0;
+
     return {
       ...c,
       groupKey: key,
@@ -1887,7 +1911,10 @@ function buildSalesHistory(orders, listings) {
       counterGap: qty - soldCounter,
       // sold + on sale + off sale should equal what the CSV lists. Anything
       // left over is genuinely unaccounted for.
-      stockGap: soldCounter + available + offSale - csvStock,
+      adjustment,
+      adjustDelta,
+      rawGap: soldCounter + available + offSale - csvStock,
+      stockGap: soldCounter + available + offSale + adjustDelta - csvStock,
       revenue: c.sales.reduce((s, x) => s + x.price, 0),
       sales: c.sales.sort((a, b) => b.savedAt - a.savedAt),
     };
@@ -2009,10 +2036,19 @@ function renderSalesHistory() {
                       <span class="audit-op">=</span>
                       <span class="audit-cell audit-total"><strong>${c.soldCounter + c.available + c.offSale}</strong><span>of ${c.csvStock} listed</span></span>
                     </div>
+                    ${c.adjustment ? `<div class="audit-note">
+                      Corrected by ${c.adjustDelta > 0 ? "+" : ""}${c.adjustDelta}:
+                      ${escapeHtml(c.adjustment.reason)}
+                    </div>` : ""}
                     ${bad ? `<div class="audit-warn">
                       ${c.stockGap !== 0 ? `Stock is out by ${c.stockGap > 0 ? "+" : ""}${c.stockGap}. ` : ""}
                       ${c.counterGap !== 0 ? `${Math.abs(c.counterGap)} sale(s) ${c.counterGap > 0 ? "recorded in orders but not counted" : "counted but missing from orders"}.` : ""}
                     </div>` : ""}
+                    ${(bad || c.adjustment) ? `
+                      <button type="button" class="audit-fix" data-fix-key="${escapeHtml(c.groupKey)}"
+                        data-fix-gap="${c.rawGap}" data-fix-name="${escapeHtml(c.name)}">
+                        ${c.adjustment ? "Edit correction" : "Record a correction"}
+                      </button>` : ""}
                     ${c.sales.length ? `<div class="hist-sales">
                       ${c.sales.slice(0, 6).map(sale => `
                         <div class="hist-sale">
@@ -2050,6 +2086,61 @@ function renderSalesHistory() {
       renderSalesHistory();
     };
   }
+
+  // Recording a correction. The suggested delta is whatever closes the gap, so
+  // the common case is one confirmation plus a reason.
+  report.querySelectorAll("[data-fix-key]").forEach(btn => {
+    btn.onclick = async () => {
+      const key = btn.dataset.fixKey;
+      const gap = Number(btn.dataset.fixGap) || 0;
+      const suggested = -gap;
+
+      const deltaStr = prompt(
+        `Correction for ${btn.dataset.fixName}\n\n` +
+        `The count is out by ${gap > 0 ? "+" : ""}${gap}. ` +
+        `Enter the adjustment to balance it (0 removes an existing correction):`,
+        String(suggested)
+      );
+      if (deltaStr === null) return;
+
+      const delta = Number(deltaStr);
+      if (!Number.isFinite(delta) || Math.floor(delta) !== delta) {
+        alert("The adjustment must be a whole number.");
+        return;
+      }
+
+      let reason = "";
+      if (delta !== 0) {
+        reason = prompt(
+          "Why? This is kept with the correction so the discrepancy stays explained.\n\n" +
+          "e.g. test order, card written off, CSV corrected by hand",
+          ""
+        ) || "";
+        if (!reason.trim()) {
+          alert("A reason is required.");
+          return;
+        }
+      }
+
+      const passKey = document.getElementById("historyPassphrase").value.trim();
+      try {
+        const res = await fetch("/api/drip", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: passKey, action: "auditAdjust", groupKey: key, delta, reason }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          alert(data.error || `Couldn't save (HTTP ${res.status}).`);
+          return;
+        }
+        // Reload so the totals and the balanced/unbalanced counts are right.
+        document.getElementById("historyLoadButton").click();
+      } catch (e) {
+        alert("Network error — please try again.");
+      }
+    };
+  });
 
   report.querySelectorAll("[data-audit-key]").forEach(row => {
     const box = row.querySelector(".audit-tick input");
