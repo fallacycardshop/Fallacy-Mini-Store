@@ -1185,10 +1185,11 @@
     </div>
   </div>
   <input type="text" id="restockSearch" placeholder="Search name, Card ID or set — e.g. &quot;charizard&quot; or &quot;SV3A&quot;" autocomplete="off">
-  <div class="button-row">
-    <button id="restockLoadButton">Load Restocking Report</button>
-    <button id="planJumpButton" type="button" class="btn-neutral">Jump to plan &darr;</button>
-  </div>
+  <label class="field-label">Set category</label>
+  <select id="restockGroup">
+    <option value="">All categories</option>
+  </select>
+  <button id="restockLoadButton">Load Restocking Report</button>
   <p id="restockResultText"></p>
   <div id="restockReport"></div>
 
@@ -3113,6 +3114,12 @@ function renderRestockReport() {
       `${r.name} ${r.cardId} ${r.set} ${r.rarity} ${r.condition}`.toLowerCase().includes(term));
   }
 
+  // Same set grouping as the picking list, so the categories line up.
+  const groupRank = document.getElementById("restockGroup").value;
+  if (groupRank !== "") {
+    shown = shown.filter(r => pickRank(r.cardId) === Number(groupRank));
+  }
+
   const sorters = {
     score: (a, b) => b.score - a.score,
     units: (a, b) => b.sold - a.sold,
@@ -3181,7 +3188,7 @@ function renderRestockReport() {
     : '<p class="muted">Nothing matches that search.</p>';
 }
 
-["restockFilter", "restockSort", "restockSearch"].forEach(id => {
+["restockFilter", "restockSort", "restockSearch", "restockGroup"].forEach(id => {
   const el = document.getElementById(id);
   const handler = () => { if (window.__restockRows) renderRestockReport(); };
   el.onchange = handler;
@@ -3586,6 +3593,18 @@ document.getElementById("restockLoadButton").onclick = async () => {
     const ordersData = ordersRes && ordersRes.ok
       ? await ordersRes.json().catch(() => ({ orders: [] }))
       : { orders: [] };
+
+    // Category options come from PICK_GROUPS, so they match the picking list and
+    // the audit — one set order across the whole admin page.
+    const groupSel = document.getElementById("restockGroup");
+    if (groupSel.options.length <= 1) {
+      PICK_GROUPS.forEach(g => {
+        const opt = document.createElement("option");
+        opt.value = String(g.rank);
+        opt.textContent = g.label;
+        groupSel.appendChild(opt);
+      });
+    }
 
     window.__restockRows = buildRestockRows(
       dripData.listings || [],
