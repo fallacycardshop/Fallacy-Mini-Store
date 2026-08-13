@@ -18,6 +18,12 @@ const redis = Redis.fromEnv();
 // One hash: groupKey -> how many times that listing has been restocked.
 const RESTOCK_COUNTS_KEY = "restock:counts";
 
+// Manual audit corrections: one hash, groupKey -> { delta, reason, at, by }.
+// A test order, a card written off, a CSV fixed by hand — anything that makes
+// the arithmetic legitimately not balance. Stored with a reason so a
+// discrepancy is explained rather than silently zeroed out.
+const AUDIT_ADJUST_KEY = "audit:adjustments";
+
 // Actions:
 //   status     — config + what's live, new, and pending
 //   initialize — mark everything currently in the CSV as already released
@@ -463,6 +469,39 @@ export default async function handler(req, res) {
     // Everything needed to decide what to buy again, in one request:
     // every listing with its live stock, lifetime sales, release date and
     // restock count. Sold counts come back in a single MGET.
+    // ------------------------------------------------------ auditAdjustment --
+    if (action === "auditAdjust") {
+      const { groupKey, delta, reason } = req.body || {};
+      if (!groupKey) {
+        return res.status(400).json({ error: "No listing specified." });
+      }
+
+      const n = Number(delta);
+      if (!Number.isFinite(n) || Math.floor(n) !== n) {
+        return res.status(400).json({ error: "Adjustment must be a whole number." });
+      }
+
+      // A zero adjustment clears the note entirely.
+      if (n === 0) {
+        await redis.hdel(AUDIT_ADJUST_KEY, groupKey);
+        return res.status(200).json({ ok: true, cleared: true });
+      }
+
+      if (!String(reason || "").trim()) {
+        return res.status(400).json({ error: "Please give a reason for the correction." });
+      }
+
+      await redis.hset(AUDIT_ADJUST_KEY, {
+        [groupKey]: JSON.stringify({
+          delta: n,
+          reason: String(reason).trim().slice(0, 200),
+          at: Date.now(),
+        }),
+      });
+
+      return res.status(200).json({ ok: true, groupKey, delta: n });
+    }
+
     if (action === "restockReport") {
       const allKeys = Array.from(groups.keys());
       const soldValues = allKeys.length ? await redis.mget(...allKeys.map(k => `sold:${k}`)) : [];
@@ -470,6 +509,7 @@ export default async function handler(req, res) {
       // Auction-hidden cards read as zero available, which an audit would
       // otherwise treat as stock gone missing. Reported so it can be excluded.
       const hiddenIds = await getHiddenCardIds(redis);
+      const adjustRaw = (await redis.hgetall(AUDIT_ADJUST_KEY)) || {};
 
       const listings = allKeys.map((groupKey, i) => {
         const group = groups.get(groupKey);
@@ -499,6 +539,15 @@ export default async function handler(req, res) {
           // Why a listing isn't currently buyable, so an audit can account for
           // it rather than flagging it as missing stock:
           hidden: hiddenIds.has(normaliseCardId(group.cardId)),
+          adjustment: (() => {
+            const raw = adjustRaw[groupKey];
+            if (!raw) return null;
+            try {
+              return typeof raw === "string" ? JSON.parse(raw) : raw;
+            } catch (e) {
+              return null;
+            }
+          })(),
           // Stock held back by the drip — scheduled but not yet published.
           withheld: Math.max(group.baseStock - published, 0),
           pendingRelease: !released,
