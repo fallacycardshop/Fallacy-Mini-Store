@@ -1129,6 +1129,14 @@ try {
 const productListEl = document.getElementById("productList");
 const cartListEl = document.getElementById("cartList");
 const cartButtonEl = document.getElementById("cartButton");
+
+// Hiding the nudge must not depend on showCartNudge having run — it returns
+// early when the cart is empty, so a closure assigned inside it was sometimes
+// never set and the bubble stayed on screen.
+function hideCartNudge() {
+  const el = document.getElementById("cartNudge");
+  if (el) el.style.display = "none";
+}
 const productsScreenEl = document.getElementById("productsScreen");
 const cartScreenEl = document.getElementById("cartScreen");
 const paynowScreenEl = document.getElementById("paynowScreen");
@@ -2269,7 +2277,12 @@ function renderCart() {
 
       const item = document.createElement("div");
       item.className = "cart-item";
-      const stockLeft = stock - quantity;
+      // `stock` is already reservation-aware, so if someone else reserves the
+      // last copy while this one sits in the cart it can fall below the
+      // quantity held here — which showed as "-1 left". Clamped, and the
+      // shortfall is called out instead, since that's the useful signal.
+      const stockLeft = Math.max(stock - quantity, 0);
+      const shortfall = Math.max(quantity - stock, 0);
 
       item.innerHTML = `
         <div class="photo-wrap">
@@ -2278,12 +2291,16 @@ function renderCart() {
         </div>
         <div class="cart-info">
           <div class="product-name">${product.name}</div>
+          <div class="product-meta">${product.description || ""}</div>
           <div class="product-price">$${price.toFixed(2)} × ${quantity}</div>
-          <div class="product-meta">Stock left: ${stockLeft}</div>
           ${
-            stockLeft <= 1
-              ? '<div class="stock-warning">Only ' + stockLeft + ' left!</div>'
-              : ""
+            shortfall > 0
+              ? `<div class="stock-warning">Only ${stock} available now — please reduce this item.</div>`
+              : stockLeft === 0
+                ? '<div class="stock-warning">Last one — it\'s in your cart</div>'
+                : stockLeft === 1
+                  ? '<div class="stock-warning">Only 1 more left</div>'
+                  : `<div class="product-meta">${stockLeft} more available</div>`
           }
         </div>
         <div class="cart-actions">
@@ -2337,6 +2354,7 @@ function showProducts() {
 
 function showCart() {
   trackEvent("view_cart", { items: cartItemCount() });
+  hideCartNudge();
   currentScreen = "cart";
   productsScreenEl.style.display = "none";
   cartScreenEl.style.display = "block";
@@ -2352,6 +2370,7 @@ function showCart() {
 }
 
 function showPayNow() {
+  hideCartNudge();
   currentScreen = "paynow";
   productsScreenEl.style.display = "none";
   cartScreenEl.style.display = "none";
@@ -3078,7 +3097,7 @@ function showCartNudge() {
 
   trackEvent("cart_nudge_shown", { items: count });
 
-  const dismiss = () => { nudgeEl.style.display = "none"; };
+  const dismiss = hideCartNudge;
   document.getElementById("cartNudgeClose").onclick = dismiss;
   nudgeEl.onclick = e => {
     if (e.target.id === "cartNudgeClose") return;
