@@ -8,6 +8,7 @@ import {
   isListingReleased,
   isListingNew,
   getEffectiveStock,
+  getHiddenCardIds,
   normaliseCardId,
   DEFAULT_DRIP_CONFIG,
 } from "./_inventory.js";
@@ -466,6 +467,9 @@ export default async function handler(req, res) {
       const allKeys = Array.from(groups.keys());
       const soldValues = allKeys.length ? await redis.mget(...allKeys.map(k => `sold:${k}`)) : [];
       const restockCounts = (await redis.hgetall(RESTOCK_COUNTS_KEY)) || {};
+      // Auction-hidden cards read as zero available, which an audit would
+      // otherwise treat as stock gone missing. Reported so it can be excluded.
+      const hiddenIds = await getHiddenCardIds(redis);
 
       const listings = allKeys.map((groupKey, i) => {
         const group = groups.get(groupKey);
@@ -492,6 +496,12 @@ export default async function handler(req, res) {
           released,
           releaseAt,
           restocks: Number(restockCounts[groupKey]) || 0,
+          // Why a listing isn't currently buyable, so an audit can account for
+          // it rather than flagging it as missing stock:
+          hidden: hiddenIds.has(normaliseCardId(group.cardId)),
+          // Stock held back by the drip — scheduled but not yet published.
+          withheld: Math.max(group.baseStock - published, 0),
+          pendingRelease: !released,
         };
       });
 
