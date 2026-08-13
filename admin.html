@@ -426,6 +426,64 @@
   .rs-gone strong { color: #c0392b; }
 
   .hist-card { border-top: 1px solid #eee; padding: 10px 0; }
+  .audit-tick { flex: 0 0 auto; display: flex; align-items: center; padding-top: 4px; }
+  .audit-tick input { width: 20px; height: 20px; margin: 0; }
+  .hist-audited { opacity: 0.42; }
+  .audit-progress {
+    position: sticky;
+    top: 46px;
+    z-index: 4;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #eef4fb;
+    border: 1px solid #cfe0f2;
+    border-radius: 9px;
+    padding: 8px 11px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #2c5b8f;
+  }
+  .audit-progress button {
+    width: auto;
+    margin: 0;
+    padding: 4px 11px;
+    font-size: 11px;
+    min-height: 0;
+    background: #7d94a8;
+    border-radius: 6px;
+  }
+
+  .hist-bad { background: #fffaf0; border-left: 3px solid #e8590c; padding-left: 8px; }
+  .audit-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 7px 0 4px;
+    flex-wrap: wrap;
+  }
+  .audit-cell {
+    background: #faf5f8;
+    border-radius: 7px;
+    padding: 5px 10px;
+    text-align: center;
+    line-height: 1.15;
+  }
+  .audit-cell strong { display: block; font-size: 16px; color: #a8305f; }
+  .audit-cell span { font-size: 10px; color: #888; }
+  .audit-total { background: #eef4fb; }
+  .audit-total strong { color: #2c5b8f; }
+  .audit-op { font-size: 15px; font-weight: 800; color: #bbb; }
+  .audit-warn {
+    background: #fdeceb;
+    border-radius: 7px;
+    padding: 6px 9px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #b3352b;
+    margin-bottom: 5px;
+  }
   .hist-card:first-child { border-top: none; }
   .hist-head { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; font-weight: 700; }
   .hist-sub { font-size: 11px; color: #888; margin: 2px 0 6px; }
@@ -1050,12 +1108,32 @@
 <div class="card">
   <h1>Sales History</h1>
   <p>
-    Every card sold, with the date, condition and the price it actually went for
-    (after any discount). Built from stored orders, so it covers sales from when
-    order backup went live &mdash; the raw sold counters carry no dates.
+    An inventory audit: for every listing, how many sold against how many are
+    still on the store. <strong>Sold + available should equal the CSV stock</strong> &mdash;
+    anything that doesn&rsquo;t balance is flagged, which is usually a packing or
+    stock-entry error worth checking before it compounds.
   </p>
   <input type="password" id="historyPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
-  <input type="text" id="historySearch" placeholder="Filter by card name, Card ID or set" autocomplete="off">
+  <input type="text" id="historySearch" placeholder="Search name, Card ID or set" autocomplete="off">
+  <div class="field-row">
+    <div>
+      <label class="field-label">Show</label>
+      <select id="historyFilter">
+        <option value="all">Everything that has sold</option>
+        <option value="mismatch">Only mismatches</option>
+        <option value="soldout">Sold out</option>
+        <option value="instock">Still in stock</option>
+      </select>
+    </div>
+    <div>
+      <label class="field-label">Sold since (optional)</label>
+      <input type="date" id="historyFrom">
+    </div>
+  </div>
+  <p class="config-note">
+    The date filter narrows the <strong>sales</strong> shown; stock figures are always
+    current, so leave it blank when auditing totals.
+  </p>
   <button id="historyLoadButton">Load Sales History</button>
   <p id="historyResultText"></p>
   <div id="historyReport"></div>
@@ -1690,7 +1768,7 @@ function renderOrderCard(index, kind) {
 // The A–C and F–H paste blocks are row-aligned, one row per physical card, so
 // zipping them gives date + CardID + condition + the actual price paid.
 // ---------------------------------------------------------------------------
-function buildSalesHistory(orders) {
+function buildSalesHistory(orders, listings) {
   const byCard = new Map();
 
   orders.forEach(entry => {
@@ -1731,55 +1809,231 @@ function buildSalesHistory(orders) {
     });
   });
 
-  return Array.from(byCard.values())
-    .map(c => ({
+  // Live stock, keyed the same way, so sold and available sit side by side.
+  const stock = new Map();
+  (listings || []).forEach(l => stock.set(l.groupKey, l));
+
+  // Listings that have stock but no recorded sales still belong in an audit —
+  // otherwise a card mis-entered as sold would simply be absent.
+  const keys = new Set([...byCard.keys(), ...stock.keys()]);
+
+  return Array.from(keys).map(key => {
+    const c = byCard.get(key) || {
+      cardId: key.split("::")[0],
+      condition: key.split("::")[1] || "",
+      name: key,
+      meta: "",
+      sales: [],
+    };
+    const l = stock.get(key) || {};
+
+    const qty = c.sales.length;
+    const available = Number(l.available) || 0;
+    const csvStock = Number(l.csvStock) || 0;
+    const soldCounter = Number(l.sold) || 0;
+
+    return {
       ...c,
-      qty: c.sales.length,
+      groupKey: key,
+      name: l.name || c.name,
+      set: l.set || "",
+      rarity: l.rarity || "",
+      photo: l.photo || "",
+      price: Number(l.price) || 0,
+      qty,
+      soldCounter,
+      available,
+      csvStock,
+      published: Number(l.published) || 0,
+      // Two independent checks:
+      //   counterGap — orders on record vs the sold counter in Redis
+      //   stockGap   — sold + available vs the stock the CSV says was listed
+      counterGap: qty - soldCounter,
+      stockGap: soldCounter + available - csvStock,
       revenue: c.sales.reduce((s, x) => s + x.price, 0),
       sales: c.sales.sort((a, b) => b.savedAt - a.savedAt),
-    }))
-    .sort((a, b) => b.qty - a.qty || b.revenue - a.revenue);
+    };
+  });
 }
+
+// Cards ticked off during a stock count. Kept in localStorage so a count can
+// span several sittings without losing your place — the whole point of an audit
+// on 450 listings is that you won't finish it in one go.
+const AUDIT_KEY = "fallacy_audited_cards";
+
+function loadAudited() {
+  try {
+    const raw = localStorage.getItem(AUDIT_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch (e) {
+    return new Set();
+  }
+}
+
+function saveAudited(set) {
+  try {
+    localStorage.setItem(AUDIT_KEY, JSON.stringify([...set]));
+  } catch (e) {
+    /* storage unavailable — ticks last for this visit only */
+  }
+}
+
+let auditedCards = loadAudited();
 
 function renderSalesHistory() {
   const cards = window.__salesHistory || [];
   const term = document.getElementById("historySearch").value.trim().toLowerCase();
-  const shown = term
-    ? cards.filter(c =>
-        `${c.name} ${c.cardId} ${c.meta} ${c.condition}`.toLowerCase().includes(term))
-    : cards;
+  const filter = document.getElementById("historyFilter").value;
+  const fromStr = document.getElementById("historyFrom").value;
+  const fromTs = fromStr ? Date.parse(fromStr + "T00:00:00Z") - 8 * 3600000 : null;
 
-  const totalCards = shown.reduce((s, c) => s + c.qty, 0);
+  let shown = cards.slice();
+
+  // The date filter narrows SALES, not stock — so a card with no sales in the
+  // window still shows its stock position rather than vanishing.
+  if (fromTs) {
+    shown = shown.map(c => {
+      const sales = c.sales.filter(x => x.savedAt >= fromTs);
+      return { ...c, sales, qty: sales.length,
+               revenue: sales.reduce((s, x) => s + x.price, 0) };
+    }).filter(c => c.qty > 0);
+  }
+
+  if (filter === "mismatch") shown = shown.filter(c => c.stockGap !== 0 || c.counterGap !== 0);
+  else if (filter === "soldout") shown = shown.filter(c => c.available <= 0);
+  else if (filter === "instock") shown = shown.filter(c => c.available > 0);
+  else shown = shown.filter(c => c.qty > 0 || c.available > 0);
+
+  if (term) {
+    shown = shown.filter(c =>
+      `${c.name} ${c.cardId} ${c.set} ${c.rarity} ${c.condition}`.toLowerCase().includes(term));
+  }
+
+  const totalSold = shown.reduce((s, c) => s + c.qty, 0);
+  const totalAvail = shown.reduce((s, c) => s + c.available, 0);
   const totalRevenue = shown.reduce((s, c) => s + c.revenue, 0);
+  const mismatches = shown.filter(c => c.stockGap !== 0 || c.counterGap !== 0);
 
-  document.getElementById("historyResultText").textContent =
-    `${shown.length} listing(s) · ${totalCards} card(s) sold · $${totalRevenue.toFixed(2)}`;
-  document.getElementById("historyResultText").className = "success";
+  const resultEl = document.getElementById("historyResultText");
+  resultEl.textContent =
+    `${shown.length} listing(s) · ${totalSold} sold · ${totalAvail} still available · ` +
+    `$${totalRevenue.toFixed(2)}` +
+    (mismatches.length ? ` · ⚠ ${mismatches.length} not balancing` : " · all balanced");
+  resultEl.className = mismatches.length ? "error" : "success";
+
+  // Grouped by set, in the same physical order as the picking list, so an audit
+  // walks the boxes in the order they're stored.
+  const grouped = new Map();
+  shown.forEach(c => {
+    const rank = pickRank(c.cardId);
+    if (!grouped.has(rank)) grouped.set(rank, []);
+    grouped.get(rank).push(c);
+  });
 
   document.getElementById("historyReport").innerHTML = shown.length
-    ? shown.map(c => `
-        <div class="hist-card">
-          <div class="hist-head">
-            <span>${escapeHtml(c.name)}</span>
-            <span>${c.qty}× · $${c.revenue.toFixed(2)}</span>
-          </div>
-          <div class="hist-sub">
-            ${escapeHtml(c.cardId)} · ${escapeHtml(c.condition)}${c.meta ? " · " + escapeHtml(c.meta) : ""}
-          </div>
-          <div class="hist-sales">
-            ${c.sales.map(sale => `
-              <div class="hist-sale">
-                <span>${escapeHtml(sale.date)}${sale.buyer ? " · " + escapeHtml(sale.buyer) : ""}</span>
-                <span>$${sale.price.toFixed(2)}</span>
-              </div>`).join("")}
-          </div>
-        </div>`).join("")
-    : '<p class="muted">No sales match that filter.</p>';
+    ? PICK_GROUPS.filter(g => grouped.has(g.rank)).map(g => {
+        const list = grouped.get(g.rank).sort((a, b) => a.cardId.localeCompare(b.cardId));
+        const sold = list.reduce((s, c) => s + c.qty, 0);
+        const avail = list.reduce((s, c) => s + c.available, 0);
+        return `
+          <div class="pick-group">
+            <div class="pick-group-head" style="background:${g.colour};">
+              <span>${g.label}</span><span>${sold} sold · ${avail} left</span>
+            </div>
+            ${list.map(c => {
+              const bad = c.stockGap !== 0 || c.counterGap !== 0;
+              return `
+              <div class="hist-card${bad ? " hist-bad" : ""}${auditedCards.has(c.groupKey) ? " hist-audited" : ""}"
+                   data-audit-key="${escapeHtml(c.groupKey)}">
+                <div class="rs-row-flex">
+                  <label class="audit-tick" title="Mark as counted">
+                    <input type="checkbox" ${auditedCards.has(c.groupKey) ? "checked" : ""}>
+                  </label>
+                  ${pickThumbHtml(c.photo)}
+                  <div class="rs-main">
+                    <div class="hist-head">
+                      <span>${escapeHtml(c.name)}</span>
+                      <span>${conditionChip(c.condition)}</span>
+                    </div>
+                    <div class="hist-sub">
+                      ${escapeHtml(c.cardId)}${c.set ? " · " + escapeHtml(c.set) : ""}
+                      ${c.price ? " · $" + c.price.toFixed(2) : ""}
+                    </div>
+                    <div class="audit-row">
+                      <span class="audit-cell"><strong>${c.qty}</strong><span>sold</span></span>
+                      <span class="audit-op">+</span>
+                      <span class="audit-cell"><strong>${c.available}</strong><span>available</span></span>
+                      <span class="audit-op">=</span>
+                      <span class="audit-cell audit-total"><strong>${c.qty + c.available}</strong><span>of ${c.csvStock} listed</span></span>
+                    </div>
+                    ${bad ? `<div class="audit-warn">
+                      ${c.stockGap !== 0 ? `Stock is out by ${c.stockGap > 0 ? "+" : ""}${c.stockGap}. ` : ""}
+                      ${c.counterGap !== 0 ? `${Math.abs(c.counterGap)} sale(s) ${c.counterGap > 0 ? "recorded in orders but not counted" : "counted but missing from orders"}.` : ""}
+                    </div>` : ""}
+                    ${c.sales.length ? `<div class="hist-sales">
+                      ${c.sales.slice(0, 6).map(sale => `
+                        <div class="hist-sale">
+                          <span>${escapeHtml(sale.date)}${sale.buyer ? " · " + escapeHtml(sale.buyer) : ""}</span>
+                          <span>$${sale.price.toFixed(2)}</span>
+                        </div>`).join("")}
+                      ${c.sales.length > 6 ? `<div class="muted">…and ${c.sales.length - 6} more</div>` : ""}
+                    </div>` : ""}
+                  </div>
+                </div>
+              </div>`;
+            }).join("")}
+          </div>`;
+      }).join("")
+    : '<p class="muted">Nothing matches that filter.</p>';
+
+  // Progress banner and tick wiring.
+  const report = document.getElementById("historyReport");
+  const doneHere = shown.filter(c => auditedCards.has(c.groupKey)).length;
+
+  if (shown.length) {
+    const bar = document.createElement("div");
+    bar.className = "audit-progress";
+    bar.innerHTML = `
+      <span>Counted ${doneHere} of ${shown.length}</span>
+      <span>
+        <button type="button" data-audit-clear>Reset ticks</button>
+      </span>`;
+    report.insertBefore(bar, report.firstChild);
+
+    bar.querySelector("[data-audit-clear]").onclick = () => {
+      if (!confirm("Clear every tick and start the count again?")) return;
+      auditedCards = new Set();
+      saveAudited(auditedCards);
+      renderSalesHistory();
+    };
+  }
+
+  report.querySelectorAll("[data-audit-key]").forEach(row => {
+    const box = row.querySelector(".audit-tick input");
+    if (!box) return;
+    box.onchange = () => {
+      const key = row.dataset.auditKey;
+      if (box.checked) auditedCards.add(key);
+      else auditedCards.delete(key);
+      saveAudited(auditedCards);
+      // Update in place — re-rendering here would destroy the checkbox
+      // mid-event, the same fault the order checklists had.
+      row.classList.toggle("hist-audited", box.checked);
+      const label = report.querySelector(".audit-progress span");
+      if (label) {
+        const done = shown.filter(c => auditedCards.has(c.groupKey)).length;
+        label.textContent = `Counted ${done} of ${shown.length}`;
+      }
+    };
+  });
 }
 
-document.getElementById("historySearch").oninput = () => {
-  if (window.__salesHistory) renderSalesHistory();
-};
+["historySearch", "historyFilter", "historyFrom"].forEach(id => {
+  const el = document.getElementById(id);
+  const handler = () => { if (window.__salesHistory) renderSalesHistory(); };
+  el.oninput = handler;
+  el.onchange = handler;
+});
 
 // ---------------------------------------------------------------------------
 // Promo image generator
@@ -2713,18 +2967,34 @@ document.getElementById("restockLoadButton").onclick = async () => {
   resultEl.className = "";
 
   try {
-    const [dripRes, ordersRes] = await Promise.all([
-      fetch("/api/drip", {
+    // Fetched separately rather than with Promise.all: one rejection there took
+    // down both and surfaced as a bare "Network error", hiding which endpoint
+    // actually failed. Drip is required; orders are optional (they only add
+    // sale dates), so a failure there degrades rather than blocks.
+    let dripRes;
+    try {
+      dripRes = await fetch("/api/drip", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key, action: "restockReport" }),
-      }),
-      fetch("/api/orders", {
+      });
+    } catch (e) {
+      resultEl.textContent = `Couldn't reach /api/drip — ${e.message || "request failed"}.`;
+      resultEl.className = "error";
+      return;
+    }
+
+    let ordersRes = null;
+    try {
+      ordersRes = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key, limit: 300 }),
-      }),
-    ]);
+      });
+    } catch (e) {
+      // Sale dates unavailable — velocity and recency will be blank.
+      console.error("orders fetch failed:", e);
+    }
 
     const dripRaw = await dripRes.text();
     let dripData;
@@ -2743,7 +3013,9 @@ document.getElementById("restockLoadButton").onclick = async () => {
       return;
     }
 
-    const ordersData = ordersRes.ok ? await ordersRes.json().catch(() => ({ orders: [] })) : { orders: [] };
+    const ordersData = ordersRes && ordersRes.ok
+      ? await ordersRes.json().catch(() => ({ orders: [] }))
+      : { orders: [] };
 
     window.__restockRows = buildRestockRows(
       dripData.listings || [],
@@ -2752,7 +3024,10 @@ document.getElementById("restockLoadButton").onclick = async () => {
     );
     renderRestockReport();
   } catch (err) {
-    resultEl.textContent = "Network error — please try again.";
+    // Name the actual error rather than a generic message — a silent "network
+    // error" sent us chasing a deployed endpoint that was working fine.
+    console.error("Restock report failed:", err);
+    resultEl.textContent = `Couldn't build the report — ${err.message || "unexpected error"}.`;
     resultEl.className = "error";
   }
 };
@@ -2793,7 +3068,21 @@ document.getElementById("historyLoadButton").onclick = async () => {
       return;
     }
 
-    window.__salesHistory = buildSalesHistory(data.orders);
+    // Stock comes from the drip report; sales from the orders list. They're
+    // independent sources, which is exactly what makes reconciling them useful.
+    let listings = [];
+    try {
+      const dripRes = await fetch("/api/drip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, action: "restockReport" }),
+      });
+      if (dripRes.ok) listings = (await dripRes.json()).listings || [];
+    } catch (e) {
+      // Stock unavailable — sales still render, the audit columns read zero.
+    }
+
+    window.__salesHistory = buildSalesHistory(data.orders, listings);
     renderSalesHistory();
   } catch (err) {
     resultEl.textContent = "Network error — please try again.";
