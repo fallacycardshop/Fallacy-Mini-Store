@@ -214,6 +214,48 @@
 
   /* Deliberately a different colour from the white order blocks below, so the
      aggregate view is never mistaken for a single order. */
+  .order-check-wrap {
+    border: 1px solid #e9dfe6;
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-top: 14px;
+    background: #fff;
+  }
+  .order-check-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #a8305f;
+    margin-bottom: 6px;
+  }
+  .order-check-head button {
+    width: auto;
+    margin: 0;
+    padding: 4px 10px;
+    font-size: 11px;
+    min-height: 0;
+    background: #7d94a8;
+    border-radius: 6px;
+  }
+  .order-check {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 2px;
+    border-top: 1px solid #f4eef2;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .order-check:first-of-type { border-top: none; }
+  .order-check input { width: auto; margin: 0; flex: 0 0 auto; }
+  .order-check .oc-name { flex: 1; min-width: 0; font-weight: 600; }
+  .order-check .oc-time { color: #999; font-size: 12px; white-space: nowrap; }
+  .order-check .oc-total { font-weight: 700; color: #a8305f; white-space: nowrap; }
+  .order-check.off { opacity: 0.45; }
+
   .day-summary {
     background: linear-gradient(180deg, #eef4fb, #e6eef8);
     border: 1px solid #cfe0f2;
@@ -673,6 +715,7 @@
     <button id="ordersClearDate" class="btn-neutral">All dates</button>
   </div>
   <button id="ordersLoadButton">Load Recent Orders</button>
+  <div id="ordersChecklist"></div>
   <div id="ordersDaySummary"></div>
   <p id="ordersResultText"></p>
   <div id="ordersList"></div>
@@ -3403,26 +3446,95 @@ function renderDaySummary(orders, wantedDate) {
   });
 }
 
+// Orders excluded via the checklist. Held by order id rather than index, so a
+// date change doesn't silently shift which orders are ticked.
+const excludedOrders = new Set();
+
+function orderTimeLabel(savedAt) {
+  return new Date(savedAt + 8 * 3600000).toISOString().slice(11, 16);
+}
+
+// Checklist of every order in the date range, so a day can be narrowed to just
+// the orders you're working on. Both the day summary and the list below follow
+// the ticks.
+function renderOrdersChecklist(dateFiltered) {
+  const wrap = document.getElementById("ordersChecklist");
+  if (dateFiltered.length === 0) {
+    wrap.innerHTML = "";
+    return;
+  }
+
+  const included = dateFiltered.filter(e => !excludedOrders.has((e.record || {}).Order_ID));
+
+  wrap.innerHTML = `
+    <div class="order-check-wrap">
+      <div class="order-check-head">
+        <span>Include orders (${included.length} of ${dateFiltered.length})</span>
+        <span>
+          <button type="button" data-check-all>All</button>
+          <button type="button" data-check-none>None</button>
+        </span>
+      </div>
+      ${dateFiltered.map(e => {
+        const r = e.record || {};
+        const id = r.Order_ID || "";
+        const on = !excludedOrders.has(id);
+        return `
+          <label class="order-check${on ? "" : " off"}">
+            <input type="checkbox" data-order-id="${escapeHtml(id)}" ${on ? "checked" : ""}>
+            <span class="oc-time">${orderTimeLabel(e.savedAt)}</span>
+            <span class="oc-name">${escapeHtml(r.Telegram_Username || r.Buyer_Name || id)}</span>
+            <span class="oc-total">${escapeHtml(r.Total || "")}</span>
+          </label>`;
+      }).join("")}
+    </div>`;
+
+  wrap.querySelectorAll("input[data-order-id]").forEach(box => {
+    box.onchange = () => {
+      const id = box.dataset.orderId;
+      if (box.checked) excludedOrders.delete(id);
+      else excludedOrders.add(id);
+      renderOrders();
+    };
+  });
+
+  wrap.querySelector("[data-check-all]").onclick = () => {
+    dateFiltered.forEach(e => excludedOrders.delete((e.record || {}).Order_ID));
+    renderOrders();
+  };
+  wrap.querySelector("[data-check-none]").onclick = () => {
+    dateFiltered.forEach(e => excludedOrders.add((e.record || {}).Order_ID));
+    renderOrders();
+  };
+}
+
 function renderOrders() {
   const all = window.__allOrders || [];
   const wanted = document.getElementById("ordersDate").value;
-  const orders = wanted ? all.filter(e => orderDateKey(e.savedAt) === wanted) : all;
+  const dateFiltered = wanted ? all.filter(e => orderDateKey(e.savedAt) === wanted) : all;
+
+  renderOrdersChecklist(dateFiltered);
+
+  // Everything below — summary, copy blocks and the order list — uses the
+  // ticked subset, so the paste blocks match exactly what's on screen.
+  const orders = dateFiltered.filter(e => !excludedOrders.has((e.record || {}).Order_ID));
 
   window.__orderRecords = orders.map(e => e.record || {});
 
   if (orders.length === 0) {
-    ordersResultEl.textContent = wanted
-      ? `No orders on ${wanted}.`
-      : "No stored orders yet.";
-    ordersResultEl.className = "success";
+    ordersResultEl.textContent = dateFiltered.length
+      ? "No orders ticked — select at least one above."
+      : (wanted ? `No orders on ${wanted}.` : "No stored orders yet.");
+    ordersResultEl.className = dateFiltered.length ? "error" : "success";
     document.getElementById("ordersDaySummary").innerHTML = "";
     ordersListEl.innerHTML = "";
     return;
   }
 
-  ordersResultEl.textContent = wanted
-    ? `${orders.length} order(s) on ${wanted}.`
-    : `Showing the ${orders.length} most recent order(s).`;
+  const partial = orders.length !== dateFiltered.length;
+  ordersResultEl.textContent =
+    (wanted ? `${orders.length} order(s) on ${wanted}` : `Showing ${orders.length} order(s)`) +
+    (partial ? ` — ${dateFiltered.length - orders.length} excluded.` : ".");
   ordersResultEl.className = "success";
 
   renderDaySummary(orders, wanted);
