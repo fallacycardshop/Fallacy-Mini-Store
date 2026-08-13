@@ -1185,10 +1185,25 @@
     </div>
   </div>
   <input type="text" id="restockSearch" placeholder="Search name, Card ID or set — e.g. &quot;charizard&quot; or &quot;SV3A&quot;" autocomplete="off">
-  <label class="field-label">Set category</label>
-  <select id="restockGroup">
-    <option value="">All categories</option>
-  </select>
+  <div class="field-row">
+    <div>
+      <label class="field-label">How it sells</label>
+      <select id="restockVerdict">
+        <option value="">Any</option>
+        <option value="fast">Sells same day</option>
+        <option value="good">Sells in days</option>
+        <option value="ok">Steady</option>
+        <option value="slow">Slow mover</option>
+        <option value="thin">Only sold once</option>
+      </select>
+    </div>
+    <div>
+      <label class="field-label">Set category</label>
+      <select id="restockGroup">
+        <option value="">All sets</option>
+      </select>
+    </div>
+  </div>
   <button id="restockLoadButton">Load Restocking Report</button>
   <p id="restockResultText"></p>
   <div id="restockReport"></div>
@@ -3099,6 +3114,30 @@ function buildRestockRows(listings, orders, now) {
   });
 }
 
+// One definition of the verdict, so the badge and the filter can't drift apart.
+//
+// "Only sold once" overrides the speed bands deliberately: a card that sold on
+// its first day scores a perfect velocity but proves nothing.
+const VERDICTS = {
+  fast: { label: "Sells same day", cls: "rs-verdict-fast" },
+  good: { label: "Sells in days", cls: "rs-verdict-good" },
+  ok:   { label: "Steady", cls: "rs-verdict-ok" },
+  slow: { label: "Slow mover", cls: "rs-verdict-slow" },
+  thin: { label: "Only sold once", cls: "rs-verdict-thin" },
+};
+
+function verdictKey(r) {
+  if (r.sold <= 1) return "thin";
+  if (r.velocity >= 1) return "fast";
+  if (r.velocity >= 0.34) return "good";
+  if (r.velocity >= 0.1) return "ok";
+  return "slow";
+}
+
+function verdictFor(r) {
+  return VERDICTS[verdictKey(r)];
+}
+
 function renderRestockReport() {
   const rows = window.__restockRows || [];
   const filter = document.getElementById("restockFilter").value;
@@ -3118,6 +3157,11 @@ function renderRestockReport() {
   const groupRank = document.getElementById("restockGroup").value;
   if (groupRank !== "") {
     shown = shown.filter(r => pickRank(r.cardId) === Number(groupRank));
+  }
+
+  const wantedVerdict = document.getElementById("restockVerdict").value;
+  if (wantedVerdict !== "") {
+    shown = shown.filter(r => verdictKey(r) === wantedVerdict);
   }
 
   const sorters = {
@@ -3151,11 +3195,7 @@ function renderRestockReport() {
         // Plain-language verdict, so a card can be judged at a glance without
         // interpreting the numbers. This is the useful output when stock is
         // whatever turns up rather than what you chose to buy.
-        let verdict = { label: "Slow mover", cls: "rs-verdict-slow" };
-        if (r.velocity >= 1) verdict = { label: "Sells same day", cls: "rs-verdict-fast" };
-        else if (r.velocity >= 0.34) verdict = { label: "Sells in days", cls: "rs-verdict-good" };
-        else if (r.velocity >= 0.1) verdict = { label: "Steady", cls: "rs-verdict-ok" };
-        if (r.sold <= 1) verdict = { label: "Only sold once", cls: "rs-verdict-thin" };
+        const verdict = verdictFor(r);
 
         return `
           <div class="rs-row rs-row-flex">
@@ -3188,7 +3228,7 @@ function renderRestockReport() {
     : '<p class="muted">Nothing matches that search.</p>';
 }
 
-["restockFilter", "restockSort", "restockSearch", "restockGroup"].forEach(id => {
+["restockFilter", "restockSort", "restockSearch", "restockGroup", "restockVerdict"].forEach(id => {
   const el = document.getElementById(id);
   const handler = () => { if (window.__restockRows) renderRestockReport(); };
   el.onchange = handler;
