@@ -116,14 +116,30 @@ export default async function handler(req, res) {
         // How many copies this release will actually add to the store: the
         // increase for a pending restock, or everything it has for a listing
         // that hasn't been released yet.
+        // Copies this release will add to the store.
+        //
+        // Three distinct cases, and conflating them was showing the wrong
+        // number: a listing awaiting its FIRST release publishes everything it
+        // has, while a restock only publishes the increase. The presence of a
+        // pendingAt alone doesn't distinguish them — an unreleased listing can
+        // carry one too — so release state is checked first.
         releaseQty: (() => {
           if (!group) return 0;
           const level = state.levels[groupKey];
-          if (level && level.pendingStock !== null && level.pendingAt !== null) {
+          const released = isListingReleased(state, groupKey, now);
+
+          // Never released: the whole listing goes live at its moment.
+          if (!released) return group.baseStock;
+
+          // Live already, with a queued increase: only the increase is new.
+          if (level && level.pendingStock !== null && level.pendingAt !== null && level.pendingAt > now) {
             return Math.max(level.pendingStock - level.published, 0);
           }
-          const sold = 0; // sold counters aren't fetched here; full stock is the ceiling
-          return Math.max(group.baseStock - sold, 0);
+
+          // Live with unpublished stock (a detected but unscheduled restock).
+          if (level) return Math.max(group.baseStock - level.published, 0);
+
+          return group.baseStock;
         })(),
       };
     };
