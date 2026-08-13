@@ -112,6 +112,19 @@ export default async function handler(req, res) {
         // So the admin previews can show a thumbnail, and flag a listing that
         // has no image before it goes live.
         photo: group ? group.photo || "" : "",
+        cardId: group ? group.cardId : "",
+        // How many copies this release will actually add to the store: the
+        // increase for a pending restock, or everything it has for a listing
+        // that hasn't been released yet.
+        releaseQty: (() => {
+          if (!group) return 0;
+          const level = state.levels[groupKey];
+          if (level && level.pendingStock !== null && level.pendingAt !== null) {
+            return Math.max(level.pendingStock - level.published, 0);
+          }
+          const sold = 0; // sold counters aren't fetched here; full stock is the ceiling
+          return Math.max(group.baseStock - sold, 0);
+        })(),
       };
     };
 
