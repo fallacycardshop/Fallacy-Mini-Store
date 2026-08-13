@@ -2034,7 +2034,7 @@ function renderSalesHistory() {
                           c.hidden ? "hidden" : "not released"
                         }</span></span>` : ""}
                       <span class="audit-op">=</span>
-                      <span class="audit-cell audit-total"><strong>${c.soldCounter + c.available + c.offSale}</strong><span>of ${c.csvStock} listed</span></span>
+                      <span class="audit-cell audit-total"><strong>${c.soldCounter + c.available + c.offSale}</strong><span>of ${c.csvStock} in CSV</span></span>
                     </div>
                     ${c.adjustment ? `<div class="audit-note">
                       Corrected by ${c.adjustDelta > 0 ? "+" : ""}${c.adjustDelta}:
