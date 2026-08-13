@@ -491,6 +491,8 @@
   }
   .audit-cell strong { display: block; font-size: 16px; color: #a8305f; }
   .audit-cell span { font-size: 10px; color: #888; }
+  .audit-held { background: #fff4e0; }
+  .audit-held strong { color: #8a6100; }
   .audit-total { background: #eef4fb; }
   .audit-total strong { color: #2c5b8f; }
   .audit-op { font-size: 15px; font-weight: 800; color: #bbb; }
@@ -1850,6 +1852,17 @@ function buildSalesHistory(orders, listings) {
     const available = Number(l.available) || 0;
     const csvStock = Number(l.csvStock) || 0;
     const soldCounter = Number(l.sold) || 0;
+    // Stock that exists but isn't on sale: held back by the drip, or pulled
+    // for an auction. Both read as zero available, so without counting them an
+    // audit reports perfectly good stock as missing.
+    const withheld = Number(l.withheld) || 0;
+    const hidden = Boolean(l.hidden);
+    const pendingRelease = Boolean(l.pendingRelease);
+    // A hidden card's whole remaining stock is off-sale, not just the withheld
+    // portion — nothing of it can be bought.
+    const offSale = hidden
+      ? Math.max(csvStock - soldCounter, 0)
+      : withheld;
 
     return {
       ...c,
@@ -1867,8 +1880,14 @@ function buildSalesHistory(orders, listings) {
       // Two independent checks:
       //   counterGap — orders on record vs the sold counter in Redis
       //   stockGap   — sold + available vs the stock the CSV says was listed
+      withheld,
+      hidden,
+      pendingRelease,
+      offSale,
       counterGap: qty - soldCounter,
-      stockGap: soldCounter + available - csvStock,
+      // sold + on sale + off sale should equal what the CSV lists. Anything
+      // left over is genuinely unaccounted for.
+      stockGap: soldCounter + available + offSale - csvStock,
       revenue: c.sales.reduce((s, x) => s + x.price, 0),
       sales: c.sales.sort((a, b) => b.savedAt - a.savedAt),
     };
@@ -1979,11 +1998,16 @@ function renderSalesHistory() {
                       ${c.price ? " · $" + c.price.toFixed(2) : ""}
                     </div>
                     <div class="audit-row">
-                      <span class="audit-cell"><strong>${c.qty}</strong><span>sold</span></span>
+                      <span class="audit-cell"><strong>${c.soldCounter}</strong><span>sold</span></span>
                       <span class="audit-op">+</span>
-                      <span class="audit-cell"><strong>${c.available}</strong><span>available</span></span>
+                      <span class="audit-cell"><strong>${c.available}</strong><span>on sale</span></span>
+                      ${c.offSale ? `
+                        <span class="audit-op">+</span>
+                        <span class="audit-cell audit-held"><strong>${c.offSale}</strong><span>${
+                          c.hidden ? "hidden" : "not released"
+                        }</span></span>` : ""}
                       <span class="audit-op">=</span>
-                      <span class="audit-cell audit-total"><strong>${c.qty + c.available}</strong><span>of ${c.csvStock} listed</span></span>
+                      <span class="audit-cell audit-total"><strong>${c.soldCounter + c.available + c.offSale}</strong><span>of ${c.csvStock} listed</span></span>
                     </div>
                     ${bad ? `<div class="audit-warn">
                       ${c.stockGap !== 0 ? `Stock is out by ${c.stockGap > 0 ? "+" : ""}${c.stockGap}. ` : ""}
