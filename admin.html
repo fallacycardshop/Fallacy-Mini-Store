@@ -3046,32 +3046,58 @@ function renderPickChecklist(orders) {
       }).join("")}
     </div>`;
 
+  // Updates the header count and row dimming WITHOUT rewriting the inputs.
+  //
+  // Rebuilding the checklist markup from inside a checkbox's own change handler
+  // destroys that checkbox mid-event, so the tick appeared to do nothing. Only
+  // the card list below is re-rendered on a change.
+  const refreshChecklistChrome = () => {
+    const on = orders.filter(e => !excludedPicks.has(orderKey(e))).length;
+    const head = wrap.querySelector(".order-check-head span");
+    if (head) head.textContent = `Pick for orders (${on} of ${orders.length})`;
+    wrap.querySelectorAll("input[data-pick-id]").forEach(b => {
+      b.closest(".order-check").classList.toggle("off", !b.checked);
+    });
+  };
+
   wrap.querySelectorAll("input[data-pick-id]").forEach(box => {
     box.onchange = () => {
       const id = box.dataset.pickId;
       if (box.checked) excludedPicks.delete(id);
       else excludedPicks.add(id);
-      renderPickingList();
+      refreshChecklistChrome();
+      renderPickedCards();   // cards only — the checklist stays put
     };
   });
+
   wrap.querySelector("[data-pick-all]").onclick = () => {
     orders.forEach(e => excludedPicks.delete(orderKey(e)));
-    renderPickingList();
+    wrap.querySelectorAll("input[data-pick-id]").forEach(b => { b.checked = true; });
+    refreshChecklistChrome();
+    renderPickedCards();
   };
   wrap.querySelector("[data-pick-none]").onclick = () => {
     orders.forEach(e => excludedPicks.add(orderKey(e)));
-    renderPickingList();
+    wrap.querySelectorAll("input[data-pick-id]").forEach(b => { b.checked = false; });
+    refreshChecklistChrome();
+    renderPickedCards();
   };
 }
 
+// Full render: builds the checklist, then the cards. Used after a fetch.
 function renderPickingList() {
+  renderPickChecklist(window.__pickOrders || []);
+  renderPickedCards();
+}
+
+// Cards only. Used when a tick changes, so the checklist isn't rebuilt from
+// inside its own event handler.
+function renderPickedCards() {
   const resultEl = document.getElementById("pickResultText");
   const reportEl = document.getElementById("pickReport");
   const windowOrders = window.__pickOrders || [];
   const info = window.__pickInfo || new Map();
   const { wantedDate, startTime, cutoff } = window.__pickWindow || {};
-
-  renderPickChecklist(windowOrders);
 
   const selected = windowOrders.filter(e => !excludedPicks.has(orderKey(e)));
 
@@ -3573,31 +3599,57 @@ function renderOrdersChecklist(dateFiltered) {
       }).join("")}
     </div>`;
 
+  // As with the picking list: update the count and dimming in place, and let
+  // renderOrders redraw only what's below. Rebuilding this markup from inside a
+  // checkbox's own handler would destroy the checkbox mid-event.
+  const refreshHeadCount = () => {
+    const on = dateFiltered.filter(e => !excludedOrders.has(orderKey(e))).length;
+    const head = wrap.querySelector(".order-check-head span");
+    if (head) head.textContent = `Include orders (${on} of ${dateFiltered.length})`;
+    wrap.querySelectorAll("input[data-order-id]").forEach(b => {
+      b.closest(".order-check").classList.toggle("off", !b.checked);
+    });
+  };
+
   wrap.querySelectorAll("input[data-order-id]").forEach(box => {
     box.onchange = () => {
       const id = box.dataset.orderId;
       if (box.checked) excludedOrders.delete(id);
       else excludedOrders.add(id);
-      renderOrders();
+      refreshHeadCount();
+      renderOrdersBody();
     };
   });
 
   wrap.querySelector("[data-check-all]").onclick = () => {
     dateFiltered.forEach(e => excludedOrders.delete(orderKey(e)));
-    renderOrders();
+    wrap.querySelectorAll("input[data-order-id]").forEach(b => { b.checked = true; });
+    refreshHeadCount();
+    renderOrdersBody();
   };
   wrap.querySelector("[data-check-none]").onclick = () => {
     dateFiltered.forEach(e => excludedOrders.add(orderKey(e)));
-    renderOrders();
+    wrap.querySelectorAll("input[data-order-id]").forEach(b => { b.checked = false; });
+    refreshHeadCount();
+    renderOrdersBody();
   };
 }
 
+// Full render: checklist plus everything below. Used after a fetch or a date
+// change.
 function renderOrders() {
   const all = window.__allOrders || [];
   const wanted = document.getElementById("ordersDate").value;
   const dateFiltered = wanted ? all.filter(e => orderDateKey(e.savedAt) === wanted) : all;
-
   renderOrdersChecklist(dateFiltered);
+  renderOrdersBody();
+}
+
+// Summary, copy blocks and order list only — the checklist is left alone.
+function renderOrdersBody() {
+  const all = window.__allOrders || [];
+  const wanted = document.getElementById("ordersDate").value;
+  const dateFiltered = wanted ? all.filter(e => orderDateKey(e.savedAt) === wanted) : all;
 
   // Everything below — summary, copy blocks and the order list — uses the
   // ticked subset, so the paste blocks match exactly what's on screen.
