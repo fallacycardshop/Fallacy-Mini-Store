@@ -25,23 +25,13 @@ const ALLOWED_EVENTS = new Set([
   "purchase",
   "checkout_failed",
   "checkout_blocked",
+  "stock_conflict_resolved",
   "telegram_prefill",
   "view_social_proof",
   "cart_nudge_shown",
   "reservation_rescued",
   "order_total_mismatch",
   "join_channel_click",
-]);
-
-// Blocked checkouts record WHY as well as how many, so the funnel's biggest
-// drop-off can be attributed rather than guessed at. Allowlisted like the event
-// names, so the hash can't be filled with arbitrary fields.
-const ALLOWED_REASONS = new Set([
-  "missing_telegram",
-  "missing_details",
-  "stock_gone",
-  "reserve_failed",
-  "network",
 ]);
 
 const REPORT_DAYS = 14;
@@ -158,7 +148,7 @@ async function handleTelegram(req, res) {
 }
 
 async function handleFunnel(req, res) {
-  const { event, key, action, revenue, reason } = req.body || {};
+  const { event, key, action, revenue } = req.body || {};
 
   // ------------------------------------------------------------ set stats --
   // Headline figures for the shopfront's social-proof panel. Entered by hand
@@ -213,19 +203,14 @@ async function handleFunnel(req, res) {
       ALLOWED_EVENTS.forEach(name => {
         row[name] = Number(raw[`${date}|${name}`]) || 0;
       });
-      ALLOWED_REASONS.forEach(name => {
-        row[`blocked:${name}`] = Number(raw[`${date}|blocked:${name}`]) || 0;
-      });
       days.push(row);
     }
 
     const totals = { revenue: 0 };
     ALLOWED_EVENTS.forEach(name => (totals[name] = 0));
-    ALLOWED_REASONS.forEach(name => (totals[`blocked:${name}`] = 0));
     days.forEach(d => {
       totals.revenue += d.revenue;
       ALLOWED_EVENTS.forEach(name => (totals[name] += d[name]));
-      ALLOWED_REASONS.forEach(name => (totals[`blocked:${name}`] += d[`blocked:${name}`]));
     });
 
     return res.status(200).json({ ok: true, days, totals, reportDays: REPORT_DAYS });
@@ -240,10 +225,6 @@ async function handleFunnel(req, res) {
 
   const date = localDateKey(Date.now());
   await redis.hincrby(FUNNEL_KEY, `${date}|${event}`, 1);
-
-  if (event === "checkout_blocked" && ALLOWED_REASONS.has(reason)) {
-    await redis.hincrby(FUNNEL_KEY, `${date}|blocked:${reason}`, 1);
-  }
 
   if (event === "purchase" && Number(revenue) > 0) {
     await redis.hincrbyfloat(FUNNEL_KEY, `${date}|revenue`, Number(revenue));
