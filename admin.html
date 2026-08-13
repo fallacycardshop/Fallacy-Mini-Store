@@ -496,6 +496,7 @@
   .audit-total { background: #eef4fb; }
   .audit-total strong { color: #2c5b8f; }
   .audit-op { font-size: 15px; font-weight: 800; color: #bbb; }
+  .audit-pre { background: #f2f2f2; color: #666; }
   .audit-note {
     background: #eaf6f0;
     border-radius: 7px;
@@ -1170,9 +1171,16 @@
       <input type="date" id="historyFrom">
     </div>
   </div>
+  <label class="field-label">Order records start (orders weren&rsquo;t stored before this)</label>
+  <input type="date" id="historyBackfill">
   <p class="config-note">
     The date filter narrows the <strong>sales</strong> shown; stock figures are always
     current, so leave it blank when auditing totals.
+    <br><br>
+    <strong>Order records start</strong> is the day order backup went live. Sales before
+    it were counted but never stored, so those cards are marked
+    <em>pre-tracking</em> rather than flagged as a mismatch. Stock reconciliation
+    is unaffected &mdash; it uses the sold counter, not the order list.
   </p>
   <button id="historyLoadButton">Load Sales History</button>
   <p id="historyResultText"></p>
@@ -1945,6 +1953,21 @@ function saveAudited(set) {
 
 let auditedCards = loadAudited();
 
+// The day order backup went live. Sales before it exist only as counter
+// increments, so a card with more sold than orders isn't a discrepancy — it
+// simply predates the record.
+const BACKFILL_KEY = "fallacy_orders_start";
+
+try {
+  const saved = localStorage.getItem(BACKFILL_KEY);
+  if (saved) document.getElementById("historyBackfill").value = saved;
+} catch (e) { /* ignored */ }
+
+document.getElementById("historyBackfill").onchange = e => {
+  try { localStorage.setItem(BACKFILL_KEY, e.target.value || ""); } catch (err) { /* ignored */ }
+  if (window.__salesHistory) renderSalesHistory();
+};
+
 function renderSalesHistory() {
   const cards = window.__salesHistory || [];
   const term = document.getElementById("historySearch").value.trim().toLowerCase();
@@ -1964,7 +1987,15 @@ function renderSalesHistory() {
     }).filter(c => c.qty > 0);
   }
 
-  if (filter === "mismatch") shown = shown.filter(c => c.stockGap !== 0 || c.counterGap !== 0);
+  if (filter === "mismatch") {
+    const bf = document.getElementById("historyBackfill").value;
+    const bfTs = bf ? Date.parse(bf + "T00:00:00Z") - 8 * 3600000 : null;
+    shown = shown.filter(c => {
+      const pre = bfTs !== null && c.counterGap < 0
+        && (c.sales.length === 0 || c.sales[c.sales.length - 1].savedAt >= bfTs);
+      return c.stockGap !== 0 || (c.counterGap !== 0 && !pre);
+    });
+  }
   else if (filter === "soldout") shown = shown.filter(c => c.available <= 0);
   else if (filter === "instock") shown = shown.filter(c => c.available > 0);
   else shown = shown.filter(c => c.qty > 0 || c.available > 0);
@@ -1977,7 +2008,15 @@ function renderSalesHistory() {
   const totalSold = shown.reduce((s, c) => s + c.qty, 0);
   const totalAvail = shown.reduce((s, c) => s + c.available, 0);
   const totalRevenue = shown.reduce((s, c) => s + c.revenue, 0);
-  const mismatches = shown.filter(c => c.stockGap !== 0 || c.counterGap !== 0);
+  const backfillStr = document.getElementById("historyBackfill").value;
+  const backfillTs = backfillStr ? Date.parse(backfillStr + "T00:00:00Z") - 8 * 3600000 : null;
+
+  const isPreTracking = c => backfillTs !== null
+    && c.counterGap < 0
+    && (c.sales.length === 0 || c.sales[c.sales.length - 1].savedAt >= backfillTs);
+
+  const mismatches = shown.filter(c =>
+    c.stockGap !== 0 || (c.counterGap !== 0 && !isPreTracking(c)));
 
   const resultEl = document.getElementById("historyResultText");
   resultEl.textContent =
@@ -2006,7 +2045,13 @@ function renderSalesHistory() {
               <span>${g.label}</span><span>${sold} sold · ${avail} left</span>
             </div>
             ${list.map(c => {
-              const bad = c.stockGap !== 0 || c.counterGap !== 0;
+              // A negative counter gap before the backup date is expected, not
+              // an error: the sale was counted but never stored as an order.
+              const preTracking = backfillTs !== null
+                && c.counterGap < 0
+                && (c.sales.length === 0 || c.sales[c.sales.length - 1].savedAt >= backfillTs);
+              const countedGap = preTracking ? 0 : c.counterGap;
+              const bad = c.stockGap !== 0 || countedGap !== 0;
               return `
               <div class="hist-card${bad ? " hist-bad" : ""}${auditedCards.has(c.groupKey) ? " hist-audited" : ""}"
                    data-audit-key="${escapeHtml(c.groupKey)}">
@@ -2036,13 +2081,16 @@ function renderSalesHistory() {
                       <span class="audit-op">=</span>
                       <span class="audit-cell audit-total"><strong>${c.soldCounter + c.available + c.offSale}</strong><span>of ${c.csvStock} in CSV</span></span>
                     </div>
+                    ${preTracking ? `<div class="audit-note audit-pre">
+                      ${Math.abs(c.counterGap)} sale(s) before order records began — counted, not stored.
+                    </div>` : ""}
                     ${c.adjustment ? `<div class="audit-note">
                       Corrected by ${c.adjustDelta > 0 ? "+" : ""}${c.adjustDelta}:
                       ${escapeHtml(c.adjustment.reason)}
                     </div>` : ""}
                     ${bad ? `<div class="audit-warn">
                       ${c.stockGap !== 0 ? `Stock is out by ${c.stockGap > 0 ? "+" : ""}${c.stockGap}. ` : ""}
-                      ${c.counterGap !== 0 ? `${Math.abs(c.counterGap)} sale(s) ${c.counterGap > 0 ? "recorded in orders but not counted" : "counted but missing from orders"}.` : ""}
+                      ${countedGap !== 0 ? `${Math.abs(countedGap)} sale(s) ${countedGap > 0 ? "recorded in orders but not counted" : "counted but missing from orders"}.` : ""}
                     </div>` : ""}
                     ${(bad || c.adjustment) ? `
                       <button type="button" class="audit-fix" data-fix-key="${escapeHtml(c.groupKey)}"
