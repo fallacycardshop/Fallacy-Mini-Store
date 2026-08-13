@@ -987,6 +987,7 @@
   </p>
   <button id="pickLoadButton">Build Picking List</button>
   <p id="pickResultText"></p>
+  <div id="pickChecklist"></div>
   <div id="pickReport"></div>
 </div>
 
@@ -2992,18 +2993,93 @@ document.getElementById("pickLoadButton").onclick = async () => {
     const info = new Map();
     (dripData.listings || []).forEach(l => info.set(l.groupKey, l));
 
-    // Aggregate every physical card sold, by listing.
-    const picks = new Map();
-    let orderCount = 0;
-
-    (ordersData.orders || []).forEach(entry => {
+    // Orders inside the chosen date and time window. Kept so the checklist can
+    // re-render the list without refetching.
+    const windowOrders = (ordersData.orders || []).filter(entry => {
       const local = new Date(entry.savedAt + 8 * 3600000);
-      if (local.toISOString().slice(0, 10) !== wantedDate) return;
+      if (local.toISOString().slice(0, 10) !== wantedDate) return false;
       // Inclusive at both ends, so an order at exactly the start or cut-off
       // time is picked up rather than falling between two windows.
       const mins = local.getUTCHours() * 60 + local.getUTCMinutes();
-      if (mins < startMins || mins > cutMins) return;
+      return mins >= startMins && mins <= cutMins;
+    });
 
+    window.__pickOrders = windowOrders;
+    window.__pickInfo = info;
+    window.__pickWindow = { wantedDate, startTime, cutoff };
+    renderPickingList();
+  } catch (err) {
+    resultEl.textContent = "Network error — please try again.";
+    resultEl.className = "error";
+  }
+};
+
+// Orders unticked in the picking checklist.
+const excludedPicks = new Set();
+
+function renderPickChecklist(orders) {
+  const wrap = document.getElementById("pickChecklist");
+  if (orders.length === 0) { wrap.innerHTML = ""; return; }
+
+  const included = orders.filter(e => !excludedPicks.has(orderKey(e)));
+
+  wrap.innerHTML = `
+    <div class="order-check-wrap">
+      <div class="order-check-head">
+        <span>Pick for orders (${included.length} of ${orders.length})</span>
+        <span>
+          <button type="button" data-pick-all>All</button>
+          <button type="button" data-pick-none>None</button>
+        </span>
+      </div>
+      ${orders.map(e => {
+        const r = e.record || {};
+        const id = orderKey(e);
+        const on = !excludedPicks.has(id);
+        return `
+          <label class="order-check${on ? "" : " off"}">
+            <input type="checkbox" data-pick-id="${escapeHtml(id)}" ${on ? "checked" : ""}>
+            <span class="oc-time">${orderTimeLabel(e.savedAt)}</span>
+            <span class="oc-name">${escapeHtml(r.Telegram_Username || r.Buyer_Name || id)}</span>
+            <span class="oc-total">${escapeHtml(r.Total || "")}</span>
+          </label>`;
+      }).join("")}
+    </div>`;
+
+  wrap.querySelectorAll("input[data-pick-id]").forEach(box => {
+    box.onchange = () => {
+      const id = box.dataset.pickId;
+      if (box.checked) excludedPicks.delete(id);
+      else excludedPicks.add(id);
+      renderPickingList();
+    };
+  });
+  wrap.querySelector("[data-pick-all]").onclick = () => {
+    orders.forEach(e => excludedPicks.delete(orderKey(e)));
+    renderPickingList();
+  };
+  wrap.querySelector("[data-pick-none]").onclick = () => {
+    orders.forEach(e => excludedPicks.add(orderKey(e)));
+    renderPickingList();
+  };
+}
+
+function renderPickingList() {
+  const resultEl = document.getElementById("pickResultText");
+  const reportEl = document.getElementById("pickReport");
+  const windowOrders = window.__pickOrders || [];
+  const info = window.__pickInfo || new Map();
+  const { wantedDate, startTime, cutoff } = window.__pickWindow || {};
+
+  renderPickChecklist(windowOrders);
+
+  const selected = windowOrders.filter(e => !excludedPicks.has(orderKey(e)));
+
+  {
+    const picks = new Map();
+    let orderCount = 0;
+
+    selected.forEach(entry => {
       orderCount++;
       const r = entry.record || {};
       String(r["PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition"] || "")
@@ -3031,15 +3107,19 @@ document.getElementById("pickLoadButton").onclick = async () => {
 
     const rows = Array.from(picks.values());
     if (rows.length === 0) {
-      resultEl.textContent = `No orders on ${wantedDate} between ${startTime} and ${cutoff}.`;
+      resultEl.textContent = windowOrders.length
+        ? "No orders ticked — select at least one above."
+        : `No orders on ${wantedDate} between ${startTime} and ${cutoff}.`;
       resultEl.className = "error";
       return;
     }
 
     const totalCards = rows.reduce((s, r) => s + r.qty, 0);
+    const excludedCount = windowOrders.length - selected.length;
     resultEl.textContent =
       `${totalCards} card(s) across ${orderCount} order(s) · ${rows.length} distinct listing(s)` +
-      (startTime !== "00:00" || cutoff !== "23:59" ? ` · ${startTime}–${cutoff}` : "");
+      (startTime !== "00:00" || cutoff !== "23:59" ? ` · ${startTime}–${cutoff}` : "") +
+      (excludedCount ? ` · ${excludedCount} order(s) excluded` : "");
     resultEl.className = "success";
 
     // Group, then sort within each group by Card ID so the walk is predictable.
@@ -3077,11 +3157,8 @@ document.getElementById("pickLoadButton").onclick = async () => {
     reportEl.querySelectorAll("[data-pick]").forEach(el => {
       el.onclick = () => el.classList.toggle("pick-done");
     });
-  } catch (err) {
-    resultEl.textContent = "Network error — please try again.";
-    resultEl.className = "error";
   }
-};
+}
 
 document.getElementById("restockLoadButton").onclick = async () => {
   const key = document.getElementById("restockPassphrase").value.trim();
@@ -3450,6 +3527,13 @@ function renderDaySummary(orders, wantedDate) {
 // date change doesn't silently shift which orders are ticked.
 const excludedOrders = new Set();
 
+// Order_ID is stored as a NUMBER (Date.now()), but reading it back off a DOM
+// dataset always gives a string — so Set.has() never matched and the tick boxes
+// appeared to do nothing. Everything is keyed through this.
+function orderKey(entry) {
+  return String((entry.record || {}).Order_ID || "");
+}
+
 function orderTimeLabel(savedAt) {
   return new Date(savedAt + 8 * 3600000).toISOString().slice(11, 16);
 }
@@ -3464,7 +3548,7 @@ function renderOrdersChecklist(dateFiltered) {
     return;
   }
 
-  const included = dateFiltered.filter(e => !excludedOrders.has((e.record || {}).Order_ID));
+  const included = dateFiltered.filter(e => !excludedOrders.has(orderKey(e)));
 
   wrap.innerHTML = `
     <div class="order-check-wrap">
@@ -3477,7 +3561,7 @@ function renderOrdersChecklist(dateFiltered) {
       </div>
       ${dateFiltered.map(e => {
         const r = e.record || {};
-        const id = r.Order_ID || "";
+        const id = orderKey(e);
         const on = !excludedOrders.has(id);
         return `
           <label class="order-check${on ? "" : " off"}">
@@ -3499,11 +3583,11 @@ function renderOrdersChecklist(dateFiltered) {
   });
 
   wrap.querySelector("[data-check-all]").onclick = () => {
-    dateFiltered.forEach(e => excludedOrders.delete((e.record || {}).Order_ID));
+    dateFiltered.forEach(e => excludedOrders.delete(orderKey(e)));
     renderOrders();
   };
   wrap.querySelector("[data-check-none]").onclick = () => {
-    dateFiltered.forEach(e => excludedOrders.add((e.record || {}).Order_ID));
+    dateFiltered.forEach(e => excludedOrders.add(orderKey(e)));
     renderOrders();
   };
 }
@@ -3517,7 +3601,7 @@ function renderOrders() {
 
   // Everything below — summary, copy blocks and the order list — uses the
   // ticked subset, so the paste blocks match exactly what's on screen.
-  const orders = dateFiltered.filter(e => !excludedOrders.has((e.record || {}).Order_ID));
+  const orders = dateFiltered.filter(e => !excludedOrders.has(orderKey(e)));
 
   window.__orderRecords = orders.map(e => e.record || {});
 
