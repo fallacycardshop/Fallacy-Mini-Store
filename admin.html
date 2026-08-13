@@ -360,17 +360,19 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 8px;
     margin: 0 -10px 4px;
     padding: 7px 11px;
     font-size: 12px;
     font-weight: 800;
     color: #fff;
+    overflow-wrap: anywhere;
   }
   .drip-day .drip-row:last-child { border-bottom: none; }
 
   .drip-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 10px;
     padding: 7px 0;
     border-bottom: 1px solid #f2eef1;
@@ -396,8 +398,39 @@
     background: #fdeceb;
     border: 1px dashed #e8a7a1;
   }
-  .drip-row-text { min-width: 0; font-size: 13px; line-height: 1.4; }
-  .drip-row-text .muted { font-size: 11px; display: block; }
+  /* Text was clipping: the row had no min-width guard, so long card names and
+     set names ran under the thumbnail and the day panel edge. */
+  .drip-row-text {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+  .drip-name { font-weight: 700; }
+  .drip-id {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: #2c5b8f;
+    background: #eef4fb;
+    border-radius: 4px;
+    padding: 0 5px;
+    display: inline-block;
+    margin: 2px 0;
+  }
+  .drip-meta { font-size: 11px; color: #777; }
+  .drip-extra { font-size: 11px; color: #777; margin-top: 2px; }
+  .drip-qty {
+    flex: 0 0 auto;
+    align-self: center;
+    background: #2e7d5b;
+    color: #fff;
+    border-radius: 8px;
+    padding: 5px 9px;
+    font-size: 14px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
 
   .rs-row {
     border-top: 1px solid #eee;
@@ -4135,14 +4168,24 @@ function dripDayPanels(rows, labelFn) {
 }
 
 function dripRowHtml(r, extraHtml) {
+  // How many copies this release actually puts on sale. For a pending restock
+  // that's the increase (pendingStock - published); for a listing that has
+  // never been released it's everything it has.
+  const qty = Number(
+    r.releaseQty !== undefined ? r.releaseQty
+      : (r.to !== undefined && r.from !== undefined ? r.to - r.from : r.stock)
+  ) || 0;
+
   return `
     <div class="drip-row${r.photo ? "" : " drip-row-noimg"}">
       ${dripThumbHtml(r.photo)}
       <div class="drip-row-text">
-        <strong>${escapeHtml(r.name || "")}</strong>
-        <span class="muted">${r.set ? escapeHtml(r.set) + " · " : ""}${escapeHtml(r.condition || "")}</span>
-        ${extraHtml || ""}
+        <div class="drip-name">${escapeHtml(r.name || "")}</div>
+        <div class="drip-id">${escapeHtml(r.cardId || r.groupKey || "")}</div>
+        <div class="drip-meta">${r.set ? escapeHtml(r.set) + " · " : ""}${escapeHtml(r.condition || "")}</div>
+        ${extraHtml ? `<div class="drip-extra">${extraHtml}</div>` : ""}
       </div>
+      <span class="drip-qty">+${qty}</span>
     </div>`;
 }
 
