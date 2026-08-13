@@ -349,6 +349,25 @@
 
   .pick-done { opacity: 0.4; }
 
+  .drip-day {
+    border: 1px solid;
+    border-radius: 11px;
+    padding: 0 10px 6px;
+    margin-top: 10px;
+    overflow: hidden;
+  }
+  .drip-day-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 0 -10px 4px;
+    padding: 7px 11px;
+    font-size: 12px;
+    font-weight: 800;
+    color: #fff;
+  }
+  .drip-day .drip-row:last-child { border-bottom: none; }
+
   .drip-row {
     display: flex;
     align-items: center;
@@ -3560,6 +3579,58 @@ function dripThumbHtml(photo) {
     onerror="this.onerror=null;this.src='${photo}';">`;
 }
 
+// A rotating palette keyed to the release DATE, so every card releasing on the
+// same day shares a colour and consecutive days are easy to tell apart at a
+// glance. Keyed by date rather than by position, so the same day keeps its
+// colour whether it's in the preview or the pending list.
+const DAY_COLOURS = [
+  { head: "#c2185b", tint: "#fdeef4" },
+  { head: "#2c5b8f", tint: "#eef4fb" },
+  { head: "#2e7d5b", tint: "#eaf6f0" },
+  { head: "#8a6100", tint: "#fff6e6" },
+  { head: "#7b4bab", tint: "#f4eefb" },
+  { head: "#0d7f88", tint: "#e9f6f7" },
+  { head: "#b3452b", tint: "#fdefeb" },
+];
+
+function dayKey(ts) {
+  // SGT date, so a release just before midnight groups with its own day.
+  return new Date(ts + 8 * 3600000).toISOString().slice(0, 10);
+}
+
+function dayColour(key) {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return DAY_COLOURS[hash % DAY_COLOURS.length];
+}
+
+// Groups rows by release day and renders each day as its own coloured panel.
+function dripDayPanels(rows, labelFn) {
+  const byDay = new Map();
+  rows.forEach(r => {
+    const key = r.releaseAt ? dayKey(r.releaseAt) : "unscheduled";
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key).push(r);
+  });
+
+  return Array.from(byDay.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([key, list]) => {
+      const c = key === "unscheduled"
+        ? { head: "#8d9aa5", tint: "#f4f6f7" }
+        : dayColour(key);
+      const label = labelFn ? labelFn(list[0], key) : key;
+      return `
+        <div class="drip-day" style="background:${c.tint};border-color:${c.head}33;">
+          <div class="drip-day-head" style="background:${c.head};">
+            <span>${escapeHtml(label)}</span>
+            <span>${list.length} card${list.length === 1 ? "" : "s"}</span>
+          </div>
+          ${list.map(r => dripRowHtml(r)).join("")}
+        </div>`;
+    }).join("");
+}
+
 function dripRowHtml(r, extraHtml) {
   return `
     <div class="drip-row${r.photo ? "" : " drip-row-noimg"}">
@@ -3643,8 +3714,7 @@ function renderDripStatus(status) {
 
   if (status.pending.length) {
     sections.push(`<div style="margin-top:14px;"><strong>Scheduled, not yet visible (${status.pending.length})</strong></div>` +
-      status.pending.map(r => dripRowHtml(r,
-        `<span class="muted">releases ${fmtDateTime(r.releaseAt)}</span>`)).join(""));
+      dripDayPanels(status.pending, first => fmtDateTime(first.releaseAt)));
   }
 
   // Always says something. An absent section is indistinguishable from a broken
@@ -3778,18 +3848,9 @@ document.getElementById("dripPreviewButton").onclick = async () => {
       return;
     }
 
-    const byDay = {};
-    data.proposed.forEach(r => {
-      const day = fmtDateTime(r.releaseAt);
-      (byDay[day] = byDay[day] || []).push(r);
-    });
-
     dripListEl.innerHTML =
       `<div style="margin-top:14px;"><strong>Proposed: ${data.proposed.length} listings over ${data.days} day(s)</strong></div>` +
-      Object.entries(byDay).map(([day, rows]) => `
-        <div style="margin-top:10px;"><strong>${day}</strong>
-        ${rows.map(r => dripRowHtml(r)).join("")}
-        </div>`).join("");
+      dripDayPanels(data.proposed, first => fmtDateTime(first.releaseAt));
 
     dripResultEl.textContent = data.startRejected
       ? "That start time is in the past, so the next daily release time was used instead. Preview only — nothing saved yet."
