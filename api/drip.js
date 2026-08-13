@@ -548,8 +548,16 @@ export default async function handler(req, res) {
               return null;
             }
           })(),
-          // Stock held back by the drip — scheduled but not yet published.
-          withheld: Math.max(group.baseStock - published, 0),
+          // Stock held back by the drip.
+          //
+          // Two distinct cases, and the second was being missed: a pending
+          // RESTOCK shows as csvStock > published, but a listing that has never
+          // been released at all still reports its full stock as published —
+          // the drip hides it via the release check, not by reducing the
+          // figure. So an unreleased listing withholds everything it has.
+          withheld: released
+            ? Math.max(group.baseStock - published, 0)
+            : Math.max(group.baseStock - sold, 0),
           pendingRelease: !released,
         };
       });
