@@ -276,14 +276,21 @@ export default async function handler(req, res) {
         isListingReleased(state, groupKey, now)
       ).length;
 
+      // A listing that has never been released can ALSO carry a pendingAt, so
+      // this list must exclude those — otherwise the same card appears in both
+      // lists, and the restock entry (which reports only the increase) wins on
+      // the screen while the audit correctly counts its full stock.
       const pendingRestocks = Object.entries(state.levels)
-        .filter(([, e]) => e.pendingAt !== null && e.pendingAt > now)
+        .filter(([groupKey, e]) =>
+          e.pendingAt !== null && e.pendingAt > now && isListingReleased(state, groupKey, now))
         .map(([groupKey, e]) => ({
           ...describe(groupKey),
           releaseAt: e.pendingAt,
           from: e.published,
           to: e.pendingStock,
           isRestock: true,
+          // Explicit, so the client never has to infer it from from/to.
+          releaseQty: Math.max((e.pendingStock || 0) - (e.published || 0), 0),
         }))
         .sort(byTimeThenCsv);
 
