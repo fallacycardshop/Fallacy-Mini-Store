@@ -602,9 +602,17 @@ export default async function handler(req, res) {
           // been released at all still reports its full stock as published —
           // the drip hides it via the release check, not by reducing the
           // figure. So an unreleased listing withholds everything it has.
-          withheld: released
-            ? Math.max(group.baseStock - published, 0)
-            : Math.max(group.baseStock - sold, 0),
+          // Stock that exists but isn't buyable yet.
+          //
+          // Must be measured against what's ALREADY ACCOUNTED FOR — sold plus
+          // what's on sale — not against the published figure alone. When sold
+          // exceeds published (an over-counted sale, or stock lowered after
+          // sales), csvStock - published counts those sold copies a second time
+          // and the audit reports a phantom surplus.
+          withheld: Math.max(
+            group.baseStock - sold - (released ? Math.max(published - sold, 0) : 0),
+            0
+          ),
           pendingRelease: !released,
         };
       });
