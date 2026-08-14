@@ -319,6 +319,15 @@
     border: 1px dashed #e8a7a1;
   }
   .pick-body { flex: 1; min-width: 0; }
+  .pick-buyers { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .pick-buyer {
+    background: #eef4fb;
+    color: #2c5b8f;
+    border-radius: 5px;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 600;
+  }
   .pick-name { font-size: 15px; font-weight: 700; line-height: 1.25; }
   .pick-meta { font-size: 11px; color: #888; }
   .pick-cond {
@@ -428,9 +437,22 @@
   }
   .drip-meta { font-size: 11px; color: #777; }
   .drip-extra { font-size: 11px; color: #777; margin-top: 2px; }
+  .drip-figures {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    align-self: center;
+  }
+  .drip-price {
+    font-size: 13px;
+    font-weight: 800;
+    color: #1e7a3c;
+    white-space: nowrap;
+  }
   .drip-qty {
     flex: 0 0 auto;
-    align-self: center;
     background: #2e7d5b;
     color: #fff;
     border-radius: 8px;
@@ -3510,9 +3532,15 @@ function renderPickedCards() {
             name: meta.name || cardId,
             set: meta.set || "",
             photo: meta.photo || "",
+            // Who this copy is for. A Map so two copies for the same buyer show
+            // as "x2" against one name rather than the name twice.
+            buyers: new Map(),
           });
         }
-        picks.get(gk).qty += 1;
+        const pick = picks.get(gk);
+        pick.qty += 1;
+        const who = r.Telegram_Username || r.Buyer_Name || "";
+        if (who) pick.buyers.set(who, (pick.buyers.get(who) || 0) + 1);
       });
   });
 
@@ -3557,6 +3585,11 @@ function renderPickedCards() {
               <div class="pick-body">
                 <div class="pick-name">${escapeHtml(r.name)}</div>
                 <div class="pick-meta">${escapeHtml(r.cardId)}${r.set ? " · " + escapeHtml(r.set) : ""}</div>
+                ${r.buyers && r.buyers.size ? `<div class="pick-buyers">${
+                  Array.from(r.buyers.entries())
+                    .map(([who, n]) => `<span class="pick-buyer">${escapeHtml(who)}${n > 1 ? ` ×${n}` : ""}</span>`)
+                    .join("")
+                }</div>` : ""}
               </div>
               ${conditionChip(r.condition)}
               <div class="pick-qty" style="${qtyStyle(r.qty)}">×${r.qty}</div>
@@ -4230,11 +4263,21 @@ function dripDayPanels(rows, labelFn) {
         ? { head: "#8d9aa5", tint: "#f4f6f7" }
         : dayColour(key);
       const label = labelFn ? labelFn(list[0], key) : key;
+
+      // Value of the day's release: each listing's price times the number of
+      // copies actually going on sale. Useful for judging whether a day's batch
+      // is worth posting about.
+      const dayQty = list.reduce((sum, r) => sum + (Number(r.releaseQty) || 0), 0);
+      const dayValue = list.reduce(
+        (sum, r) => sum + (Number(r.price) || 0) * (Number(r.releaseQty) || 0), 0);
+
       return `
         <div class="drip-day" style="background:${c.tint};border-color:${c.head}33;">
           <div class="drip-day-head" style="background:${c.head};">
             <span>${escapeHtml(label)}</span>
-            <span>${list.length} card${list.length === 1 ? "" : "s"}</span>
+            <span>${list.length} listing${list.length === 1 ? "" : "s"} · ${dayQty} card${dayQty === 1 ? "" : "s"}${
+              dayValue ? ` · $${dayValue.toFixed(2)}` : ""
+            }</span>
           </div>
           ${list.map(r => dripRowHtml(r)).join("")}
         </div>`;
@@ -4247,6 +4290,7 @@ function dripRowHtml(r, extraHtml) {
   // never been released it's everything it has.
   // releaseQty is authoritative — the endpoint knows whether this is a first
   // release or a top-up. from/to is only a fallback for older payloads.
+  const price = Number(r.price) || 0;
   const qty = Number(
     r.releaseQty !== undefined && r.releaseQty !== null
       ? r.releaseQty
@@ -4262,7 +4306,10 @@ function dripRowHtml(r, extraHtml) {
         <div class="drip-meta">${r.set ? escapeHtml(r.set) + " · " : ""}${escapeHtml(r.condition || "")}</div>
         ${extraHtml ? `<div class="drip-extra">${extraHtml}</div>` : ""}
       </div>
-      <span class="drip-qty">+${qty}</span>
+      <div class="drip-figures">
+        ${price ? `<span class="drip-price">$${price.toFixed(2)}</span>` : ""}
+        <span class="drip-qty">+${qty}</span>
+      </div>
     </div>`;
 }
 
