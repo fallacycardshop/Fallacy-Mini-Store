@@ -62,7 +62,10 @@
 
   .content{padding-bottom:16px}
   .sec{margin-top:16px}
-  .sec.railsec{background:var(--rail-bg);padding-top:2px;padding-bottom:8px;margin-top:14px}
+  /* rails read clearly as a horizontal "shelf": tinted band, hairline borders, and a right-edge fade cueing more content */
+  .sec.railsec{background:var(--rail-bg);padding-top:2px;padding-bottom:8px;margin-top:14px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);position:relative}
+  .sec.railsec::after{content:"";position:absolute;top:0;right:0;bottom:8px;width:34px;background:linear-gradient(to right,transparent,var(--rail-bg));pointer-events:none;z-index:1}
+  .sec.railsec .sec-head h2{display:flex;align-items:center;gap:6px}
   .sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:8px var(--gutter)}
   .sec-head h2{margin:0;font-size:16px;color:var(--pink-deep);font-weight:600}
   .sec-head .right{display:flex;align-items:baseline;gap:10px;flex:0 0 auto}.sec-head .count{font-size:12px;color:var(--ink-soft)}
@@ -106,6 +109,7 @@
   .soldtag{font-size:11px;font-weight:700;color:var(--sold);text-transform:uppercase;letter-spacing:.04em}
 
   .showmore{margin:10px var(--gutter) 0;width:calc(100% - 28px);padding:11px;border:1px solid var(--line);border-radius:11px;background:var(--surface-2);color:var(--ink-soft);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+  .soldout-head{font-size:12px;font-weight:700;color:var(--sold);text-transform:uppercase;letter-spacing:.05em;padding:16px var(--gutter) 8px;border-top:1px solid var(--line);margin-top:12px}
   .results-head{display:flex;align-items:center;gap:12px;padding:14px var(--gutter) 6px}
   .backbtn{display:flex;align-items:center;gap:5px;background:var(--surface-2);border:1px solid var(--line);color:var(--pink-deep);font:inherit;font-size:13px;font-weight:600;padding:8px 13px;border-radius:999px;cursor:pointer}
   .results-head h2{margin:0;font-size:16px;color:var(--pink-deep)}
@@ -192,7 +196,8 @@
   .mailopt .dot{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);flex:0 0 auto}.mailopt .ml.sel .dot{border-color:var(--accent);background:radial-gradient(var(--accent) 40%,transparent 44%)}
 
   .pay{padding:24px 20px;text-align:center}
-  .pay .qr{width:220px;height:220px;margin:8px auto 14px;background:#fff;border-radius:16px;padding:14px;box-shadow:var(--shadow)}
+  .pay .qr{width:230px;height:230px;margin:8px auto 14px;background:#fff;border-radius:16px;padding:12px;box-shadow:var(--shadow)}
+  .pay .qr img{width:100%;height:100%;object-fit:contain;display:block}
   .pay .amt-big{font-size:30px;font-weight:700;color:var(--ink)}
   .pay .to{font-size:13px;color:var(--ink-soft);margin:2px 0 16px}
   .pay .steps{text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 18px;font-size:13px;color:var(--ink-soft)}
@@ -250,46 +255,9 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const CARDS = [
-  {id:"S12A179", name:"Keldeo", set:"S12A VSTAR Universe", rarity:"AR", section:"new", badge:"new", conds:[{cond:"Near Mint",price:10,stock:1}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/KeldeoARS12A179.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/KeldeoARS12A179.jpg"},
-  {id:"S12A195", name:"Latias", set:"S12A VSTAR Universe", rarity:"AR", section:"new", badge:"restock", conds:[{cond:"Near Mint",price:13,stock:5}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/LatiasARS12A195.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/LatiasARS12A195.jpg"},
-  {id:"S12A189", name:"Solrock", set:"S12A VSTAR Universe", rarity:"AR", section:"new", badge:"new", conds:[{cond:"Near Mint",price:4,stock:2}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/SolrockARS12A189.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SolrockARS12A189.jpg"},
-  {id:"S12A187", name:"Comfey", set:"S12A VSTAR Universe", rarity:"AR", section:"new", badge:"new", conds:[{cond:"Near Mint",price:3,stock:0}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/ComfeyARS12A187.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ComfeyARS12A187.jpg"},
-  {id:"S12A181", name:"Toxtricity", set:"S12A VSTAR Universe", rarity:"AR", section:"new", badge:"new", conds:[{cond:"Near Mint",price:3,stock:1}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/ToxtricityARS12A181.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ToxtricityARS12A181.jpg"},
-  {id:"S12A192", name:"Thievul", set:"S12A VSTAR Universe", rarity:"AR", section:"new", badge:"new", conds:[{cond:"Near Mint",price:2.5,stock:3}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/ThievulARS12A192.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ThievulARS12A192.jpg"},
-  {id:"S12A173", name:"Hisuian Voltorb", set:"S12A VSTAR Universe", rarity:"AR", section:"new", badge:"new", conds:[{cond:"Near Mint",price:3,stock:2}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/HisuianVoltorbARS12A173.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/HisuianVoltorbARS12A173.jpg"},
-  {id:"S12A183", name:"Mew", set:"S12A VSTAR Universe", rarity:"AR", section:"feat", badge:"", conds:[{cond:"Near Mint",price:64.9,stock:1}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/MewARS12A183.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MewARS12A183.jpg"},
-  {id:"SM12A041", name:"Pikachu & Zekrom GX", set:"SM12A Tag Team All Stars", rarity:"RR (TTGX)", section:"feat", badge:"", conds:[{cond:"Near Mint",price:39.9,stock:1}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/Pikachu&ZekromGXRR(TTGX)SM12A041.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/Pikachu&ZekromGXRR(TTGX)SM12A041.jpg"},
-  {id:"S12A190", name:"Galarian Moltres", set:"S12A VSTAR Universe", rarity:"AR", section:"feat", badge:"", conds:[{cond:"Near Mint",price:16,stock:2}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/GalarianMoltresARS12A190.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/GalarianMoltresARS12A190.jpg"},
-  {id:"VS019", name:"Whitney's Miltank", set:"VS VS Series", rarity:"C", section:"feat", badge:"", conds:[{cond:"Near Mint",price:36,stock:0}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/Whitney'sMiltankCVS019.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/Whitney'sMiltankCVS019.jpg"},
-  {id:"SV2P095", name:"Grusha", set:"SV2P Snow Hazard", rarity:"SAR", section:"sar", badge:"", conds:[{cond:"Near Mint",price:41,stock:0}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/GrushaSARSV2P095.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/GrushaSARSV2P095.jpg"},
-  {id:"SV8A221", name:"Dragapult ex", set:"SV8A Terastal Festival", rarity:"SAR", section:"sar", badge:"", conds:[{cond:"Near Mint",price:22,stock:2}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/DragapultexSARSV8A221.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/DragapultexSARSV8A221.jpg"},
-  {id:"SV11W170", name:"Jellicent ex", set:"SV11W White Flare", rarity:"SAR", section:"sar", badge:"", conds:[{cond:"Near Mint",price:26.5,stock:1}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/JellicentexSARSV11W170.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/JellicentexSARSV11W170.jpg"},
-  {id:"S12A226", name:"Lucario VSTAR", set:"S12A VSTAR Universe", rarity:"SAR", section:"sar", badge:"", conds:[{cond:"Near Mint",price:25,stock:1}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/LucarioVSTARSARS12A226.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/LucarioVSTARSARS12A226.jpg"},
-  {id:"M2113", name:"Mega Sharpedo ex", set:"M2 Inferno X", rarity:"SAR", section:"sar", badge:"", conds:[{cond:"Near Mint",price:15,stock:3}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/MegaSharpedoexSARM2113.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MegaSharpedoexSARM2113.jpg"},
-  {id:"M2A239", name:"Mega Hawlucha ex", set:"M2A Mega Dream", rarity:"SAR", section:"sar", badge:"", conds:[{cond:"Near Mint",price:20,stock:1}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/MegaHawluchaexSARM2A239.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MegaHawluchaexSARM2A239.jpg"},
-  {id:"S12A243", name:"Gardenia's Vigor", set:"S12A VSTAR Universe", rarity:"SAR", section:"sar", badge:"", conds:[{cond:"Near Mint",price:20,stock:2}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/Gardenia'sVigorSARS12A243.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/Gardenia'sVigorSARS12A243.jpg"},
-  {id:"S12A214", name:"Simisear VSTAR", set:"S12A VSTAR Universe", rarity:"SAR", section:"sar", badge:"", conds:[{cond:"Near Mint",price:30,stock:2}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/SimisearVSTARSARS12A214.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SimisearVSTARSARS12A214.jpg"},
-  {id:"SV6107", name:"Munkidori", set:"SV6 Mask of Change", rarity:"AR", section:"disc", badge:"", conds:[{cond:"Near Mint",price:6.5,stock:1},{cond:"Lightly Played",price:5.5,stock:1}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/MunkidoriARSV6107.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MunkidoriARSV6107.jpg"},
-  {id:"SM11B057", name:"Gallade", set:"SM11B Dream League", rarity:"CHR", section:"disc", badge:"", conds:[{cond:"Near Mint",price:12,stock:2},{cond:"Lightly Played",price:10,stock:1}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/GalladeCHRSM11B057.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/GalladeCHRSM11B057.jpg"},
-  {id:"SV6112", name:"Tatsugiri", set:"SV6 Mask of Change", rarity:"AR", section:"disc", badge:"", conds:[{cond:"Near Mint",price:12,stock:4},{cond:"Lightly Played",price:8.9,stock:1},{cond:"Moderately Played",price:7.5,stock:1}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/TatsugiriARSV6112.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/TatsugiriARSV6112.jpg"},
-  {id:"MBD022", name:"Meloetta", set:"MBD Mega Diancie ex Starter Deck", rarity:"N.A.", section:"disc", badge:"", conds:[{cond:"Near Mint",price:10,stock:4},{cond:"Lightly Played",price:8.5,stock:1}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/MeloettaN.A.MBD022.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MeloettaN.A.MBD022.jpg"},
-  {id:"SV3116", name:"Scizor", set:"SV3 Ruler of the Black Flame", rarity:"AR", section:"disc", badge:"", conds:[{cond:"Near Mint",price:6.5,stock:6},{cond:"Lightly Played",price:6.5,stock:1}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/ScizorARSV3116.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ScizorARSV3116.jpg"},
-  {id:"M1L067", name:"Vulpix", set:"M1L Mega Brave", rarity:"AR", section:"disc", badge:"", conds:[{cond:"Near Mint",price:6.5,stock:2},{cond:"Lightly Played",price:3.5,stock:1}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/VulpixARM1L067.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/VulpixARM1L067.jpg"},
-  {id:"SV1A083", name:"Mismagius", set:"SV1A Triple Beat", rarity:"AR", section:"disc", badge:"", conds:[{cond:"Lightly Played",price:14,stock:1}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/MismagiusARSV1A083.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/MismagiusARSV1A083.jpg"},
-  {id:"SV1V086", name:"Drowzee", set:"SV1V Violet ex", rarity:"AR", section:"all", badge:"", conds:[{cond:"Near Mint",price:21,stock:1},{cond:"Lightly Played",price:15,stock:1}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/DrowzeeARSV1V086.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/DrowzeeARSV1V086.jpg"},
-  {id:"S12A176", name:"Oricorio", set:"S12A VSTAR Universe", rarity:"AR", section:"all", badge:"", conds:[{cond:"Near Mint",price:3,stock:4}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/OricorioARS12A176.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/OricorioARS12A176.jpg"},
-  {id:"SV1A074", name:"Tropius", set:"SV1A Triple Beat", rarity:"AR", section:"all", badge:"", conds:[{cond:"Near Mint",price:4,stock:2}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/TropiusARSV1A074.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/TropiusARSV1A074.jpg"},
-  {id:"SV1A077", name:"Pyroar", set:"SV1A Triple Beat", rarity:"AR", section:"all", badge:"", conds:[{cond:"Near Mint",price:4,stock:1}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/PyroarARSV1A077.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/PyroarARSV1A077.jpg"},
-  {id:"SV1A085", name:"Paldean Wooper", set:"SV1A Triple Beat", rarity:"AR", section:"all", badge:"", conds:[{cond:"Near Mint",price:5.5,stock:3}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/PaldeanWooperARSV1A085.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/PaldeanWooperARSV1A085.jpg"},
-  {id:"SV1S079", name:"Dolliv", set:"SV1S Scarlet ex", rarity:"AR", section:"all", badge:"", conds:[{cond:"Near Mint",price:4,stock:2}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/DollivARSV1S079.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/DollivARSV1S079.jpg"},
-  {id:"SV1S088", name:"Klawf", set:"SV1S Scarlet ex", rarity:"AR", section:"all", badge:"", conds:[{cond:"Near Mint",price:2.5,stock:0}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/KlawfARSV1S088.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/KlawfARSV1S088.jpg"},
-  {id:"SV1V080", name:"Toedscool", set:"SV1V Violet ex", rarity:"AR", section:"all", badge:"", conds:[{cond:"Near Mint",price:2.5,stock:0}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/ToedscoolARSV1V080.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ToedscoolARSV1V080.jpg"},
-  {id:"SV1V090", name:"Skwovet", set:"SV1V Violet ex", rarity:"AR", section:"all", badge:"", conds:[{cond:"Near Mint",price:3.5,stock:0}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/SkwovetARSV1V090.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/SkwovetARSV1V090.jpg"},
-  {id:"SV1V089", name:"Bombirdier", set:"SV1V Violet ex", rarity:"AR", section:"all", badge:"", conds:[{cond:"Near Mint",price:2.5,stock:0}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/BombirdierARSV1V089.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/BombirdierARSV1V089.jpg"},
-  {id:"SV1V087", name:"Greavard", set:"SV1V Violet ex", rarity:"AR", section:"all", badge:"", conds:[{cond:"Near Mint",price:6,stock:0}], img:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/thumbs/GreavardARSV1V087.jpg", imgFull:"https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/GreavardARSV1V087.jpg"},
-];
-
+let CARDS=[];
+const RAW="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/";
+const QR_SRC=RAW+"PayNowQR.jpg";
 const $=s=>document.querySelector(s);
 const byId=id=>CARDS.find(c=>c.id===id);
 const RANK={"Near Mint":0,"Lightly Played":1,"Moderately Played":2,"Heavily Played":3};
@@ -308,6 +276,34 @@ const nmCond=p=>p.conds.find(c=>c.cond==="Near Mint");
 const setName=p=>p.set.replace(/^[A-Za-z0-9]+\s+/,"");
 const ck=(id,cond)=>id+"::"+cond;
 const round90=x=>{const r=Math.round(x-0.9)+0.9;return r>0?r:0.9};
+const hasDeal=p=>inStock(p).some(c=>c.cond!=="Near Mint");
+
+// Group the flat /api/products list (one row per CardID+Condition) into cards.
+function groupProducts(list){
+  const m=new Map();
+  list.forEach(p=>{
+    const id=p.cardId||p.name;
+    if(!m.has(id))m.set(id,{id,name:p.name||id,set:p.set||"",rarity:p.category||"",
+      img:p.photo?RAW+"thumbs/"+p.photo.split("/").pop():"",imgFull:p.photo||"",conds:[],isNew:false,featured:false});
+    const g=m.get(id);
+    g.conds.push({cond:p.description||"Near Mint",price:Number(p.price)||0,stock:Math.max(Number(p.stock)||0,0)});
+    if(p.isNew)g.isNew=true;
+    if(p.featured)g.featured=true;
+  });
+  return [...m.values()];
+}
+function boot(){
+  $("#content").innerHTML='<div class="empty">Loading the store…</div>';
+  fetch("/api/products").then(r=>r.json()).then(d=>{
+    CARDS=groupProducts(Array.isArray(d)?d:(d.products||[]));
+    init();
+  }).catch(err=>{console.error(err);$("#content").innerHTML='<div class="empty">Couldn&rsquo;t load the store. Pull to refresh.</div>'});
+}
+function init(){
+  fillSel($("#rarity"),[...new Set(CARDS.map(c=>c.rarity))].filter(Boolean).sort());
+  fillSel($("#set"),[...new Set(CARDS.map(setName))].filter(Boolean).sort());
+  render();updateBar();
+}
 
 // Reference ("was") price for a discounted card: in-stock NM price if we have one,
 // otherwise the played price scaled up (LP x1.3, MP x1.6, HP x2) rounded to $xx.90.
@@ -323,8 +319,6 @@ function mulberry32(a){return function(){a=(a+0x6d2b79f5)|0;let t=Math.imul(a^(a
 function dailyShuffle(arr){const d=new Date();const rng=mulberry32(hashSeed(`${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`));const a=arr.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
 
 function fillSel(sel,v){v.forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;sel.appendChild(o)})}
-fillSel($("#rarity"),[...new Set(CARDS.map(c=>c.rarity))].sort());
-fillSel($("#set"),[...new Set(CARDS.map(setName))].sort());
 
 const qtyOf=(id,cond)=>cart[ck(id,cond)]||0;
 function addCart(id,cond){const c=byId(id).conds.find(x=>x.cond===cond);if(!c||c.stock<=0)return;if(qtyOf(id,cond)<c.stock)cart[ck(id,cond)]=qtyOf(id,cond)+1;updateBar()}
@@ -340,10 +334,9 @@ function priceHTML(p,ctx){
 }
 function badgeHTML(p,ctx){
   if(isSold(p))return"";
-  if(p.badge==="restock")return '<span class="badge b-restock">Restocked</span>';
-  if(p.badge==="new")return '<span class="badge b-new">New</span>';
   if(ctx==="deal")return '<span class="badge b-deal">Deal</span>';
-  if(p.section==="sar")return '<span class="badge b-sar">SAR</span>';
+  if(p.isNew)return '<span class="badge b-new">New</span>';
+  if(p.rarity==="SAR")return '<span class="badge b-sar">SAR</span>';
   const dc=defaultCond(p,ctx);if(dc&&dc.stock===1)return '<span class="badge b-scarce">1 left</span>';
   return"";
 }
@@ -383,16 +376,20 @@ function featSection(list){
   const shown=dailyShuffle(list).slice(0,15);
   return `<div class="sec"><div class="sec-head"><h2>&#128293; Featured</h2><span class="count">${shown.length} cards</span></div><div class="grid">${shown.map(p=>cardHTML(p,"best")).join("")}</div></div>`;
 }
+function soldBlock(sold){
+  // Sold-out cards live in their OWN 2-column grid, never mixed into the live
+  // grid — so an odd number of live cards can't push a sold card up a row.
+  if(!sold.length)return"";
+  let h=`<div class="soldout-head">Sold out (${sold.length})</div><div class="grid">${sold.slice(0,4).map(p=>cardHTML(p,"best")).join("")}</div>`;
+  if(sold.length>4)h+=`<button class="showmore" data-showsold>Show ${sold.length-4} more sold out</button><div class="grid" id="soldHidden" style="display:none">${sold.slice(4).map(p=>cardHTML(p,"best")).join("")}</div>`;
+  return h;
+}
 function allSection(list){
   if(!list.length)return"";
   const live=dailyShuffle(list.filter(p=>!isSold(p)));
   const sold=list.filter(isSold);
-  const head=`<div class="sec-head"><h2>All cards</h2><span class="count">${live.length} in stock</span></div>`;
-  let html=`<div class="grid" id="allGrid">${live.map(p=>cardHTML(p,"best")).join("")}`;
-  if(sold.length<=4){html+=sold.map(p=>cardHTML(p,"best")).join("")+`</div>`;}
-  else{html+=sold.slice(0,4).map(p=>cardHTML(p,"best")).join("")+`</div>`;
-    html+=`<button class="showmore" data-showsold>Show ${sold.length-4} more sold out</button><div class="grid" id="soldHidden" style="display:none">${sold.slice(4).map(p=>cardHTML(p,"best")).join("")}</div>`;}
-  return `<div class="sec">${head}${html}</div>`;
+  return `<div class="sec"><div class="sec-head"><h2>All cards</h2><span class="count">${live.length} in stock</span></div>
+    <div class="grid">${live.map(p=>cardHTML(p,"best")).join("")}</div>${soldBlock(sold)}</div>`;
 }
 function activeFilters(){return $("#q").value.trim()||$("#rarity").value||$("#set").value||$("#instock").classList.contains("on")||only}
 function matchP(p){
@@ -401,8 +398,8 @@ function matchP(p){
   if($("#instock").classList.contains("on")&&isSold(p))return false;
   if($("#rarity").value&&p.rarity!==$("#rarity").value)return false;
   if($("#set").value&&setName(p)!==$("#set").value)return false;
-  if(only==="new"&&p.section!=="new")return false;
-  if(only==="disc"&&p.section!=="disc")return false;
+  if(only==="new"&&!p.isNew)return false;
+  if(only==="disc"&&!hasDeal(p))return false;
   return true;
 }
 function sortList(list){const s=$("#sort").value;const key=p=>{const d=bestCond(p)||conds(p)[0];return d.price};
@@ -411,21 +408,22 @@ function sortList(list){const s=$("#sort").value;const key=p=>{const d=bestCond(
 function render(){
   const c=$("#content");
   if(activeFilters()){
-    let res=sortList(CARDS.filter(matchP));res=[...res.filter(p=>!isSold(p)),...res.filter(isSold)];
+    const res=sortList(CARDS.filter(matchP));const liveR=res.filter(p=>!isSold(p)),soldR=res.filter(isSold);
     const ctx=only==="disc"?"deal":"best";
     let label="Results";if(only==="new")label="Newly in stock &amp; restocked";else if(only==="disc")label="Discounted";else if($("#rarity").value==="SAR")label="Special Art Rares";
     c.innerHTML=`<div class="results-head"><button class="backbtn" data-back>&#8592; Back</button><h2>${label} (${res.length})</h2></div>
-      ${res.length?`<div class="grid">${res.map(p=>cardHTML(p,ctx)).join("")}</div>`:`<div class="empty">No cards match &mdash; try clearing a filter.</div>`}
+      ${res.length?`<div class="grid">${liveR.map(p=>cardHTML(p,ctx)).join("")}</div>${soldBlock(soldR)}`:`<div class="empty">No cards match &mdash; try clearing a filter.</div>`}
       <div class="results-foot"><button class="backbtn" data-back>&#8592; Back to browsing</button></div>`;
     $("#scroller").scrollTop=0;
   }else{
-    const allList=CARDS.filter(p=>p.section==="all"||p.section==="disc");
+    const news=CARDS.filter(p=>p.isNew);
+    const notNew=CARDS.filter(p=>!p.isNew);
     c.innerHTML=
-      railSection("&#10024; Newly in stock","Fresh drops &amp; restocks &mdash; swipe &rarr;",CARDS.filter(p=>p.section==="new"),"new","best")+
-      featSection(CARDS.filter(p=>p.section==="feat"))+
-      railSection("&#128142; Special Art Rares","The chase cards &mdash; usually just a few in stock",CARDS.filter(p=>p.section==="sar"),"sar","best")+
-      railSection("&#127991;&#65039; Discounted","Played copies at a lower price",CARDS.filter(p=>p.section==="disc"),"disc","deal")+
-      allSection(allList);
+      railSection("&#10024; Newly in stock","Fresh drops &amp; restocks &mdash; swipe &rarr;",news,"new","best")+
+      featSection(notNew.filter(p=>p.featured))+
+      railSection("&#128142; Special Art Rares","The chase cards &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="SAR"),"sar","best")+
+      railSection("&#127991;&#65039; Discounted","Played copies at a lower price &mdash; swipe &rarr;",notNew.filter(hasDeal),"disc","deal")+
+      allSection(notNew.filter(p=>!p.featured));
   }
   wireActs(c);
 }
@@ -489,12 +487,15 @@ function renderCondOpts(){
   if(!c||c.stock<=0){btn.disabled=true;btn.textContent="Select a condition"}
   else{btn.disabled=false;btn.innerHTML=`Add to order &middot; $${c.price.toFixed(2)}`}
   btn.onclick=()=>{const cc=byId(detailId).conds.find(x=>x.cond===detailCond);if(!cc||cc.stock<=0)return;addCart(detailId,detailCond);refreshSku(detailId,detailCond);renderCondOpts();bump("Added to order")};
-  $("#viewCartSm").onclick=openCart;
+  $("#viewCartSm").onclick=()=>openCart(()=>openDetail(detailId));
 }
 
 // ---------- cart (step 1: edit + promo, NOT reserved) ----------
-function openCart(){
-  stopTimer();setBack(closePanel);$("#panelTitle").textContent="Your cart";
+// cartReturn = where "Back" goes: the card detail if opened via View cart, else close.
+let cartReturn=closePanel;
+function openCart(ret){
+  if(ret)cartReturn=ret;
+  stopTimer();setBack(cartReturn);$("#panelTitle").textContent="Your cart";
   const entries=Object.entries(cart).filter(([,q])=>q>0);
   if(!entries.length){$("#panelBody").innerHTML=`<div class="cart-empty"><p>Your cart is empty.</p><p style="font-size:13px">Add cards and they&rsquo;ll show up here.</p></div>`;openPanel();return}
   const items=entries.map(([k,q])=>{const[id,cond]=k.split("::");const p=byId(id);const c=p.conds.find(x=>x.cond===cond);const line=c.price*q;
@@ -522,31 +523,38 @@ function openCart(){
 }
 
 // ---------- step 2: mailing details (RESERVED, 5-min timer) ----------
-let hasPackage=false,mailMode="hold";
+let hasPackage=false,mailMode="hold",form={user:"",name:"",phone:"",addr:"",unit:"",postal:""};
+const esc=s=>String(s||"").replace(/"/g,"&quot;");
 function gotoDetails(){
-  $("#panelTitle").textContent="Your details";setBack(openCart);
+  $("#panelTitle").textContent="Your details";setBack(()=>openCart());
   startTimer(5*60,()=>{bump("Reservation expired");openCart()});
   drawDetails();openPanel();
 }
 function totals(){const sub=subtotal();const disc=sub*promoPct;const fee=hasPackage?0:MAIL_FEE;return{sub,disc,fee,total:sub-disc+fee}}
+function detailsValid(){
+  if(!form.user.trim())return false;
+  if(!hasPackage&&["name","phone","addr","unit","postal"].some(k=>!form[k].trim()))return false;
+  return true;
+}
+function syncPay(){const ok=detailsValid();const b=$("#toPay");if(b)b.disabled=!ok;const n=$("#reqNote");if(n)n.textContent=ok?"Cards are reserved for you while the timer runs.":"Please fill in all required fields to continue."}
 function drawDetails(){
   const t=totals();
   $("#panelBody").innerHTML=`
     <div class="total-bar"><span>Order total</span><span class="amt tag">$${t.total.toFixed(2)}</span></div>
     <div class="form">
       <label class="pkg"><input type="checkbox" id="pkg" ${hasPackage?"checked":""}><span>I already have a package on hold with <b>@fallacycardshop</b> &mdash; waive my mailing fee.</span></label>
-      <div class="fld"><label>Telegram username</label><input id="f-user" placeholder="@yourusername"></div>
+      <div class="fld"><label>Telegram username *</label><input id="f-user" value="${esc(form.user)}" placeholder="@yourusername"></div>
       <div id="mailFields" style="${hasPackage?"display:none":""}">
-        <div class="fld"><label>Name</label><input id="f-name"></div>
-        <div class="fld"><label>Phone</label><input id="f-phone" inputmode="tel"></div>
-        <div class="fld"><label>Address line</label><input id="f-addr"></div>
-        <div class="fld"><label>Unit number</label><input id="f-unit" placeholder="e.g. #01-23"></div>
-        <div class="fld"><label>Postal code</label><input id="f-postal" inputmode="numeric"></div>
-        <label class="cond-label" style="display:block;margin:8px 0 6px">What should we do with this order?</label>
-        <div class="mailopt">
-          <div class="ml ${mailMode==="hold"?"sel":""}" data-mode="hold"><span class="dot"></span>Hold my package (mailing fee paid upfront)</div>
-          <div class="ml ${mailMode==="mail"?"sel":""}" data-mode="mail"><span class="dot"></span>Mail it out now</div>
-        </div>
+        <div class="fld"><label>Name *</label><input id="f-name" value="${esc(form.name)}"></div>
+        <div class="fld"><label>Phone *</label><input id="f-phone" inputmode="tel" value="${esc(form.phone)}"></div>
+        <div class="fld"><label>Address line *</label><input id="f-addr" value="${esc(form.addr)}"></div>
+        <div class="fld"><label>Unit number *</label><input id="f-unit" placeholder="e.g. #01-23" value="${esc(form.unit)}"></div>
+        <div class="fld"><label>Postal code *</label><input id="f-postal" inputmode="numeric" value="${esc(form.postal)}"></div>
+      </div>
+      <label class="cond-label" style="display:block;margin:12px 0 6px">What should we do with this order?</label>
+      <div class="mailopt">
+        <div class="ml ${mailMode==="hold"?"sel":""}" data-mode="hold"><span class="dot"></span>Hold my package (mailing fee paid upfront)</div>
+        <div class="ml ${mailMode==="mail"?"sel":""}" data-mode="mail"><span class="dot"></span>Mail it out now</div>
       </div>
     </div>
     <div class="step-foot">
@@ -555,22 +563,21 @@ function drawDetails(){
       <div class="sumrow"><span>Mailing fee</span><span class="tag">${t.fee?"$"+t.fee.toFixed(2):"Waived"}</span></div>
       <div class="sumrow tot"><span>Total</span><span class="tag">$${t.total.toFixed(2)}</span></div>
       <button class="primary" id="toPay">Proceed to Pay &rarr;</button>
-      <p class="step-note">Cards are reserved for you while the timer runs.</p></div>`;
-  $("#pkg").onchange=e=>{hasPackage=e.target.checked;$("#mailFields").style.display=hasPackage?"none":"";drawDetails()};
+      <p class="step-note" id="reqNote"></p></div>`;
+  const map={"f-user":"user","f-name":"name","f-phone":"phone","f-addr":"addr","f-unit":"unit","f-postal":"postal"};
+  Object.keys(map).forEach(fid=>{const el=$("#"+fid);if(el)el.oninput=()=>{form[map[fid]]=el.value;syncPay()}});
+  $("#pkg").onchange=e=>{hasPackage=e.target.checked;drawDetails()};
   $("#panelBody").querySelectorAll("[data-mode]").forEach(el=>el.onclick=()=>{mailMode=el.dataset.mode;drawDetails()});
-  $("#toPay").onclick=gotoPay;
+  $("#toPay").onclick=()=>{if(detailsValid())gotoPay()};
+  syncPay();
 }
 
 // ---------- step 3: PayNow (5-min timer) ----------
-function fakeQR(){let s='<svg viewBox="0 0 25 25" width="100%" height="100%" shape-rendering="crispEdges">';const rng=mulberry32(1234567);
-  const fp=(x,y)=>{s+=`<rect x="${x}" y="${y}" width="7" height="7" fill="black"/><rect x="${x+1}" y="${y+1}" width="5" height="5" fill="white"/><rect x="${x+2}" y="${y+2}" width="3" height="3" fill="black"/>`};
-  for(let y=0;y<25;y++)for(let x=0;x<25;x++){if((x<8&&y<8)||(x>16&&y<8)||(x<8&&y>16))continue;if(rng()>0.55)s+=`<rect x="${x}" y="${y}" width="1" height="1" fill="black"/>`}
-  fp(0,0);fp(18,0);fp(0,18);return s+'</svg>'}
 function gotoPay(){
   const t=totals();$("#panelTitle").textContent="Pay by PayNow";setBack(gotoDetails);
   startTimer(5*60,()=>{bump("Payment window expired");openCart()});
   $("#panelBody").innerHTML=`<div class="pay">
-    <div class="qr">${fakeQR()}</div>
+    <div class="qr"><img src="${QR_SRC}" alt="PayNow QR"></div>
     <div class="amt-big tag">$${t.total.toFixed(2)}</div>
     <div class="to">PayNow to Fallacy Card Shop</div>
     <ol class="steps"><li>Scan the QR with your banking app.</li><li>Pay the exact amount above.</li><li>Tap <b>I&rsquo;ve paid</b> &mdash; you&rsquo;ll be taken to our chat to send your screenshot.</li></ol>
@@ -604,16 +611,15 @@ function openAbout(){
     <p class="a" style="margin-top:16px">Still stuck? Message <b>@fallacytcg</b>.</p></div></div>`;
   openPanel();
 }
-$("#aboutBtn").onclick=openAbout;$("#cartbar").onclick=openCart;
+$("#aboutBtn").onclick=openAbout;$("#cartbar").onclick=()=>openCart(closePanel);
 
 ["#q","#sort","#set"].forEach(s=>$(s).addEventListener("input",render));
 $("#rarity").addEventListener("input",()=>{only=null;render()});
 $("#instock").onclick=()=>{$("#instock").classList.toggle("on");render()};
 
-const soldFeed=["Mew (AR)","N's Zoroark ex","Dragapult ex","Keldeo (AR)","Lucario VSTAR","Gallade (CHR)","Galarian Moltres (AR)","Mega Hawlucha ex"];
-let ti=0;function tick(){$("#tick").innerHTML=`Recently purchased: <b>${soldFeed[ti%soldFeed.length]}</b>`;ti++}
+function tick(){if(!CARDS.length)return;const p=CARDS[Math.floor(Math.random()*CARDS.length)];$("#tick").innerHTML=`Recently purchased: <b>${p.name}${p.rarity?" ("+p.rarity+")":""}</b>`}
 tick();setInterval(tick,2600);
 let tt;function bump(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(tt);tt=setTimeout(()=>t.classList.remove("show"),1500)}
 
-render();updateBar();
+boot();
 </script>
