@@ -112,8 +112,9 @@
   .results-foot{padding:6px var(--gutter) 20px;text-align:center}
   .empty{padding:30px 16px;text-align:center;color:var(--ink-soft);font-size:14px}
 
-  .totop{position:absolute;right:14px;bottom:14px;width:44px;height:44px;border-radius:50%;background:var(--pink-deep);color:#fff;border:none;box-shadow:var(--shadow-lg);cursor:pointer;display:grid;place-items:center;opacity:0;pointer-events:none;transition:.2s;z-index:15}
-  .totop.show{opacity:.95;pointer-events:auto}.totop svg{width:20px;height:20px}
+  /* sits above the cart bar so it never covers a card's price */
+  .totop{position:absolute;right:12px;bottom:98px;width:40px;height:40px;border-radius:50%;background:var(--pink-deep);color:#fff;border:none;box-shadow:var(--shadow-lg);cursor:pointer;display:grid;place-items:center;opacity:0;pointer-events:none;transition:.2s;z-index:15}
+  .totop.show{opacity:.92;pointer-events:auto}.totop svg{width:18px;height:18px}
 
   .dock{flex:0 0 auto;position:relative;z-index:10}
   .ticker{background:var(--surface-2);border-top:1px solid var(--line);font-size:12px;color:var(--ink-soft);padding:6px 14px;display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden}
@@ -144,12 +145,19 @@
   .cond-label{font-size:12px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;margin:0 0 8px}
   .cond-opts{display:flex;flex-direction:column;gap:9px}
   .cond-opt{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface)}
+  .cond-opt.selectable{cursor:pointer}
+  .cond-opt.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;background:var(--surface-2)}
   .cond-opt.out{opacity:.55}
   .co-left .cn2{font-weight:600;font-size:14px}.co-left .best{font-size:9.5px;font-weight:700;color:var(--fresh);background:var(--fresh-bg);border-radius:5px;padding:1px 5px;margin-left:6px;text-transform:uppercase}
   .co-left .meta2{font-size:11px;color:var(--ink-soft);margin-top:2px}
-  .co-right{display:flex;align-items:center;gap:10px;flex:0 0 auto}.co-right .pr{font-weight:700;font-size:15px}
-  .detail-foot{padding:4px 20px 24px}
-  .viewcart{width:100%;height:48px;border:none;border-radius:12px;background:var(--accent);color:var(--on-accent);font:inherit;font-weight:700;font-size:15px;cursor:pointer}
+  .co-right{display:flex;align-items:center;gap:9px;flex:0 0 auto}.co-right .pr{font-weight:700;font-size:15px}
+  .co-right .incart{font-size:11px;font-weight:700;color:var(--fresh);background:var(--fresh-bg);border-radius:6px;padding:2px 7px}
+  .sel-dot{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);flex:0 0 auto}
+  .cond-opt.sel .sel-dot{border-color:var(--accent);background:radial-gradient(var(--accent) 42%,transparent 46%)}
+  .detail-actions{display:flex;gap:10px;padding:16px 20px 26px}
+  .add-order{flex:1;height:50px;border:none;border-radius:12px;background:var(--accent);color:var(--on-accent);font:inherit;font-weight:700;font-size:15px;cursor:pointer}
+  .add-order:disabled{background:var(--sold-bg);color:var(--sold);cursor:not-allowed}
+  .view-cart-sm{flex:0 0 auto;height:50px;padding:0 15px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--pink-deep);font:inherit;font-weight:600;font-size:13px;cursor:pointer}
 
   .cart-empty{padding:60px 24px;text-align:center;color:var(--ink-soft)}
   .cart-list{padding:8px 14px}
@@ -359,8 +367,7 @@ function cardHTML(p,ctx){
     </div>
   </article>`;
 }
-function refreshSku(id,cond){document.querySelectorAll(`[data-act="${id}::${cond}"]`).forEach(n=>{const c=byId(id).conds.find(x=>x.cond===cond);n.innerHTML=miniAct(id,cond,c.stock);wireActs(n)});
-  if($("#panel").classList.contains("open")&&$("#condOpts"))refreshDetailCond(id,cond);}
+function refreshSku(id,cond){document.querySelectorAll(`[data-act="${id}::${cond}"]`).forEach(n=>{const c=byId(id).conds.find(x=>x.cond===cond);n.innerHTML=miniAct(id,cond,c.stock);wireActs(n)})}
 
 function orderRail(list){const sold=list.filter(isSold);if(sold.length<=5)return list;return[...list.filter(p=>!isSold(p)),...sold]}
 function railTile(kind){return `<div class="endtile" data-see="${kind}"><div class="ic">&#9776;</div>See all &amp; filter</div>`}
@@ -453,28 +460,37 @@ function startTimer(secs,onExpire){
 $("#scrim").onclick=closePanel;
 
 // ---------- card detail (per-condition steppers) ----------
-let detailId=null;
+let detailId=null,detailCond=null;
 function openDetail(id){
-  detailId=id;const p=byId(id);
+  detailId=id;const p=byId(id);const dc=bestCond(p)||conds(p)[0];detailCond=dc.cond;
   $("#panelTitle").textContent=p.name;$("#panelBody").scrollTop=0;stopTimer();setBack(closePanel);
   $("#panelBody").innerHTML=`
     <div class="detail-hero"><div class="frame"><div class="inner"><img src="${p.imgFull||p.img}" alt="${p.name}"><div class="wm"></div></div></div>
       <p class="ref-note">Reference photo &mdash; you&rsquo;ll receive a card in the stated condition.</p></div>
     <div class="detail-info"><h3>${p.name}</h3>
       <p class="sub"><span class="rar">${p.rarity}</span> &middot; ${setName(p)}</p>
-      <p class="cond-label">Conditions &amp; price</p><div class="cond-opts" id="condOpts"></div></div>
-    <div class="detail-foot"><button class="viewcart" id="dViewCart">View cart</button></div>`;
-  renderCondOpts();$("#dViewCart").onclick=openCart;openPanel();
+      <p class="cond-label">Select a condition</p><div class="cond-opts" id="condOpts"></div>
+      <div class="detail-actions"><button class="add-order" id="addOrder">Add to order</button><button class="view-cart-sm" id="viewCartSm">View cart</button></div>
+    </div>`;
+  renderCondOpts();openPanel();
 }
 function condRowHTML(p,c){
-  const out=c.stock<=0;const best=c.cond==="Near Mint"&&c.stock>0;
-  return `<div class="cond-opt${out?" out":""}">
+  const out=c.stock<=0;const best=c.cond==="Near Mint"&&c.stock>0;const q=qtyOf(p.id,c.cond);const sel=c.cond===detailCond&&!out;
+  return `<div class="cond-opt selectable${sel?" sel":""}${out?" out":""}" data-cond="${c.cond}">
     <div class="co-left"><span class="cn2">${c.cond}</span>${best?'<span class="best">Best</span>':""}<div class="meta2">${out?"Sold out":c.stock+" available"}</div></div>
-    <div class="co-right"><span class="pr">$${c.price.toFixed(2)}</span><div class="act" data-act="${p.id}::${c.cond}">${out?'<span class="soldtag">Out</span>':miniAct(p.id,c.cond,c.stock)}</div></div>
+    <div class="co-right">${q>0?`<span class="incart">${q} in cart</span>`:""}<span class="pr">$${c.price.toFixed(2)}</span>${out?"":'<span class="sel-dot"></span>'}</div>
   </div>`;
 }
-function renderCondOpts(){const p=byId(detailId);$("#condOpts").innerHTML=conds(p).map(c=>condRowHTML(p,c)).join("");wireActs($("#condOpts"))}
-function refreshDetailCond(id,cond){if(id!==detailId)return;const p=byId(id);const c=p.conds.find(x=>x.cond===cond);const node=$("#condOpts").querySelector(`[data-act="${id}::${cond}"]`);if(node){node.innerHTML=c.stock<=0?'<span class="soldtag">Out</span>':miniAct(id,cond,c.stock);wireActs(node)}}
+function renderCondOpts(){
+  const p=byId(detailId);
+  $("#condOpts").innerHTML=conds(p).map(c=>condRowHTML(p,c)).join("");
+  $("#condOpts").querySelectorAll(".cond-opt").forEach(el=>{if(!el.classList.contains("out"))el.onclick=()=>{detailCond=el.dataset.cond;renderCondOpts()}});
+  const c=p.conds.find(x=>x.cond===detailCond);const btn=$("#addOrder");
+  if(!c||c.stock<=0){btn.disabled=true;btn.textContent="Select a condition"}
+  else{btn.disabled=false;btn.innerHTML=`Add to order &middot; $${c.price.toFixed(2)}`}
+  btn.onclick=()=>{const cc=byId(detailId).conds.find(x=>x.cond===detailCond);if(!cc||cc.stock<=0)return;addCart(detailId,detailCond);refreshSku(detailId,detailCond);renderCondOpts();bump("Added to order")};
+  $("#viewCartSm").onclick=openCart;
+}
 
 // ---------- cart (step 1: edit + promo, NOT reserved) ----------
 function openCart(){
