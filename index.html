@@ -41,6 +41,15 @@
   /* phone is a fixed-height flex column; only .content scrolls, so header + search + cart stay pinned */
   .phone{width:100%;max-width:440px;position:relative;background:var(--surface-2);flex:1 1 auto;min-height:0;display:flex;flex-direction:column;box-shadow:var(--shadow-lg);overflow:hidden}
   @media(min-width:520px){.phone{margin:0 0 16px;border-radius:24px;border:1px solid var(--frame)}}
+  /* top promo banner — collapses as you scroll down */
+  .promo-banner{flex:0 0 auto;background:linear-gradient(180deg,#fdeef4,#fbe3ee);color:var(--pink-deep);text-align:center;padding:12px 16px;font-size:13px;line-height:1.55;font-weight:600;overflow:hidden;max-height:180px;transition:max-height .3s ease,padding .3s ease,opacity .2s ease}
+  .promo-banner.collapsed{max-height:0;padding-top:0;padding-bottom:0;opacity:0}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .promo-banner{background:linear-gradient(180deg,#2a1420,#25121c)}}
+  :root[data-theme="dark"] .promo-banner{background:linear-gradient(180deg,#2a1420,#25121c)}
+  .promo-banner .promo-code{display:inline-block;background:var(--surface);border:1px dashed var(--accent);border-radius:8px;padding:2px 10px;margin:0 3px;font-weight:800;letter-spacing:.03em;color:var(--pink-deep);cursor:pointer;white-space:nowrap}
+  .promo-banner .promo-code:active{transform:scale(.97)}
+  .promo-banner .promo-code.copied{background:var(--fresh-bg);border-color:var(--fresh);color:var(--fresh)}
+  .promo-banner .promo-copy-hint{display:block;font-style:italic;font-weight:500;color:var(--ink-soft);font-size:11.5px;margin-top:5px}
 
   .scroller{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;position:relative}
   .tgbar{display:flex;align-items:center;gap:10px;padding:7px 14px;background:var(--surface)}
@@ -272,6 +281,7 @@
 </style>
 
 <div class="phone">
+  <div class="promo-banner" id="promoBanner" style="display:none;"><span id="promoText"></span></div>
   <div class="scroller" id="scroller">
   <div class="tgbar">
     <div class="logo" id="logo"><img src="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/fallacyministore-logo.png" alt="Fallacy"></div>
@@ -313,7 +323,7 @@ const RANK={"Near Mint":0,"Lightly Played":1,"Moderately Played":2,"Heavily Play
 const REF_MULT={"Lightly Played":1.3,"Moderately Played":1.6,"Heavily Played":2};
 const CART_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>';
 const MAIL_FEE=3;
-let cart={};let only=null;let savedScroll=0;let appliedDiscount=null;let promoMsg="";
+let cart={};let only=null;let savedScroll=0;let appliedDiscount=null;let promoMsg="";let promoText="";
 function discountAmt(sub){if(!appliedDiscount)return 0;return appliedDiscount.type==="percent"?sub*(Number(appliedDiscount.value)||0)/100:Math.min(Number(appliedDiscount.value)||0,sub)}
 
 const conds=p=>[...p.conds].sort((a,b)=>RANK[a.cond]-RANK[b.cond]);
@@ -387,9 +397,25 @@ function boot(){
   $("#content").innerHTML='<div class="empty">Loading the store…</div>';
   fetch("/api/products").then(r=>r.json()).then(d=>{
     CARDS=groupProducts(Array.isArray(d)?d:(d.products||[]));
+    promoText=(!Array.isArray(d)&&d&&typeof d.promoText==="string")?d.promoText:"";
     loadCart();
     init();
   }).catch(err=>{console.error(err);$("#content").innerHTML='<div class="empty">Couldn&rsquo;t load the store. Pull to refresh.</div>'});
+}
+// Top promo banner from the admin's promoText — highlights an ALL-CAPS code as tap-to-copy.
+function renderPromoBanner(){
+  const banner=$("#promoBanner"),txt=$("#promoText");if(!banner||!txt)return;
+  if(!promoText){banner.style.display="none";txt.textContent="";return}
+  txt.textContent=promoText;   // textContent first so stray brackets can't break the page
+  txt.innerHTML=txt.innerHTML.replace(/\b([A-Z][A-Z0-9]{4,19})\b/g,'<span class="promo-code" role="button" tabindex="0">$1</span>');
+  const codes=txt.querySelectorAll(".promo-code");codes.forEach(el=>el.onclick=()=>copyPromoCode(el));
+  if(codes.length&&!banner.querySelector(".promo-copy-hint")){const h=document.createElement("span");h.className="promo-copy-hint";h.textContent="Tap the code to copy it";banner.appendChild(h)}
+  banner.style.display="block";
+}
+function copyPromoCode(el){
+  const code=el.textContent;const orig=code;
+  const done=()=>{el.classList.add("copied");el.textContent="Copied!";setTimeout(()=>{el.classList.remove("copied");el.textContent=orig},1200)};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(code).then(done).catch(done)}else done();
 }
 function saveCart(){try{localStorage.setItem("fallacyCart",JSON.stringify(cart))}catch(e){}}
 function loadCart(){
@@ -401,7 +427,7 @@ function init(){
   if(telegramUser&&telegramUser.username&&!form.user){form.user="@"+telegramUser.username;trackEvent("telegram_prefill",{username:"yes"})}
   fillSel($("#rarity"),[...new Set(CARDS.map(c=>c.rarity))].filter(Boolean).sort());
   fillSel($("#set"),[...new Set(CARDS.map(setName))].filter(Boolean).sort());
-  render();updateBar();loadTicker();
+  render();updateBar();loadTicker();renderPromoBanner();
 }
 
 // Reference ("was") price for a discounted card: in-stock NM price if we have one,
@@ -556,7 +582,7 @@ function clearFilters(){only=null;$("#q").value="";$("#rarity").value="";$("#set
 
 // back-to-top
 const scrollEl=$("#scroller"),toTop=$("#totop");
-scrollEl.addEventListener("scroll",()=>{toTop.classList.toggle("show",scrollEl.scrollTop>320)});
+scrollEl.addEventListener("scroll",()=>{toTop.classList.toggle("show",scrollEl.scrollTop>320);$("#promoBanner").classList.toggle("collapsed",scrollEl.scrollTop>24)});
 toTop.onclick=()=>scrollEl.scrollTo({top:0,behavior:"smooth"});
 
 // ---------- panel plumbing ----------
@@ -885,6 +911,7 @@ function pruneCart(){Object.keys(cart).forEach(k=>{const[cid,cond]=k.split("::")
 function refreshProducts(){
   fetch("/api/products").then(r=>r.json()).then(d=>{
     CARDS=groupProducts(Array.isArray(d)?d:(d.products||[]));pruneCart();
+    promoText=(!Array.isArray(d)&&d&&typeof d.promoText==="string")?d.promoText:"";renderPromoBanner();
     if(!$("#panel").classList.contains("open")){const sc=$("#scroller").scrollTop;render();$("#scroller").scrollTop=sc}
     updateBar();loadTicker();
   }).catch(()=>{});
