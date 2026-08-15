@@ -168,6 +168,8 @@
   .view-cart-sm{flex:0 0 auto;height:50px;padding:0 15px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--pink-deep);font:inherit;font-weight:600;font-size:13px;cursor:pointer}
 
   .cart-empty{padding:60px 24px;text-align:center;color:var(--ink-soft)}
+  .cart-notice{margin:12px 14px 0;padding:11px 13px;background:var(--scarce-bg);border:1px solid var(--scarce);border-radius:11px;color:var(--scarce);font-size:12.5px;line-height:1.5}
+  .cart-notice b{color:var(--scarce)}
   .cart-list{padding:6px 14px}
   .cart-item{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
   /* each row is exactly the height of the card image */
@@ -328,6 +330,20 @@ function rememberReservation(id){try{if(id)localStorage.setItem(RESERVATION_KEY,
 function reserveItemList(){return Object.entries(cart).filter(([,q])=>q>0).map(([k,q])=>({key:k,quantity:q}))}
 function releaseReservation(){if(!reservationId)return;const id=reservationId;reservationId=null;rememberReservation(null);
   try{fetch("/api/release-reservation",{method:"POST",headers:{"Content-Type":"application/json"},keepalive:true,body:JSON.stringify({reservationId:id})})}catch(e){}}
+
+// On a reserve conflict, auto-fix the cart from the server's `unavailable` list:
+// trim to what's left (keeps at least 1) or remove a fully sold-out line, and
+// return a note naming exactly what changed.
+let cartNotice="";
+function applyStockFix(list){
+  const notes=[];
+  (list||[]).forEach(u=>{const k=u.key;if(!(k in cart))return;const avail=Math.max(Number(u.available)||0,0);const name=u.name||k.split("::")[0];const cond=k.split("::")[1]||"";
+    if(avail<=0){delete cart[k];notes.push(`<b>${name}</b> (${cond}) just sold out — removed from your cart.`)}
+    else if(cart[k]>avail){cart[k]=avail;notes.push(`<b>${name}</b> (${cond}) — only ${avail} left, reduced to ${avail}.`)}
+  });
+  saveCart();updateBar();
+  return notes.join(" ");
+}
 
 // Group the flat /api/products list (one row per CardID+Condition) into cards.
 function groupProducts(list){
@@ -573,7 +589,8 @@ function openCart(ret){
   if(ret)cartReturn=ret;
   stopTimer();setBack(cartReturn);$("#panelTitle").textContent="Your cart";
   const entries=Object.entries(cart).filter(([,q])=>q>0);
-  if(!entries.length){$("#panelBody").innerHTML=`<div class="cart-empty"><p>Your cart is empty.</p><p style="font-size:13px">Add cards and they&rsquo;ll show up here.</p></div>`;openPanel();return}
+  const noticeHTML=cartNotice?`<div class="cart-notice">${cartNotice}</div>`:"";cartNotice="";
+  if(!entries.length){$("#panelBody").innerHTML=`${noticeHTML}<div class="cart-empty"><p>Your cart is empty.</p><p style="font-size:13px">Add cards and they&rsquo;ll show up here.</p></div>`;openPanel();return}
   const items=entries.map(([k,q])=>{const[id,cond]=k.split("::");const p=byId(id);const c=p.conds.find(x=>x.cond===cond);const line=c.price*q;
     return `<div class="cart-item"><div class="th"><img src="${p.img}" alt=""><div class="wm"></div></div>
       <div class="ci-body"><div>
@@ -582,7 +599,7 @@ function openCart(ret){
         <div class="ci-row"><div class="qadj"><button data-cdec="${id}" data-c="${cond}">&minus;</button><span class="qn tag">${q}</span><button data-cinc="${id}" data-c="${cond}" ${q>=c.stock?"disabled":""}>+</button></div><span class="ci-line tag">$${line.toFixed(2)}</span><button class="ci-x" data-crm="${id}" data-c="${cond}" aria-label="Remove">&times;</button></div>
       </div></div>`}).join("");
   const sub=subtotal();const disc=discountAmt(sub);
-  $("#panelBody").innerHTML=`<div class="cart-list">${items}</div>
+  $("#panelBody").innerHTML=`${noticeHTML}<div class="cart-list">${items}</div>
     <div class="cart-sticky">
       <div class="promo"><input id="promoInput" placeholder="Promo code" value="${appliedDiscount?appliedDiscount.code:''}"><button id="promoApply">Apply</button></div>
       ${promoMsg?`<div class="promo-msg ${appliedDiscount?'ok':'no'}">${promoMsg}</div>`:""}
@@ -621,7 +638,7 @@ async function gotoDetails(){
   if(btn){btn.disabled=false;btn.textContent="Checkout and Payment"}
   if(!r||!r.ok){
     reservationId=null;
-    if(r&&r.status===409){trackEvent("checkout_blocked",{reason:"stock_gone"});bump("Some items just sold out — please review your cart");openCart();return}
+    if(r&&r.status===409){const d=await r.json().catch(()=>({}));cartNotice=applyStockFix(d.unavailable)||"Some items are no longer available — your cart was updated.";trackEvent("checkout_blocked",{reason:"stock_gone"});openCart();return}
     trackEvent("checkout_blocked",{reason:"reserve_failed"});bump("Couldn’t reserve your items — please try again");return;
   }
   rememberReservation(reservationId);trackEvent("payment_shown",{items:cartCount()});
@@ -735,6 +752,8 @@ async function gotoDone(){
     const rid=newResId();let rr=null;try{rr=await fetch("/api/reserve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reservationId:rid,items:reserveItemList()})})}catch(e){}
     if(rr&&rr.ok){reservationId=rid;rememberReservation(rid);trackEvent("reservation_rescued",{});
       try{cres=await fetch("/api/confirm-order",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reservationId:rid,record})})}catch(e){}}
+    else if(rr&&rr.status===409){const d=await rr.json().catch(()=>({}));cartNotice=applyStockFix(d.unavailable)||"Some items sold out during payment — your cart was updated.";
+      trackEvent("checkout_failed",{reason:"stock_gone_at_confirm"});isConfirming=false;if(btn){btn.disabled=false;btn.textContent="Confirm order"}reservationId=null;rememberReservation(null);openCart();return}
   }
   if(!cres||!cres.ok){
     const err=cres?await cres.json().catch(()=>({})):{};
