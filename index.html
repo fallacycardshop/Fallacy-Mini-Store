@@ -170,7 +170,8 @@
   .co-left .cn2{font-weight:600;font-size:14px}.co-left .best{font-size:9.5px;font-weight:700;color:var(--fresh);background:var(--fresh-bg);border-radius:5px;padding:1px 5px;margin-left:6px;text-transform:uppercase}
   .co-left .meta2{font-size:11px;color:var(--ink-soft);margin-top:2px}
   .co-right{display:flex;align-items:center;gap:9px;flex:0 0 auto}.co-right .pr{font-weight:700;font-size:15px}
-  .co-right .incart{font-size:11px;font-weight:700;color:var(--fresh);background:var(--fresh-bg);border-radius:6px;padding:2px 7px}
+  .co-right .incart{font-size:11px;font-weight:700;color:var(--fresh);background:var(--fresh-bg);border-radius:6px;padding:2px 7px;transition:background .35s ease,color .35s ease}
+  .co-right .incart.added-flash{background:var(--fresh);color:#fff}
   .sel-dot{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);flex:0 0 auto}
   .cond-opt.sel .sel-dot{border-color:var(--accent);background:radial-gradient(var(--accent) 42%,transparent 46%)}
   .detail-actions{display:flex;gap:10px;padding:16px 0 26px}
@@ -650,11 +651,22 @@ function renderCondOpts(){
   const p=byId(detailId);
   $("#condOpts").innerHTML=conds(p).map(c=>condRowHTML(p,c)).join("");
   $("#condOpts").querySelectorAll(".cond-opt").forEach(el=>{if(!el.classList.contains("out"))el.onclick=()=>{detailCond=el.dataset.cond;renderCondOpts()}});
-  const c=p.conds.find(x=>x.cond===detailCond);const btn=$("#addOrder");
+  const c=p.conds.find(x=>x.cond===detailCond);const btn=$("#addOrder");const inCart=qtyOf(p.id,detailCond);
   if(!c||c.stock<=0){btn.disabled=true;btn.textContent="Select a condition"}
+  else if(inCart>=c.stock){btn.disabled=true;btn.textContent="Max in cart"}   // whole available stock already in cart
   else{btn.disabled=false;btn.innerHTML=`Add to order &middot; $${c.price.toFixed(2)}`}
-  btn.onclick=()=>{const cc=byId(detailId).conds.find(x=>x.cond===detailCond);if(!cc||cc.stock<=0)return;addCart(detailId,detailCond);refreshSku(detailId,detailCond);renderCondOpts();bump("Added to order")};
+  btn.onclick=()=>{const cc=byId(detailId).conds.find(x=>x.cond===detailCond);if(!cc||cc.stock<=0||qtyOf(detailId,detailCond)>=cc.stock)return;addCart(detailId,detailCond);refreshSku(detailId,detailCond);renderCondOpts();flashAddedToCart()};
   $("#viewCartSm").onclick=()=>openCart(()=>openDetail(detailId));
+}
+// Confirmation flashes green over the condition's in-cart counter, then fades
+// back to the "N in cart" text — so it never covers the action buttons.
+function flashAddedToCart(){
+  const row=$("#condOpts .cond-opt.sel");if(!row)return;
+  const ic=row.querySelector(".incart");if(!ic)return;
+  const settled=ic.textContent;   // "N in cart"
+  ic.textContent="Added ✓";ic.classList.add("added-flash");
+  clearTimeout(flashAddedToCart._t);
+  flashAddedToCart._t=setTimeout(()=>{ic.classList.remove("added-flash");ic.textContent=settled},1000);
 }
 
 // ---------- cart (step 1: edit + promo, NOT reserved) ----------
