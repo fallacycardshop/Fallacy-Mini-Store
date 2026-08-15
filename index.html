@@ -507,9 +507,11 @@ function railTile(kind){return `<div class="endtile" data-see="${kind}"><div cla
 function railSection(title,sub,list,kind,ctx){
   if(!list.length)return"";
   const railMax=kind==="new"?20:10;   // New/restocked rail carries more before "See all"
-  // Daily deterministic shuffle so each rail reshuffles once a day (stable
-  // within the day), surfacing cards a shopper may have scrolled past before.
-  const ordered=orderRail(dailyShuffle(list)).slice(0,railMax);
+  // The New rail keeps CSV/drip order so freshly-added cards read newest-first.
+  // Every other rail is daily-shuffled (deterministic per day) so its order
+  // changes each day and resurfaces cards a shopper may have scrolled past.
+  const base=kind==="new"?list:dailyShuffle(list);
+  const ordered=orderRail(base).slice(0,railMax);
   return `<div class="sec railsec"><div class="sec-head"><h2>${title}</h2><div class="right"><span class="count">${list.length}</span><button class="seeall" data-see="${kind}">See all &rarr;</button></div></div>
     ${sub?`<div class="sec-sub">${sub}</div>`:""}
     <div class="rail">${ordered.map(p=>cardHTML(p,ctx)).join("")}${railTile(kind)}</div></div>`;
