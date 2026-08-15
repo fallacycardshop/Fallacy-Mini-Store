@@ -42,8 +42,7 @@
   .phone{width:100%;max-width:440px;position:relative;background:var(--surface-2);flex:1 1 auto;min-height:0;display:flex;flex-direction:column;box-shadow:var(--shadow-lg);overflow:hidden}
   @media(min-width:520px){.phone{margin:0 0 16px;border-radius:24px;border:1px solid var(--frame)}}
   /* top promo banner — collapses as you scroll down */
-  .promo-banner{flex:0 0 auto;background:linear-gradient(180deg,#fdeef4,#fbe3ee);color:var(--pink-deep);text-align:center;padding:12px 16px;font-size:13px;line-height:1.55;font-weight:600;overflow:hidden;max-height:180px;transition:max-height .3s ease,padding .3s ease,opacity .2s ease}
-  .promo-banner.collapsed{max-height:0;padding-top:0;padding-bottom:0;opacity:0}
+  .promo-banner{background:linear-gradient(180deg,#fdeef4,#fbe3ee);color:var(--pink-deep);text-align:center;padding:12px 16px;font-size:13px;line-height:1.55;font-weight:600}
   @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .promo-banner{background:linear-gradient(180deg,#2a1420,#25121c)}}
   :root[data-theme="dark"] .promo-banner{background:linear-gradient(180deg,#2a1420,#25121c)}
   .promo-banner .promo-code{display:inline-block;background:var(--surface);border:1px dashed var(--accent);border-radius:8px;padding:2px 10px;margin:0 3px;font-weight:800;letter-spacing:.03em;color:var(--pink-deep);cursor:pointer;white-space:nowrap}
@@ -286,8 +285,8 @@
 </style>
 
 <div class="phone">
-  <div class="promo-banner" id="promoBanner" style="display:none;"><span id="promoText"></span></div>
   <div class="scroller" id="scroller">
+  <div class="promo-banner" id="promoBanner" style="display:none;"><span id="promoText"></span></div>
   <div class="tgbar">
     <div class="logo" id="logo"><img src="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/fallacyministore-logo.png" alt="Fallacy"></div>
     <div><div class="name">Fallacy's Mini Store</div><a class="handle" href="https://t.me/fallacycardshop" target="_blank" rel="noopener">@fallacycardshop</a></div>
@@ -589,7 +588,7 @@ function clearFilters(){only=null;$("#q").value="";$("#rarity").value="";$("#set
 
 // back-to-top
 const scrollEl=$("#scroller"),toTop=$("#totop");
-scrollEl.addEventListener("scroll",()=>{toTop.classList.toggle("show",scrollEl.scrollTop>320);$("#promoBanner").classList.toggle("collapsed",scrollEl.scrollTop>24)});
+scrollEl.addEventListener("scroll",()=>{toTop.classList.toggle("show",scrollEl.scrollTop>320)});
 toTop.onclick=()=>scrollEl.scrollTo({top:0,behavior:"smooth"});
 
 // ---------- panel plumbing ----------
