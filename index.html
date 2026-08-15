@@ -140,7 +140,7 @@
   .ticker .live{width:7px;height:7px;border-radius:50%;background:var(--fresh);flex:0 0 auto;animation:pulse 2s infinite}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(31,140,96,.5)}70%{box-shadow:0 0 0 7px rgba(31,140,96,0)}100%{box-shadow:0 0 0 0 rgba(31,140,96,0)}}
   .ticker b{color:var(--pink-deep);font-weight:600}
-  .cartbar{background:var(--accent);color:var(--on-accent);display:flex;align-items:center;gap:12px;padding:13px 16px;cursor:pointer}
+  .cartbar{background:var(--accent);color:var(--on-accent);display:flex;align-items:center;gap:12px;padding:13px 16px calc(20px + env(safe-area-inset-bottom,0px));cursor:pointer}
   .cartbar .cn{background:rgba(255,255,255,.22);border-radius:8px;padding:2px 9px;font-weight:700;font-size:14px}
   .cartbar .lbl{font-weight:600;font-size:15px}.cartbar .tot{margin-left:auto;font-weight:700;font-size:16px}
 
@@ -340,6 +340,15 @@ const defaultCond=(p,ctx)=>ctx==="deal"?dealCond(p):bestCond(p);
 const nmCond=p=>p.conds.find(c=>c.cond==="Near Mint");
 const setLabel=s=>String(s||"").replace(/^[A-Za-z0-9]+\s+/,"");   // drop leading set code
 const setName=p=>setLabel(p.set);
+// Vintage groupings match on the leading set code (the token before the first
+// space in the CSV Set value, e.g. "BAS Japanese Base Set" -> "BAS"). Codes not
+// yet in the catalogue are harmless — the rail simply stays empty until stock
+// with that set arrives.
+const setCode=p=>String(p.set||"").trim().split(/\s+/)[0].toUpperCase();
+const WOTC_SETS=new Set(["BAS","FOS","GYM1","GYM2","JUN","NGEN","NDES","NDIS","VEND1","VEND2","VEND3","NREV"]);
+const ESERIES_SETS=new Set(["VS","BEP","TTONM","WFTS","TLVS","SE","P","MM"]);
+const isWOTC=p=>WOTC_SETS.has(setCode(p));
+const isEseries=p=>ESERIES_SETS.has(setCode(p));
 const ck=(id,cond)=>id+"::"+cond;
 const round90=x=>{const r=Math.round(x-0.9)+0.9;return r>0?r:0.9};
 const hasDeal=p=>inStock(p).some(c=>c.cond!=="Near Mint");
@@ -498,7 +507,9 @@ function railTile(kind){return `<div class="endtile" data-see="${kind}"><div cla
 function railSection(title,sub,list,kind,ctx){
   if(!list.length)return"";
   const railMax=kind==="new"?20:10;   // New/restocked rail carries more before "See all"
-  const ordered=orderRail(list).slice(0,railMax);
+  // Daily deterministic shuffle so each rail reshuffles once a day (stable
+  // within the day), surfacing cards a shopper may have scrolled past before.
+  const ordered=orderRail(dailyShuffle(list)).slice(0,railMax);
   return `<div class="sec railsec"><div class="sec-head"><h2>${title}</h2><div class="right"><span class="count">${list.length}</span><button class="seeall" data-see="${kind}">See all &rarr;</button></div></div>
     ${sub?`<div class="sec-sub">${sub}</div>`:""}
     <div class="rail">${ordered.map(p=>cardHTML(p,ctx)).join("")}${railTile(kind)}</div></div>`;
@@ -540,6 +551,8 @@ function matchP(p){
   if($("#set").value&&setName(p)!==$("#set").value)return false;
   if(only==="new"&&!p.isNew)return false;
   if(only==="disc"&&!hasDeal(p))return false;
+  if(only==="wotc"&&!isWOTC(p))return false;
+  if(only==="eseries"&&!isEseries(p))return false;
   return true;
 }
 function sortList(list){const s=$("#sort").value;const key=p=>{const d=bestCond(p)||conds(p)[0];return d.price};
@@ -550,7 +563,7 @@ function render(){
   if(activeFilters()){
     const res=sortList(CARDS.filter(matchP));const liveR=res.filter(p=>!isSold(p)),soldR=res.filter(isSold);
     const ctx=only==="disc"?"deal":"best";
-    let label="Results";if(only==="new")label="Newly in stock &amp; restocked";else if(only==="disc")label="Discounted";else if($("#rarity").value==="SAR")label="Special Art Rares";else if($("#rarity").value==="AR")label="Art Rares";else if($("#rarity").value==="S")label="Baby Shinies";else if(!$("#q").value.trim()&&!$("#set").value)label="All cards";
+    let label="Results";if(only==="new")label="Newly in stock &amp; restocked";else if(only==="disc")label="Discounted";else if($("#rarity").value==="SAR")label="Special Art Rares";else if($("#rarity").value==="AR")label="Art Rares";else if($("#rarity").value==="S")label="Baby Shinies";else if(only==="wotc")label="WOTC Old Back Vintage";else if(only==="eseries")label="e-Series Vintage";else if(!$("#q").value.trim()&&!$("#set").value)label="All cards";
     c.innerHTML=`<div class="results-head"><button class="backbtn" data-back>&#8592; Back</button><h2>${label} (${res.length})</h2></div>
       ${res.length?`<div class="grid">${liveR.map(p=>cardHTML(p,ctx)).join("")}</div>${soldBlock(soldR)}`:`<div class="empty">No cards match &mdash; try clearing a filter.</div>`}
       <div class="results-foot"><button class="backbtn" data-back>&#8592; Back to browsing</button></div>`;
@@ -563,6 +576,8 @@ function render(){
       featSection(notNew)+
       railSection("&#128142; Special Art Rares","The chase cards &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="SAR"),"sar","best")+
       railSection("&#127912; Art Rares","Full-art alt prints &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="AR"),"ar","best")+
+      railSection("&#127760; WOTC Old Back Vintage","Original WOTC-era classics &mdash; swipe &rarr;",notNew.filter(isWOTC),"wotc","best")+
+      railSection("&#128220; e-Series Vintage","e-Reader era singles &mdash; swipe &rarr;",notNew.filter(isEseries),"eseries","best")+
       railSection("&#127775; Baby Shinies","&ldquo;S&rdquo; rarity shinies &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="S"),"s","best")+
       railSection("&#127991;&#65039; Discounted","Played copies at a lower price &mdash; swipe &rarr;",notNew.filter(hasDeal),"disc","deal")+
       allSection(notNew);
@@ -584,6 +599,8 @@ function seeAll(kind){savedScroll=$("#scroller").scrollTop;
   else if(kind==="ar")$("#rarity").value="AR";
   else if(kind==="s")$("#rarity").value="S";
   else if(kind==="disc")only="disc";
+  else if(kind==="wotc")only="wotc";
+  else if(kind==="eseries")only="eseries";
   render()}
 function clearFilters(){only=null;$("#q").value="";$("#rarity").value="";$("#set").value="";$("#sort").value="curated";render();$("#scroller").scrollTop=savedScroll;savedScroll=0}
 
