@@ -66,11 +66,10 @@
   .sec.railsec{background:var(--rail-bg);padding-top:2px;padding-bottom:8px;margin-top:14px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);position:relative}
   .sec.railsec .rail{position:relative}
   .sec.railsec .sec-head h2{display:flex;align-items:center;gap:6px}
-  /* each subsection header is a solid pink bar with white text */
-  .sec-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--accent)}
-  .sec-head h2{margin:0;font-size:15px;color:#fff;font-weight:700}
-  .sec-head .right{display:flex;align-items:center;gap:10px;flex:0 0 auto}.sec-head .count{font-size:12px;color:rgba(255,255,255,.85)}
-  .seeall{font-size:12.5px;font-weight:700;color:#fff;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline}
+  .sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:8px var(--gutter)}
+  .sec-head h2{margin:0;font-size:16px;color:var(--pink-deep);font-weight:600}
+  .sec-head .right{display:flex;align-items:baseline;gap:10px;flex:0 0 auto}.sec-head .count{font-size:12px;color:var(--ink-soft)}
+  .seeall{font-size:12.5px;font-weight:600;color:var(--accent);background:none;border:none;cursor:pointer;padding:0}
   .sec-sub{font-size:12px;color:var(--ink-soft);padding:0 var(--gutter) 8px;margin-top:-6px}
   .rail{display:flex;gap:12px;overflow-x:auto;padding:2px var(--gutter) 4px;scroll-snap-type:x mandatory;scroll-padding-left:var(--gutter);scrollbar-width:none;-webkit-overflow-scrolling:touch}
   .rail::-webkit-scrollbar{display:none}.rail .card,.rail .endtile{flex:0 0 47%;scroll-snap-align:start}
@@ -215,7 +214,7 @@
   .pay .pay-note{font-size:12px;color:var(--ink-soft);margin:0 0 16px;line-height:1.5}
   .pay .amt-big{font-size:30px;font-weight:700;color:var(--ink)}
   .pay .to{font-size:13px;color:var(--ink-soft);margin:2px 0 16px}
-  .pay .steps{text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 18px;font-size:13px;color:var(--ink-soft)}
+  .pay .steps{text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 20px 16px 38px;margin:0 0 18px;font-size:13px;color:var(--ink-soft)}
   .pay .steps li{margin-bottom:6px}
   .done{padding:50px 24px;text-align:center}
   .done .big{width:74px;height:74px;border-radius:50%;background:var(--fresh-bg);color:var(--fresh);display:grid;place-items:center;margin:0 auto 16px;font-size:38px}
@@ -299,7 +298,10 @@ const setName=p=>p.set.replace(/^[A-Za-z0-9]+\s+/,"");
 const ck=(id,cond)=>id+"::"+cond;
 const round90=x=>{const r=Math.round(x-0.9)+0.9;return r>0?r:0.9};
 const hasDeal=p=>inStock(p).some(c=>c.cond!=="Near Mint");
-const rarLabel=p=>(p.rarity&&p.rarity!=="N.A."&&p.rarity!=="N.A")?p.rarity:"";   // hide N.A. rarities
+// Rarity is shown only for these categories; a few TTGX ones are relabelled.
+const RAR_MAP={"RR (TTGX)":"Tag Team GX","SR (TTGX)":"SR Tag Team GX","HR (TTGX)":"HR (TTGX)"};
+const RAR_SHOW=new Set(["AR","SAR","CHR","UR","HR","SR","S","SSR","RR","RRR","RR (TTGX)","SR (TTGX)","HR (TTGX)"]);
+const rarLabel=p=>{const r=p.rarity||"";return RAR_MAP[r]||(RAR_SHOW.has(r)?r:"")};
 const NOTIFY_EMAIL="fallacycardshop@gmail.com";
 const TG_CHAT="https://t.me/fallacytcg";
 
@@ -327,7 +329,7 @@ function boot(){
 function init(){
   fillSel($("#rarity"),[...new Set(CARDS.map(c=>c.rarity))].filter(Boolean).sort());
   fillSel($("#set"),[...new Set(CARDS.map(setName))].filter(Boolean).sort());
-  render();updateBar();
+  render();updateBar();loadTicker();
 }
 
 // Reference ("was") price for a discounted card: in-stock NM price if we have one,
@@ -379,7 +381,7 @@ function cardHTML(p,ctx){
     <div class="imgwrap">${badgeHTML(p,ctx)}<img loading="lazy" src="${p.img}" alt="${p.name}"><div class="wm"></div>${sold?'<div class="sold-veil"><span>Sold out</span></div>':""}</div>
     <div class="body">
       <p class="nm">${p.name}</p>
-      <div class="rs">${rarLabel(p)?`<span class="rar">${p.rarity}</span> &middot; `:""}${setName(p)}</div>
+      <div class="rs">${rarLabel(p)?`<span class="rar">${rarLabel(p)}</span> &middot; `:""}${setName(p)}</div>
       <div class="cond"><span>${dc.cond}</span>${multi}</div>
       <div class="row">${priceHTML(p,ctx)}<div class="act" data-act="${p.id}::${dc.cond}">${sold?'<span class="soldtag">Sold out</span>':miniAct(p.id,dc.cond,dc.stock)}</div></div>
     </div>
@@ -508,7 +510,7 @@ function openDetail(id){
     <div class="detail-hero"><div class="frame"><div class="inner"><img src="${p.imgFull||p.img}" alt="${p.name}"><div class="wm"></div></div></div>
       <p class="ref-note">Reference photo &mdash; you&rsquo;ll receive a card in the stated condition.</p></div>
     <div class="detail-info"><h3>${p.name}</h3>
-      <p class="sub">${rarLabel(p)?`<span class="rar">${p.rarity}</span> &middot; `:""}${setName(p)}</p>
+      <p class="sub">${rarLabel(p)?`<span class="rar">${rarLabel(p)}</span> &middot; `:""}${setName(p)}</p>
       <p class="cond-label">Select a condition</p><div class="cond-opts" id="condOpts"></div>
       <div class="detail-actions"><button class="add-order" id="addOrder">Add to order</button><button class="view-cart-sm" id="viewCartSm">View cart</button></div>
     </div>`;
@@ -544,7 +546,7 @@ function openCart(ret){
     return `<div class="cart-item"><div class="th"><img src="${p.img}" alt=""><div class="wm"></div></div>
       <div class="ci-body"><div>
         <p class="ci-name">${p.name} <span class="ci-cond">&middot; ${cond}</span></p>
-        <p class="ci-meta">${rarLabel(p)?`<span class="ci-rar">${p.rarity}</span> &middot; `:""}${setName(p)}</p></div>
+        <p class="ci-meta">${rarLabel(p)?`<span class="ci-rar">${rarLabel(p)}</span> &middot; `:""}${setName(p)}</p></div>
         <div class="ci-row"><div class="qadj"><button data-cdec="${id}" data-c="${cond}">&minus;</button><span class="qn tag">${q}</span><button data-cinc="${id}" data-c="${cond}" ${q>=c.stock?"disabled":""}>+</button></div><span class="ci-line tag">$${line.toFixed(2)}</span><button class="ci-x" data-crm="${id}" data-c="${cond}" aria-label="Remove">&times;</button></div>
       </div></div>`}).join("");
   const sub=subtotal();const disc=sub*promoPct;
@@ -683,13 +685,13 @@ function openAbout(){
     <div class="stat-row" id="statRow"></div>
     <div class="pill-row"><span class="pill">PayNow</span><span class="pill">Mail consolidation</span><span class="pill">Daily restocks</span><span class="pill">Live auctions</span></div>
     <div class="faq"><h3>FAQ</h3>
-    <p class="q">What if I already have a package on hold from auctions?</p><p class="a">Your store and auction purchases are combined into a single package at checkout &mdash; just check the box that you already have a package on hold with us!</p>
-    <p class="q">Do I pay a separate mailing fee if I combine my package?</p><p class="a">Nope!! Mail consolidation works across auctions and mini-store purchases. Once you check the box, the mailing fee shows as $0 &mdash; this is verified separately on our end.</p>
-    <p class="q">Do I need to provide my address every time I check out?</p><p class="a">No. Once you check the box that you have a package with us, all you need is your Telegram username + proof of payment.</p>
-    <p class="q">Why did my order not go through?</p><p class="a">Your order is only sent to us when you tap &ldquo;Confirm Order&rdquo; at the end of the payment page. If you miss this step, we won&rsquo;t be notified and your held cart items are released back into the store.</p>
-    <p class="q">What happens after I send proof of payment?</p><p class="a">We verify payment and you should get a receipt almost immediately (unless we&rsquo;re asleep)! That means your cards have made it into your package. If we didn&rsquo;t receive payment, you&rsquo;ll get an order confirmation &amp; payment-reminder slip instead.</p>
-    <p class="q">Can I keep holding my package, or must I mail out immediately?</p><p class="a">Both options are available at checkout. Note: choosing to mail out on the store triggers mailing for your <b>entire</b> package on hold!!</p>
-    <p class="a" style="margin-top:16px">&#129528; We&rsquo;re continually fine-tuning our mini store &amp; welcome all feedback &mdash; just PM us <b>@fallacytcg</b> &#128149;</p></div></div>`;
+    <p class="q">What if I already have other items on hold with your shop?</p><p class="a">Your Mini Store purchase will be packed together with your hold package. Just check the box (on checkout) that you already have a package on hold with us!</p>
+    <p class="q">Do I still need to pay a separate mailing fee then?</p><p class="a">No. Checking the box to indicate that you already have a package on hold will automatically waive the mailing fee at checkout.</p>
+    <p class="q">Do I need to provide my address every time I checkout?</p><p class="a">Not required if you are a returning customer with a hold package! All you will need to provide is your Tele username &amp; proof of payment. The address fields are only required for new packages &amp; new customers.</p>
+    <p class="q">Why did my order not go through?</p><p class="a">Your order will only be sent to us when you tap &ldquo;Confirm Order&rdquo; at the payment page. If you miss this step, we will not be notified and your cart items will be released back into the store.</p>
+    <p class="q">What happens after I send proof of payment?</p><p class="a">We will verify your payment and send you a receipt. This means that your cards have made it into your package! If we did not receive payment, you will receive a payment reminder slip instead.</p>
+    <p class="q">Can I still continue to hold my package or must I mail it out immediately?</p><p class="a">We have both options available at checkout. However, note that indicating to mail at store checkout will trigger mailing for your entire package on hold!</p>
+    <p class="a" style="margin-top:16px">&#129528; We are continually fine-tuning our Mini Store &amp; we welcome all feedback! Just drop us a message <b>@fallacytcg</b> &#128149;</p></div></div>`;
   loadAboutStats();openPanel();
 }
 function loadAboutStats(){
@@ -706,7 +708,24 @@ $("#aboutBtn").onclick=openAbout;$("#cartbar").onclick=()=>openCart(closePanel);
 $("#rarity").addEventListener("input",()=>{only=null;render()});
 $("#instock").onclick=()=>{$("#instock").classList.toggle("on");render()};
 
-function tick(){if(!CARDS.length)return;const p=CARDS[Math.floor(Math.random()*CARDS.length)];$("#tick").innerHTML=`Recently purchased: <b>${p.name}${p.rarity?" ("+p.rarity+")":""}</b>`}
+// Rolling banner of the last 2 days of real sales (falls back to catalogue cards).
+let ticker=[],tickI=0;
+function loadTicker(){
+  fetch("/api/recent-sales").then(r=>r.json()).then(list=>{
+    const cutoff=Date.now()-2*86400000;
+    ticker=(Array.isArray(list)?list:[]).filter(s=>!s.timestamp||s.timestamp>=cutoff).map(s=>{
+      const cid=(s.key||"").split("::")[0];const p=cid&&byId(cid);const rar=p?rarLabel(p):"";
+      return (s.name||"card")+(rar?" "+rar:"");
+    });
+  }).catch(()=>{});
+}
+function tick(){
+  let txt="";
+  if(ticker.length)txt=ticker[tickI%ticker.length];
+  else if(CARDS.length){const p=CARDS[Math.floor(Math.random()*CARDS.length)];txt=p.name+(rarLabel(p)?" "+rarLabel(p):"")}
+  if(txt)$("#tick").innerHTML=`Recently purchased: <b>${txt}</b>`;
+  tickI++;
+}
 tick();setInterval(tick,2600);
 let tt;function bump(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(tt);tt=setTimeout(()=>t.classList.remove("show"),1500)}
 
