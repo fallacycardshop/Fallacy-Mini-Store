@@ -1,3194 +1,834 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
 <meta charset="UTF-8">
-<title>Fallacy's Mini Store</title>
-
-<!-- Mobile viewport: viewport-fit=cover lets us pad around the iPhone notch / home indicator -->
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-
-<!-- iOS "Add to Home Screen" support -->
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Fallacy Store">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#ffffff">
-<meta name="format-detection" content="telephone=no">
-
-<!-- Telegram Mini App SDK: exposes Telegram.WebApp with the buyer's Telegram identity -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
-<!-- Poppins, to match the invoice branding -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-
+<title>Fallacy Card Shop</title>
 <style>
-:root {
-  --pink-main: #d1447b;   /* matches the invoice header pink */
-  --pink-deep: #a8305f;   /* deeper shade for hover/emphasis */
-  --pink-soft: #fbe4ec;
-  --pink-border: #f3c9dc;
-  --plum: #5c3350;        /* replaces the old sage green as the secondary accent */
-  --plum-deep: #45253c;
-  --plum-soft: #f1e6ee;
-  --gold: #eddab0;
-  --text-main: #2b2b2b;
-  --text-soft: #6b6b6b;
-
-  /* iOS safe-area insets (0 on devices without a notch/home indicator) */
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --safe-left: env(safe-area-inset-left, 0px);
-  --safe-right: env(safe-area-inset-right, 0px);
-}
-
-* { box-sizing: border-box; }
-
-input, select, textarea, button {
-  font-family: inherit;
-}
-
-html {
-  /* Stops iOS Safari from auto-zooming text when input font-size < 16px */
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
-
-body {
-  margin: 0;
-  background: #fff;
-  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  color: var(--text-main);
-  -webkit-tap-highlight-color: transparent;
-  overscroll-behavior-y: none; /* kill the rubber-band "pull to refresh" feel on the whole page */
-  min-height: 100dvh; /* dynamic viewport height, accounts for mobile browser chrome */
-  overflow-x: hidden; /* safety net — prevents any stray element from causing sideways scroll */
-}
-
-.top-bar {
-  background: var(--pink-main);
-  padding: calc(14px + var(--safe-top)) 16px 14px;
-  padding-left: calc(16px + var(--safe-left));
-  padding-right: calc(16px + var(--safe-right));
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  color: #fff;
-}
-
-.top-bar-title {
-  font-weight: 700;
-  font-size: 18px;
-  line-height: 1.1;
-}
-
-.top-bar-brand {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.top-bar-characters {
-  height: 40px;
-  width: auto;
-  display: block;
-}
-
-.top-bar-handle {
-  font-weight: 700;
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-/* Recent-sales ticker: sits inside the fixed footer, to the LEFT of the cart
-   button. flex:1 + min-width:0 lets it take the leftover space and truncate
-   with an ellipsis instead of pushing the cart button off screen. */
-.proof-modal { max-width: 420px; width: 100%; }
-
-.proof-sub {
-  font-size: 13px;
-  color: var(--text-soft, #777);
-  margin-top: -4px;
-}
-
-.proof-stats {
-  display: flex;
-  gap: 10px;
-  margin: 12px 0 14px;
-}
-
-.proof-stat {
-  flex: 1;
-  background: var(--pink-soft);
-  border-radius: 12px;
-  padding: 12px 8px;
-  text-align: center;
-}
-
-.proof-stat strong {
-  display: block;
-  font-size: 22px;
-  color: var(--pink-deep);
-  line-height: 1.1;
-}
-
-.proof-stat span { font-size: 11px; color: var(--text-soft, #777); }
-
-.proof-heading {
-  font-weight: 700;
-  color: var(--pink-deep);
-  margin: 4px 0 6px;
-  font-size: 13px;
-}
-
-.proof-list { max-height: 44vh; overflow-y: auto; text-align: left; }
-
-.proof-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid #f2eef1;
-  font-size: 13px;
-}
-
-.proof-row .proof-when { color: #999; font-size: 12px; white-space: nowrap; }
-
-.recent-sales-banner {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  text-align: left;
-  padding-right: 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #fff;
-  overflow: hidden;
-  cursor: pointer;
-}
-
-.recent-sales-banner span {
-  display: block;
-  width: 100%;
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  /* Truncates with "…" right before the cart button rather than wrapping or
-     pushing the button off the edge. */
-  text-overflow: ellipsis;
-  transition: opacity 0.3s ease;
-}
-
-.recent-sales-banner span.fading {
-  opacity: 0;
-}
-
-main {
-  padding: 16px;
-  padding-left: calc(16px + var(--safe-left));
-  padding-right: calc(16px + var(--safe-right));
-  padding-bottom: calc(90px + var(--safe-bottom));
-  max-width: 640px;
-  margin: 0 auto;
-}
-
-h2 {
-  margin-top: 0;
-  color: var(--pink-deep);
-}
-
-.toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 0;
-  position: sticky;
-  top: var(--safe-top); /* sticks to the very top of the viewport once scrolled past the heading */
-  z-index: 9;
-  background: #fff;
-  padding: 8px 0 14px;
-}
-
-.filters-row {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 6px;
-}
-
-.results-counter {
-  font-size: 11px;
-  color: var(--text-soft);
-  margin: 0 0 0 7px;
-}
-
-.filters-row input,
-.filters-row select {
-  padding: 8px 6px;
-  border-radius: 10px;
-  border: 1px solid var(--pink-border);
-  font-size: 13px;
-  min-height: 40px;
-  min-width: 0;
-}
-
-.filters-row input { flex: 1.2; }
-.filters-row select { flex: 1; background: #fff; }
-
-.status-text {
-  font-size: 11px;
-  color: var(--text-soft);
-  margin-bottom: 8px;
-  min-height: 14px; /* reserves space so the page doesn't shift once this text clears after loading */
-}
-
-.stock-note {
-  font-size: 12px;
-  font-style: italic;
-  color: var(--plum);
-  margin: -6px 0 10px;
-}
-
-.product-list {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.section-heading {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--pink-deep);
-  margin: 4px 0 -4px;
-}
-
-.hidden-sold-out-wrap {
-  display: none;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.hidden-sold-out-wrap.expanded {
-  display: flex;
-}
-
-.product-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 12px;
-  display: flex;
-  gap: 12px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-}
-
-.product-card .photo-wrap,
-.cart-item .photo-wrap {
-  width: 92px;
-  aspect-ratio: 0.72; /* slightly taller than before, to stop trimming the bottom of the card */
-  flex-shrink: 0;
-  align-self: flex-start; /* keeps the photo a fixed size even if the card stretches taller */
-  position: relative;
-  border-radius: 10px;
-  overflow: hidden;
-  background: #fff;
-  border: 3px solid var(--pink-border);
-}
-
-.product-card .photo-wrap img,
-.cart-item .photo-wrap img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
-  cursor: pointer;
-  transition: transform 0.12s ease;
-}
-
-.photo-watermark {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%) rotate(-28deg);
-  color: rgba(255,255,255,0.4);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.35);
-  white-space: nowrap;
-  pointer-events: none;
-  user-select: none;
-}
-
-.photo-watermark-large {
-  font-size: 20px;
-  letter-spacing: 1px;
-}
-
-.product-card img:active,
-.cart-item img:active {
-  transform: scale(0.96);
-}
-
-.product-info { flex: 1; min-width: 0; }
-
-.product-name {
-  font-size: 15px;
-  font-weight: 600;
-  margin-bottom: 4px;
-  word-break: break-word;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  cursor: pointer;
-}
-
-.product-name.name-expanded {
-  -webkit-line-clamp: unset;
-  overflow: visible;
-}
-
-.product-price {
-  font-size: 14px;
-  color: var(--pink-deep);
-  margin-bottom: 4px;
-}
-
-.product-desc {
-  font-size: 11px;
-  color: var(--text-soft);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
-}
-
-.product-meta {
-  font-size: 11px;
-  color: var(--text-soft);
-  margin-top: 1px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
-}
-
-.product-stock-line {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--plum);
-  margin: 2px 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
-}
-
-.product-desc.text-expanded,
-.product-meta.text-expanded,
-.product-stock-line.text-expanded {
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
-}
-
-.product-actions {
-  display: flex;
-  align-items: flex-start;
-  flex-shrink: 0;
-  width: 116px; /* fixed so "Add to cart" and the +/- stepper are identical in size */
-}
-
-.product-actions > * {
-  width: 100%;
-}
-
-.product-actions .btn {
-  white-space: nowrap;
-}
-
-/* All buttons: real tap targets, no lag, no accidental text-selection while tapping */
-.btn {
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: none;
-  cursor: pointer;
-  font-size: 15px;
-  min-height: 44px;
-  min-width: 44px;
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
-  touch-action: manipulation; /* removes the ~300ms double-tap-to-zoom delay */
-  -webkit-tap-highlight-color: transparent;
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-.btn:active {
-  transform: scale(0.96);
-  box-shadow: none;
-}
-
-.btn:disabled {
-  background: #e0e0e0 !important;
-  color: #999 !important;
-  cursor: not-allowed;
-  box-shadow: none;
-  transform: none;
-}
-
-.btn:disabled:active {
-  transform: none;
-}
-
-.btn-primary {
-  background: var(--pink-main);
-  color: #fff;
-  box-shadow: 0 2px 4px rgba(209,68,123,0.25);
-  width: 100%;
-}
-
-.btn-secondary {
-  background: #fff;
-  color: var(--plum);
-  border: 1px solid var(--plum);
-}
-
-#cartButton {
-  font-weight: 700;
-}
-
-#cartScreen, #paynowScreen { display: none; }
-
-.cart-list {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.cart-item {
-  background: #fff;
-  border-radius: 12px;
-  padding: 12px;
-  display: flex;
-  gap: 12px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-}
-
-.cart-info { flex: 1; min-width: 0; }
-
-.cart-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.quantity-control {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.quantity-control button {
-  width: 36px;
-  height: 36px;
-  min-height: 36px;
-  min-width: 36px;
-  border-radius: 50%;
-  border: none;
-  background: var(--pink-soft);
-  color: var(--pink-deep);
-  font-weight: bold;
-  font-size: 18px;
-  cursor: pointer;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.quantity-control button:active { transform: scale(0.9); }
-
-.quantity-control span {
-  min-width: 20px;
-  text-align: center;
-  font-weight: 600;
-}
-
-/* Quantity stepper shown on the product card once an item is in the cart.
-   Matches the "Add to cart" button exactly: same 116px width, same 44px height. */
-.product-actions .quantity-control {
-  width: 100%;
-  height: 44px;
-  gap: 0;
-  justify-content: space-between;
-  padding: 0 4px;
-  background: #fff;
-  border: 1px solid var(--pink-soft);
-  border-radius: 10px;
-}
-
-.product-actions .quantity-control button:disabled {
-  background: #eee;
-  color: #aaa;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.product-actions .card-qty-value {
-  flex: 1;
-  font-size: 16px;
-}
-
-/* Promo strip at the top of the shop. Hidden entirely when the admin promo
-   text is blank, so switching it off leaves no empty gap. */
-.promo-banner {
-  background: linear-gradient(135deg, #fdeef4, #fbe4ef);
-  color: var(--pink-deep, #a8305f);
-  border: 1px solid #f6d3e2;
-  border-radius: 12px;
-  padding: 12px 14px;
-  margin-bottom: 14px;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.6;
-  text-align: center;
-  box-shadow: 0 1px 4px rgba(168, 48, 95, 0.08);
-}
-
-/* Tap-to-copy discount code. Sized generously so it's an easy target on a
-   phone, and styled as an obvious chip rather than plain text. */
-.promo-banner .promo-code {
-  display: inline-block;
-  background: #fff;
-  border: 1px dashed #e29ebd;
-  border-radius: 6px;
-  padding: 3px 9px;
-  margin: 0 1px;
-  letter-spacing: 0.5px;
-  font-weight: 700;
-  cursor: pointer;
-  user-select: all;
-  -webkit-user-select: all;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-  transition: background 0.15s ease, transform 0.1s ease;
-}
-
-.promo-banner .promo-code:active {
-  transform: scale(0.96);
-  background: #fdeef4;
-}
-
-.promo-banner .promo-code.copied {
-  background: #eaf6ec;
-  border-color: #8fc79c;
-  color: #2f6b3a;
-}
-
-.promo-copy-hint {
-  display: block;
-  margin-top: 5px;
-  font-size: 11px;
-  font-weight: 500;
-  font-style: italic;
-  opacity: 0.75;
-}
-
-.field-hint {
-  font-size: 11px;
-  color: #777;
-  margin: 4px 0 0;
-  line-height: 1.4;
-}
-
-.field-hint-warn { color: #c0392b; font-weight: 600; }
-
-/* Little speech bubble above the cart button, shown once when someone returns
-   with items already in their cart. */
-.cart-nudge {
-  position: fixed;
-  right: 16px;
-  bottom: calc(74px + var(--safe-bottom));
-  z-index: 12;
-  max-width: 260px;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  background: #fff;
-  color: var(--pink-deep);
-  border: 1px solid var(--pink-soft);
-  border-radius: 12px;
-  padding: 10px 12px;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.4;
-  box-shadow: 0 4px 14px rgba(168, 48, 95, 0.22);
-  animation: nudgeIn 0.3s ease;
-}
-
-.cart-nudge::after {
-  content: "";
-  position: absolute;
-  right: 26px;
-  bottom: -7px;
-  width: 12px;
-  height: 12px;
-  background: #fff;
-  border-right: 1px solid var(--pink-soft);
-  border-bottom: 1px solid var(--pink-soft);
-  transform: rotate(45deg);
-}
-
-.cart-nudge button {
-  background: none;
-  border: none;
-  color: #bbb;
-  font-size: 18px;
-  line-height: 1;
-  padding: 0 2px;
-  cursor: pointer;
-}
-
-@keyframes nudgeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.last-one {
-  display: inline-block;
-  background: #fdeceb;
-  color: #c0392b;
-  border-radius: 5px;
-  padding: 1px 6px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  vertical-align: middle;
-}
-
-.stock-warning {
-  font-size: 11px;
-  color: #c0392b;
-  margin-top: 2px;
-}
-
-.total-box {
-  background: #fff;
-  padding: 14px;
-  border-radius: 12px;
-  margin-top: 16px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-}
-
-.total-note {
-  font-size: 11px;
-  color: var(--text-soft, #888);
-  margin: -2px 0 8px;
-  line-height: 1.35;
-}
-
-.total-row {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 6px;
-  font-size: 15px;
-}
-
-.checkout-section {
-  background: #fff;
-  padding: 14px;
-  border-radius: 12px;
-  margin-top: 16px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-}
-
-.form-row { margin-bottom: 12px; }
-
-.form-row label {
-  font-size: 13px;
-  margin-bottom: 4px;
-  display: block;
-  font-weight: 600;
-  color: var(--text-soft);
-}
-
-.form-row input, .form-row textarea {
-  width: 100%;
-  padding: 10px;
-  border-radius: 10px;
-  border: 1px solid var(--pink-border);
-  font-size: 16px; /* prevents iOS auto-zoom */
-  font-family: inherit;
-}
-
-.form-row input[type="tel"] { -webkit-appearance: none; }
-
-footer {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: var(--pink-main);
-  padding: 12px 16px calc(12px + var(--safe-bottom));
-  padding-left: calc(16px + var(--safe-left));
-  padding-right: calc(16px + var(--safe-right));
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  color: #fff;
-  font-size: 14px;
-  box-shadow: 0 -2px 8px rgba(168,48,95,0.2);
-  z-index: 10;
-}
-
-footer span {
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-footer .btn { width: auto; flex-shrink: 0; }
-
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.35);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 20;
-  padding: 16px;
-  padding-bottom: calc(16px + var(--safe-bottom));
-}
-
-.modal {
-  background: #fff;
-  border-radius: 16px;
-  padding: 20px;
-  width: 100%;
-  max-width: 320px;
-  text-align: center;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-}
-
-.modal h3 { margin-top: 0; color: var(--pink-deep); }
-.modal p { font-size: 14px; color: var(--text-soft); }
-.modal .btn { margin-top: 10px; }
-
-.conflict-modal { max-width: 380px; width: 100%; text-align: left; }
-.conflict-modal h3 { margin-bottom: 4px; }
-
-.conflict-sub {
-  font-size: 13px;
-  color: var(--text-soft, #777);
-  margin: 0 0 14px;
-}
-
-.conflict-item {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  background: #fff6e6;
-  border: 1px solid #f0d98a;
-  border-radius: 10px;
-  padding: 10px;
-  margin-bottom: 8px;
-}
-
-.conflict-item img {
-  width: 38px;
-  height: 53px;
-  object-fit: cover;
-  border-radius: 4px;
-  flex: 0 0 auto;
-  background: #fff;
-}
-
-.conflict-item-text { min-width: 0; font-size: 13px; line-height: 1.4; }
-.conflict-item-name { font-weight: 700; color: #6b4a00; }
-.conflict-item-meta { font-size: 11px; color: #8a6100; }
-
-.conflict-total {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--pink-deep);
-  text-align: center;
-  margin: 14px 0 4px;
-}
-
-.btn-plain {
-  background: none;
-  color: var(--text-soft, #888);
-  border: none;
-  box-shadow: none;
-}
-
-/* Small phones (iPhone SE and similar, ~375px and under) */
-@media (max-width: 380px) {
-  .top-bar-title { font-size: 16px; line-height: 1.05; }
-  .top-bar-characters { height: 34px; }
-  .product-card, .cart-item { padding: 10px; gap: 10px; }
-  .product-card .photo-wrap, .cart-item .photo-wrap { width: 76px; }
-}
-
-/* Stack product/cart cards vertically on very narrow screens for readability */
-@media (max-width: 340px) {
-  .product-card, .cart-item {
-    flex-direction: column;
-    text-align: center;
+  :root{
+    --ground:#fdf3f7;--frame:#f7dde9;--surface:#fff;--surface-2:#fff7fb;
+    --rail-card:#fbeef5;--rail-bg:#fdf6fa;
+    --ink:#2b2b2b;--ink-soft:#7a6a72;--line:#f3d4e2;
+    --pink-deep:#a8305f;--accent:#d1447b;--on-accent:#fff;
+    --scarce:#c0392b;--scarce-bg:#fdecea;--fresh:#1f8c60;--fresh-bg:#e7f6ef;
+    --gold:#9a6b12;--gold-bg:#fbf1d8;--deal:#1f7a8c;--deal-bg:#e3f2f4;
+    --sold:#9aa0a6;--sold-bg:#eef0f2;
+    --shadow:0 4px 16px rgba(140,40,80,.10);--shadow-lg:0 18px 50px rgba(120,30,70,.28);--radius:14px;--gutter:14px;
   }
-  .product-card .photo-wrap, .cart-item .photo-wrap { margin: 0 auto; }
-  .cart-actions { align-items: center; }
-}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --ground:#150d12;--frame:#2a1a23;--surface:#211621;--surface-2:#2a1c27;
+    --rail-card:#2c1b26;--rail-bg:#1c121a;
+    --ink:#f6e9f0;--ink-soft:#c6a5b6;--line:#3a2632;
+    --pink-deep:#f3aacb;--accent:#e774a4;--on-accent:#20111a;
+    --scarce:#ff8a80;--scarce-bg:#3a1f1e;--fresh:#69d7a5;--fresh-bg:#123227;
+    --gold:#e8c877;--gold-bg:#332811;--deal:#7fd4e3;--deal-bg:#112b30;
+    --sold:#8a8f96;--sold-bg:#262029;--shadow:0 4px 16px rgba(0,0,0,.4);--shadow-lg:0 18px 50px rgba(0,0,0,.6);
+  }}
+  :root[data-theme="dark"]{
+    --ground:#150d12;--frame:#2a1a23;--surface:#211621;--surface-2:#2a1c27;
+    --rail-card:#2c1b26;--rail-bg:#1c121a;
+    --ink:#f6e9f0;--ink-soft:#c6a5b6;--line:#3a2632;
+    --pink-deep:#f3aacb;--accent:#e774a4;--on-accent:#20111a;
+    --scarce:#ff8a80;--scarce-bg:#3a1f1e;--fresh:#69d7a5;--fresh-bg:#123227;
+    --gold:#e8c877;--gold-bg:#332811;--deal:#7fd4e3;--deal-bg:#112b30;
+    --sold:#8a8f96;--sold-bg:#262029;--shadow:0 4px 16px rgba(0,0,0,.4);--shadow-lg:0 18px 50px rgba(0,0,0,.6);
+  }
+  *{box-sizing:border-box}html,body{margin:0;height:100%}
+  body{background:var(--ground);color:var(--ink);font-family:"Poppins",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;line-height:1.45;display:flex;flex-direction:column;align-items:center;height:100vh;overflow:hidden}
+  .tag{font-variant-numeric:tabular-nums}
+  .concept{width:100%;max-width:440px;padding:7px 14px;font-size:11.5px;color:var(--ink-soft);text-align:center;flex:0 0 auto}
+  .concept b{color:var(--pink-deep);font-weight:600}
+  /* phone is a fixed-height flex column; only .content scrolls, so header + search + cart stay pinned */
+  .phone{width:100%;max-width:440px;position:relative;background:var(--surface-2);flex:1 1 auto;min-height:0;display:flex;flex-direction:column;box-shadow:var(--shadow-lg);overflow:hidden}
+  @media(min-width:520px){.phone{margin:0 0 16px;border-radius:24px;border:1px solid var(--frame)}}
 
-/* Larger phones / small tablets in portrait: give products a bit more breathing room */
-@media (min-width: 600px) {
-  .product-card .photo-wrap, .cart-item .photo-wrap { width: 120px; }
-}
+  .scroller{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;position:relative}
+  .tgbar{display:flex;align-items:center;gap:10px;padding:7px 14px;background:var(--surface)}
+  .tgbar .logo{height:32px;flex:0 0 auto;display:flex;align-items:center}
+  .tgbar .logo img{height:32px;width:auto;display:block}
+  .tgbar .name{font-weight:700;font-size:15px;color:var(--pink-deep);line-height:1.1}
+  .tgbar .handle{font-size:11px;color:var(--accent);text-decoration:none;display:inline-block}
+  .tgbar .spacer{flex:1}
+  .about-btn{display:flex;align-items:center;gap:5px;background:var(--surface-2);border:1px solid var(--line);color:var(--pink-deep);font:inherit;font-size:12px;font-weight:600;padding:6px 11px 6px 9px;border-radius:999px;cursor:pointer}
+  .about-btn svg{width:14px;height:14px}
+
+  /* only the search/filter bar pins; the branding header scrolls away */
+  .stick{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--line);padding:7px 14px;box-shadow:0 3px 8px rgba(140,40,80,.05)}
+  .searchwrap{position:relative}.searchwrap>svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--ink-soft)}
+  #q{width:100%;padding:9px 12px 9px 33px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:14px;background:var(--surface-2);color:var(--ink)}
+  #q:focus{outline:2px solid var(--accent);outline-offset:1px}
+  .chips{display:flex;gap:7px;margin-top:7px;overflow-x:auto;padding-bottom:1px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}
+  .chips select,.chips .toggle{flex:0 0 auto;font:inherit;font-size:12.5px;color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:6px 11px;-webkit-appearance:none;appearance:none}
+  .chips .toggle{cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none}
+  .chips .toggle .sw{width:26px;height:16px;border-radius:999px;background:var(--line);position:relative;transition:.15s}
+  .chips .toggle .sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:.15s}
+  .chips .toggle.on{color:var(--on-accent);background:var(--accent);border-color:var(--accent)}.chips .toggle.on .sw{background:rgba(255,255,255,.5)}.chips .toggle.on .sw::after{left:12px}
+
+  .content{padding-bottom:16px}
+  .sec{margin-top:16px}
+  /* rails read clearly as a horizontal "shelf": tinted band, hairline borders, and a right-edge fade cueing more content */
+  .sec.railsec{background:var(--rail-bg);padding-top:2px;padding-bottom:8px;margin-top:14px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);position:relative}
+  .sec.railsec .rail{position:relative}
+  .sec.railsec .sec-head h2{display:flex;align-items:center;gap:6px}
+  .sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:8px var(--gutter)}
+  .sec-head h2{margin:0;font-size:16px;color:var(--pink-deep);font-weight:600}
+  .sec-head .right{display:flex;align-items:baseline;gap:10px;flex:0 0 auto}.sec-head .count{font-size:12px;color:var(--ink-soft)}
+  .seeall{font-size:12.5px;font-weight:600;color:var(--accent);background:none;border:none;cursor:pointer;padding:0}
+  .sec-sub{font-size:12px;color:var(--ink-soft);padding:0 var(--gutter) 8px;margin-top:-6px}
+  .rail{display:flex;gap:12px;overflow-x:auto;padding:2px var(--gutter) 4px;scroll-snap-type:x mandatory;scroll-padding-left:var(--gutter);scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .rail::-webkit-scrollbar{display:none}.rail .card,.rail .endtile{flex:0 0 47%;scroll-snap-align:start}
+  @media(min-width:520px){.rail .card,.rail .endtile{flex:0 0 158px}}
+  .rail .card{background:var(--rail-card)}
+  .endtile{border:1px dashed var(--accent);border-radius:var(--radius);background:var(--rail-card);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;color:var(--accent);font-weight:600;font-size:13px;padding:12px;text-align:center;min-height:120px}
+  .endtile .ic{width:38px;height:38px;border-radius:50%;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:2px var(--gutter)}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);cursor:pointer;position:relative;transition:transform .12s;display:flex;flex-direction:column}
+  .card:active{transform:scale(.975)}.card.sold{opacity:.9}
+  .card .imgwrap{position:relative;width:100%;padding-top:133.33%;background:var(--surface-2);overflow:hidden}
+  .card .imgwrap img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+  .card.sold .imgwrap img{filter:grayscale(1) opacity(.5)}
+  .wm{position:absolute;inset:0;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='84'%3E%3Ctext x='4' y='46' font-family='Arial,sans-serif' font-size='11' font-weight='700' fill='white' fill-opacity='0.42' transform='rotate(-22 4 46)'%3E@fallacycardshop%3C/text%3E%3C/svg%3E");background-repeat:repeat;mix-blend-mode:overlay}
+  .card .badge{position:absolute;top:8px;left:8px;font-size:10.5px;font-weight:700;padding:3px 7px;border-radius:999px;text-transform:uppercase;z-index:2}
+  .b-new,.b-restock{background:var(--fresh-bg);color:var(--fresh)}.b-scarce{background:var(--scarce-bg);color:var(--scarce)}
+  .b-sar{background:var(--gold-bg);color:var(--gold)}.b-deal{background:var(--deal-bg);color:var(--deal)}
+  .sold-veil{position:absolute;inset:0;display:grid;place-items:center;z-index:3}
+  .sold-veil span{background:rgba(20,10,15,.72);color:#fff;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:5px 12px;border-radius:999px}
+  .card .body{padding:9px 10px 11px;display:flex;flex-direction:column;flex:1 1 auto}
+  .card .nm{font-size:13px;font-weight:600;line-height:1.25;margin:0 0 3px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+  .card .rs{font-size:11px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card .rs .rar{font-weight:700;color:var(--accent)}
+  .card .cond{font-size:11px;color:var(--ink-soft);margin-top:1px;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+  .multi{font-size:9px;font-weight:700;color:var(--deal);background:var(--deal-bg);border-radius:5px;padding:1px 5px}
+  .card .row{display:flex;align-items:center;justify-content:space-between;gap:5px;margin-top:auto;padding-top:8px;min-height:30px}
+  .card .price{font-size:14.5px;font-weight:700;color:var(--ink);white-space:nowrap}
+  .price-col{display:flex;flex-direction:column;line-height:1.02;white-space:nowrap}
+  .price-col .now{font-size:14.5px;font-weight:700;color:var(--ink)}
+  .price-col .was{font-size:10.5px;color:var(--ink-soft);text-decoration:line-through}
+  .act{flex:0 0 auto}
+  .addcart{border:none;background:var(--accent);color:var(--on-accent);width:32px;height:30px;border-radius:8px;cursor:pointer;display:grid;place-items:center}.addcart svg{width:16px;height:16px}
+  .qadj{display:flex;align-items:center;border:1px solid var(--accent);border-radius:8px;overflow:hidden;height:30px}
+  .qadj button{width:24px;height:30px;border:none;background:var(--surface-2);color:var(--accent);font-size:15px;line-height:1;cursor:pointer;padding:0}
+  .qadj .qn{min-width:18px;text-align:center;font-weight:700;font-size:13px}.qadj button:disabled{color:var(--sold)}
+  .soldtag{font-size:11px;font-weight:700;color:var(--sold);text-transform:uppercase;letter-spacing:.04em}
+
+  .showmore{margin:10px var(--gutter) 0;width:calc(100% - 28px);padding:11px;border:1px solid var(--line);border-radius:11px;background:var(--surface-2);color:var(--ink-soft);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+  .soldout-head{font-size:12px;font-weight:700;color:var(--sold);text-transform:uppercase;letter-spacing:.05em;padding:16px var(--gutter) 8px;border-top:1px solid var(--line);margin-top:12px}
+  .results-head{display:flex;align-items:center;gap:12px;padding:14px var(--gutter) 6px}
+  .backbtn{display:flex;align-items:center;gap:5px;background:var(--surface-2);border:1px solid var(--line);color:var(--pink-deep);font:inherit;font-size:13px;font-weight:600;padding:8px 13px;border-radius:999px;cursor:pointer}
+  .results-head h2{margin:0;font-size:16px;color:var(--pink-deep)}
+  .results-foot{padding:6px var(--gutter) 20px;text-align:center}
+  .empty{padding:30px 16px;text-align:center;color:var(--ink-soft);font-size:14px}
+
+  /* sits above the cart bar so it never covers a card's price */
+  .totop{position:absolute;right:12px;bottom:98px;width:40px;height:40px;border-radius:50%;background:var(--pink-deep);color:#fff;border:none;box-shadow:var(--shadow-lg);cursor:pointer;display:grid;place-items:center;opacity:0;pointer-events:none;transition:.2s;z-index:15}
+  .totop.show{opacity:.92;pointer-events:auto}.totop svg{width:18px;height:18px}
+
+  .dock{flex:0 0 auto;position:relative;z-index:10}
+  .ticker{background:var(--surface-2);border-top:1px solid var(--line);font-size:12px;color:var(--ink-soft);padding:6px 14px;display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden}
+  .ticker .live{width:7px;height:7px;border-radius:50%;background:var(--fresh);flex:0 0 auto;animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(31,140,96,.5)}70%{box-shadow:0 0 0 7px rgba(31,140,96,0)}100%{box-shadow:0 0 0 0 rgba(31,140,96,0)}}
+  .ticker b{color:var(--pink-deep);font-weight:600}
+  .cartbar{background:var(--accent);color:var(--on-accent);display:flex;align-items:center;gap:12px;padding:13px 16px;cursor:pointer}
+  .cartbar .cn{background:rgba(255,255,255,.22);border-radius:8px;padding:2px 9px;font-weight:700;font-size:14px}
+  .cartbar .lbl{font-weight:600;font-size:15px}.cartbar .tot{margin-left:auto;font-weight:700;font-size:16px}
+
+  .panel{position:fixed;left:50%;top:0;transform:translate(-50%,100%);width:100%;max-width:440px;height:100%;z-index:50;background:var(--ground);display:flex;flex-direction:column;transition:transform .28s cubic-bezier(.2,.8,.2,1);box-shadow:var(--shadow-lg)}
+  .panel.open{transform:translate(-50%,0)}
+  .panel-head{flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--surface);border-bottom:1px solid var(--line)}
+  .panel-head h2{margin:0;font-size:16px;color:var(--pink-deep);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+  .timer{flex:0 0 auto;font-size:12px;font-weight:700;color:var(--scarce);background:var(--scarce-bg);padding:5px 10px;border-radius:999px}
+  .panel-body{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .total-bar{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;padding:11px 18px;font-weight:700}
+  .total-bar span:first-child{color:var(--ink-soft);font-weight:600;font-size:13px}.total-bar .amt{font-size:18px;color:var(--ink)}
+
+  .detail-hero{padding:14px 18px 0}
+  .detail-hero .frame{border-radius:16px;overflow:hidden;background:var(--surface-2);width:100%;max-width:290px;margin:0 auto;box-shadow:var(--shadow);position:relative}
+  .detail-hero .frame .inner{position:relative;width:100%;padding-top:133.33%}
+  .detail-hero .frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+  .ref-note{text-align:center;font-size:11px;color:var(--ink-soft);margin:8px 4px 0}
+  .detail-info{padding:14px 20px 28px}
+  .detail-info h3{margin:0 0 3px;font-size:21px;color:var(--ink);text-wrap:balance}
+  .detail-info .sub{font-size:13px;color:var(--ink-soft);margin:0 0 16px}.detail-info .sub .rar{font-weight:700;color:var(--accent)}
+  .cond-label{font-size:12px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;margin:0 0 8px}
+  .cond-opts{display:flex;flex-direction:column;gap:9px}
+  .cond-opt{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface)}
+  .cond-opt.selectable{cursor:pointer}
+  .cond-opt.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;background:var(--surface-2)}
+  .cond-opt.out{opacity:.55}
+  .co-left .cn2{font-weight:600;font-size:14px}.co-left .best{font-size:9.5px;font-weight:700;color:var(--fresh);background:var(--fresh-bg);border-radius:5px;padding:1px 5px;margin-left:6px;text-transform:uppercase}
+  .co-left .meta2{font-size:11px;color:var(--ink-soft);margin-top:2px}
+  .co-right{display:flex;align-items:center;gap:9px;flex:0 0 auto}.co-right .pr{font-weight:700;font-size:15px}
+  .co-right .incart{font-size:11px;font-weight:700;color:var(--fresh);background:var(--fresh-bg);border-radius:6px;padding:2px 7px}
+  .sel-dot{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);flex:0 0 auto}
+  .cond-opt.sel .sel-dot{border-color:var(--accent);background:radial-gradient(var(--accent) 42%,transparent 46%)}
+  .detail-actions{display:flex;gap:10px;padding:16px 20px 26px}
+  .add-order{flex:1;height:50px;border:none;border-radius:12px;background:var(--accent);color:var(--on-accent);font:inherit;font-weight:700;font-size:15px;cursor:pointer}
+  .add-order:disabled{background:var(--sold-bg);color:var(--sold);cursor:not-allowed}
+  .view-cart-sm{flex:0 0 auto;height:50px;padding:0 15px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--pink-deep);font:inherit;font-weight:600;font-size:13px;cursor:pointer}
+
+  .cart-empty{padding:60px 24px;text-align:center;color:var(--ink-soft)}
+  .cart-list{padding:6px 14px}
+  .cart-item{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+  /* each row is exactly the height of the card image */
+  .cart-item .th{width:58px;height:77px;flex:0 0 auto;border-radius:8px;overflow:hidden;background:var(--surface-2);position:relative}
+  .cart-item .th img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .cart-item .ci-body{flex:1;min-width:0;min-height:77px;display:flex;flex-direction:column;justify-content:space-between}
+  .cart-item .ci-name{font-size:14px;font-weight:600;margin:0;line-height:1.25}
+  .cart-item .ci-cond{font-weight:500;color:var(--ink-soft);font-size:12px}
+  .cart-item .ci-meta{font-size:11px;color:var(--ink-soft);margin:2px 0 0}
+  .cart-item .ci-rar{color:var(--accent);font-weight:700}
+  .cart-item .ci-row{display:flex;align-items:center;gap:8px}
+  .ci-line{font-weight:700;font-size:14px;margin-left:auto}
+  .ci-x{border:none;background:none;color:var(--sold);font-size:20px;line-height:1;cursor:pointer;padding:0 2px}
+  /* promo + total pinned to the bottom of the cart */
+  .cart-sticky{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:10px 14px 12px}
+  .cart-sticky .promo{padding:0 0 8px}
+  .cart-total-line{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:14px;margin:2px 0 9px}
+  .cart-total-line .ct-amt{font-size:19px;color:var(--ink)}
+  .cart-mini-note{font-size:11px;color:var(--ink-soft);text-align:center;margin:8px 0 0}
+  .promo{padding:14px 18px;display:flex;gap:8px}
+  .promo input{flex:1;padding:11px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:14px;background:var(--surface-2);color:var(--ink);text-transform:uppercase}
+  .promo button{flex:0 0 auto;padding:0 16px;border:1px solid var(--accent);background:var(--surface);color:var(--accent);font:inherit;font-weight:600;border-radius:10px;cursor:pointer}
+  .promo-msg{font-size:12px;padding:0 18px 6px}.promo-msg.ok{color:var(--fresh)}.promo-msg.no{color:var(--scarce)}
+  .step-foot{padding:14px 18px 20px;border-top:1px solid var(--line);background:var(--surface)}
+  .sumrow{display:flex;justify-content:space-between;font-size:14px;margin-bottom:5px;color:var(--ink-soft)}.sumrow .tag{color:var(--ink)}
+  .sumrow.tot{font-size:17px;font-weight:700;color:var(--ink);margin:8px 0 14px}
+  .primary{width:100%;height:50px;border:none;border-radius:13px;background:var(--accent);color:var(--on-accent);font:inherit;font-weight:700;font-size:16px;cursor:pointer}
+  .primary:disabled{background:var(--sold-bg);color:var(--sold);cursor:not-allowed}
+  .step-note{font-size:11px;color:var(--ink-soft);text-align:center;margin:10px 0 0}
+
+  .form{padding:16px 18px 20px}
+  .pkg{display:flex;gap:10px;align-items:flex-start;background:var(--fresh-bg);border:1px solid var(--fresh);border-radius:12px;padding:12px;margin-bottom:16px;cursor:pointer}
+  .pkg input{margin-top:2px;width:18px;height:18px;flex:0 0 auto;accent-color:var(--fresh)}
+  .pkg span{font-size:13px;color:var(--ink)}.pkg b{color:var(--fresh)}
+  .fld{margin-bottom:13px}.fld label{display:block;font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:5px}
+  .fld input{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:15px;background:var(--surface-2);color:var(--ink)}
+  .mailopt{margin:6px 0 4px}.mailopt .ml{display:flex;align-items:center;gap:9px;padding:11px 12px;border:1px solid var(--line);border-radius:11px;margin-bottom:8px;cursor:pointer;font-size:14px}
+  .mailopt .ml.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+  .mailopt .dot{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);flex:0 0 auto}.mailopt .ml.sel .dot{border-color:var(--accent);background:radial-gradient(var(--accent) 40%,transparent 44%)}
+
+  .pay{padding:24px 20px;text-align:center}
+  .pay,.pay *{overflow-wrap:break-word;word-break:normal;max-width:100%}
+  .pay .qr{width:230px;height:230px;margin:8px auto 14px;background:#fff;border-radius:16px;padding:12px;box-shadow:var(--shadow)}
+  .pay .qr img{width:100%;height:100%;object-fit:contain;display:block}
+  .pay .pay-head{font-size:15px;font-weight:600;color:var(--pink-deep);margin:0 0 2px}
+  .pay .pay-alt{font-size:14px;color:var(--ink-soft);margin:6px 0 10px;line-height:1.5}
+  .pay .pay-small{font-size:12px;color:var(--ink-soft)}
+  .pay .pay-note{font-size:12px;color:var(--ink-soft);margin:0 0 16px;line-height:1.5}
+  .pay .amt-big{font-size:30px;font-weight:700;color:var(--ink)}
+  .pay .to{font-size:13px;color:var(--ink-soft);margin:2px 0 16px}
+  .pay .steps{text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 20px 16px 38px;margin:0 0 18px;font-size:13px;color:var(--ink-soft)}
+  .pay .steps li{margin-bottom:6px}
+  .done{padding:50px 24px;text-align:center}
+  .done .big{width:74px;height:74px;border-radius:50%;background:var(--fresh-bg);color:var(--fresh);display:grid;place-items:center;margin:0 auto 16px;font-size:38px}
+  .done h3{color:var(--ink);margin:0 0 6px}.done p{color:var(--ink-soft);font-size:14px}
+
+  .about{padding:20px}
+  .about-logo{width:150px;margin:4px auto 8px;display:block}
+  .about .handle-line{display:block;text-align:center;font-size:13px;color:var(--accent);font-weight:600;margin:0 0 10px;text-decoration:none}
+  .about .handle-line:hover{text-decoration:underline}
+  .stat-row{display:flex;gap:10px;justify-content:center;margin:14px 0 6px;flex-wrap:wrap}
+  .stat-tile{flex:1 1 0;min-width:92px;background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:14px 8px;text-align:center}
+  .stat-n{font-size:20px;font-weight:800;color:var(--pink-deep);line-height:1.1}
+  .stat-l{font-size:11px;color:var(--ink-soft);margin-top:4px}
+  .tg-link{display:block;text-align:center;text-decoration:none;background:var(--accent);color:var(--on-accent);font-weight:700;font-size:15px;padding:14px;border-radius:13px;margin:14px 0 0}
+  .about h3{color:var(--pink-deep);font-size:17px;margin:18px 0 6px;text-align:center}
+  .about .lead{font-size:13.5px;color:var(--ink);text-align:center;margin:0 0 12px}
+  .about .pill-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:6px 0 8px}
+  .about .pill{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12px;color:var(--pink-deep);font-weight:600}
+  .about .faq h3{text-align:left}.about .q{font-weight:600;color:var(--ink);margin:12px 0 2px;font-size:14px}.about .a{color:var(--ink-soft);margin:0;font-size:13px}
+
+  .scrim{position:fixed;inset:0;background:rgba(30,12,22,.5);z-index:40;opacity:0;pointer-events:none;transition:.2s}.scrim.open{opacity:1;pointer-events:auto}
+  .toast{position:fixed;bottom:88px;left:50%;transform:translateX(-50%) translateY(20px);z-index:60;background:var(--pink-deep);color:#fff;font-size:13px;font-weight:600;padding:10px 16px;border-radius:999px;box-shadow:var(--shadow-lg);opacity:0;pointer-events:none;transition:.25s}.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
-</head>
-<body>
 
-<header class="top-bar">
-  <span class="top-bar-title">Available items this week!</span>
-  <div class="top-bar-brand">
-    <img class="top-bar-characters" src="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/HeaderCharacters.png" alt="">
-    <span class="top-bar-handle">@fallacycardshop</span>
+<div class="phone">
+  <div class="scroller" id="scroller">
+  <div class="tgbar">
+    <div class="logo" id="logo"><img src="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/fallacyministore-logo.png" alt="Fallacy"></div>
+    <div><div class="name">Fallacy's Mini Store</div><a class="handle" href="https://t.me/fallacycardshop" target="_blank" rel="noopener">@fallacycardshop</a></div>
+    <div class="spacer"></div>
+    <button class="about-btn" id="aboutBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><circle cx="12" cy="8" r="0.6" fill="currentColor"></circle></svg>About us</button>
   </div>
-</header>
-
-<main>
-
-  <!-- PRODUCT SCREEN -->
-  <section id="productsScreen">
-    <div class="promo-banner" id="promoBanner" style="display:none;">
-      <span id="promoText"></span>
+  <div class="stick">
+    <div class="searchwrap">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      <input id="q" type="search" inputmode="search" placeholder="Search cards, sets…" autocomplete="off">
     </div>
-    <p class="stock-note">Note: All photos are for reference only and do not reflect actual condition stated.</p>
-    <p id="statusText" class="status-text">Loading inventory…</p>
-
-    <div class="toolbar">
-      <div class="filters-row">
-        <input id="searchInput" type="search" inputmode="search" enterkeyhint="search" placeholder="Search" autocomplete="off" autocorrect="off">
-        <select id="categoryFilter">
-          <option value="">All categories</option>
-        </select>
-        <select id="setFilter">
-          <option value="">All sets</option>
-        </select>
-      </div>
-      <p id="resultsCounter" class="results-counter"></p>
+    <div class="chips">
+      <label class="toggle" id="instock"><span class="sw"></span>In stock</label>
+      <select id="sort"><option value="curated">Sort: Home page</option><option value="low">Price: low to high</option><option value="high">Price: high to low</option></select>
+      <select id="rarity"><option value="">All rarities</option></select>
+      <select id="set"><option value="">All sets</option></select>
     </div>
-
-    <div class="product-list" id="productList"></div>
-  </section>
-
-  <!-- CART SCREEN -->
-  <section id="cartScreen">
-    <button class="btn btn-secondary" id="backToShopButton" style="margin-bottom:12px;">← Continue Shopping</button>
-    <h2>Your Cart</h2>
-    <div class="cart-list" id="cartList"></div>
-
-    <div class="checkout-section" id="discountBox" style="display:none;">
-      <label style="font-size:13px;font-weight:600;color:var(--text-soft);display:block;margin-bottom:6px;">Discount code</label>
-      <div style="display:flex;gap:8px;">
-        <input id="discountCodeInput" type="text" inputmode="text" enterkeyhint="done" autocomplete="off" placeholder="Enter code" style="flex:1;min-width:0;padding:10px;border-radius:10px;border:1px solid var(--pink-border);font-size:16px;font-family:inherit;">
-        <button class="btn btn-secondary" id="applyDiscountButton" style="width:auto;flex-shrink:0;padding:10px 18px;white-space:nowrap;display:flex;align-items:center;justify-content:center;">Apply</button>
-      </div>
-      <p id="discountErrorText" style="color:#c0392b;font-size:12px;margin:6px 0 0;display:none;"></p>
-    </div>
-
-    <div class="total-box" id="totalBox" style="display:none;">
-      <div class="total-row"><span>Subtotal</span><span id="subtotalText">$0.00</span></div>
-      <div class="total-row" id="discountRow" style="display:none;color:#3a7d44;"><span>Discount</span><span id="discountText">-$0.00</span></div>
-      <div class="total-row"><span>Mailing Fee</span><span id="shippingText">$0.00</span></div>
-      <div class="total-note" id="shippingNote">Flat $3, paid upfront — whether we post now or hold your cards.</div>
-      <div class="total-row" style="font-weight:700;"><span>Total</span><span id="totalText">$0.00</span></div>
-    </div>
-
-    <div class="checkout-section" id="checkoutSection" style="display:none;">
-      <h3 style="color:var(--pink-deep);">Checkout</h3>
-      <div class="form-row" style="display:flex;align-items:flex-start;gap:8px;">
-        <input type="checkbox" id="holdCheckbox" style="width:20px;height:20px;margin-top:2px;flex-shrink:0;">
-        <label for="holdCheckbox" style="font-weight:400;font-size:13px;color:var(--text-main);">
-          I already have a package on hold with @fallacycardshop — no mailing fee needed for this order.
-        </label>
-      </div>
-
-      <div class="form-row">
-        <label>Telegram Username</label>
-        <input id="telegramUsernameInput" type="text" inputmode="text" enterkeyhint="next" autocomplete="off" placeholder="@yourusername">
-      </div>
-
-      <div id="holdModeFields" style="display:none;">
-        <div class="form-row">
-          <label>What would you like to do with this order?</label>
-          <div style="display:flex;flex-direction:column;gap:6px;">
-            <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;">
-              <input type="radio" name="holdMailPreference" value="continue_hold" id="holdMailPrefContinue" checked style="width:18px;height:18px;">
-              Continue to hold with the rest of my package
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;">
-              <input type="radio" name="holdMailPreference" value="mail_with_hold" id="holdMailPrefMail" style="width:18px;height:18px;">
-              Mail it out with the rest of my cards
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <div id="fullDetailsFields">
-        <div class="form-row">
-          <label>Name</label>
-          <input id="nameInput" type="text" inputmode="text" enterkeyhint="next" autocomplete="name">
-        </div>
-        <div class="form-row">
-          <label>Phone</label>
-          <input id="phoneInput" type="tel" inputmode="tel" enterkeyhint="next" autocomplete="tel">
-        </div>
-        <div class="form-row">
-          <label>Address Line</label>
-          <input id="addressLineInput" type="text" inputmode="text" enterkeyhint="next" autocomplete="address-line1">
-        </div>
-        <div class="form-row">
-          <label>Unit Number</label>
-          <input id="unitNumberInput" type="text" inputmode="text" enterkeyhint="next" autocomplete="address-line2" placeholder="e.g. #01-23">
-        </div>
-        <div class="form-row">
-          <label>Postal Code</label>
-          <input id="postalCodeInput" type="text" inputmode="numeric" enterkeyhint="done" autocomplete="postal-code">
-        </div>
-
-        <div class="form-row">
-          <label>What would you like to do with this order?</label>
-          <div style="display:flex;flex-direction:column;gap:6px;">
-            <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;">
-              <input type="radio" name="mailPreference" value="hold" id="mailPrefHold" checked style="width:18px;height:18px;">
-              Hold my package (mailing fee paid upfront)
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:14px;">
-              <input type="radio" name="mailPreference" value="immediate" id="mailPrefImmediate" style="width:18px;height:18px;">
-              Mail out now
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <button class="btn btn-primary" id="checkoutButton">Proceed to PayNow</button>
-    </div>
-  </section>
-
-  <!-- PAYNOW SCREEN -->
-  <section id="paynowScreen">
-    <button class="btn btn-secondary" id="backToCartButton" style="margin-bottom:12px;">← Back to Cart</button>
-    <h2>PayNow Payment</h2>
-    <p id="paynowTimer" style="text-align:center;font-size:13px;color:var(--plum);font-weight:600;margin-bottom:8px;"></p>
-    <div style="background:#fff;padding:16px;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,0.08);text-align:center;">
-      <p style="font-size:15px;color:var(--pink-deep);font-weight:600;">
-        Scan the QR code below to make payment
-      </p>
-      <img src="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/PayNowQR.jpg"
-           style="width:100%;max-width:220px;height:auto;aspect-ratio:1/1;border-radius:12px;border:3px solid var(--pink-border);margin:12px auto;display:block;">
-      <p style="font-size:14px;color:#555;">
-        Or PayNow/Paylah to 8963 1819
-        <br>(Paynow: CHXX YUX SHEXX RYXX / Paylah: fallacytcg)
-        <br><br><strong>Step 1: Screenshot your payment as proof.<br>
-        Step 2: Click to confirm your order below.<br>
-        Step 3: Send your screenshot to our Telegram DMs @fallacytcg within 24 hours.</strong>
-        <br><br>Your order will only be processed upon receipt of screenshot and verification of payment.
-      </p>
-      <p style="font-size:16px;color:var(--pink-deep);font-weight:700;margin-top:10px;">
-        Amount: <span id="paynowAmount">$0.00</span>
-      </p>
-      <button class="btn btn-primary" id="paynowConfirmButton" style="margin-top:16px;">
-        Confirm order
-      </button>
-    </div>
-  </section>
-
-</main>
-
-<div class="modal-backdrop" id="stockConflictBackdrop" style="display:none;">
-  <div class="modal conflict-modal">
-    <h3 id="conflictTitle">Someone just bought one first</h3>
-    <p class="conflict-sub" id="conflictSub">The rest of your cart is still available.</p>
-    <div id="conflictList"></div>
-    <p class="conflict-total" id="conflictTotal"></p>
-    <button class="btn btn-primary" id="conflictContinue">Continue</button>
-    <button class="btn btn-secondary" id="conflictRemove">Remove it and continue</button>
-    <button class="btn btn-plain" id="conflictBack">Back to cart</button>
+  </div>
+  <div class="content" id="content"></div>
+  </div>
+  <button class="totop" id="totop" aria-label="Back to top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"></path></svg></button>
+  <div class="dock">
+    <div class="ticker"><span class="live"></span><span id="tick">Loading…</span></div>
+    <div class="cartbar" id="cartbar"><span class="cn" id="cn">0</span><span class="lbl">View cart</span><span class="tot" id="tot">$0.00</span></div>
   </div>
 </div>
 
-<div class="modal-backdrop" id="proofBackdrop" style="display:none;">
-  <div class="modal proof-modal">
-    <h3 id="proofHeadline">Join our little community!</h3>
-    <p class="proof-sub" id="proofSub"></p>
-    <div id="proofList" class="proof-list"></div>
-    <button class="btn btn-primary" id="proofJoinButton">Join our channel!</button>
-    <button class="btn btn-secondary" id="proofCloseButton">Close</button>
-  </div>
-</div>
-
-<div class="cart-nudge" id="cartNudge" style="display:none;">
-  <span id="cartNudgeText"></span>
-  <button type="button" id="cartNudgeClose" aria-label="Dismiss">&times;</button>
-</div>
-
-<footer>
-  <div class="recent-sales-banner" id="recentSalesBanner" style="display:none;">
-    <span id="recentSalesText"></span>
-  </div>
-  <button class="btn btn-secondary" id="cartButton">Cart (0)</button>
-</footer>
-
-<div class="modal-backdrop" id="imageLightbox">
-  <div style="position:relative;display:inline-block;max-width:92vw;max-height:85vh;border-radius:14px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,0.35);">
-    <img id="lightboxImg" src="" alt="" style="display:block;max-width:92vw;max-height:85vh;">
-    <span class="photo-watermark photo-watermark-large">@fallacycardshop</span>
-  </div>
-</div>
-
-<div class="modal-backdrop" id="modalBackdrop">
-  <div class="modal">
-    <h3>Thank you for your order! 💖</h3>
-    <p>Your order request has been sent. Click on the link below to enter our chat and send your proof of payment.</p>
-    <button class="btn btn-primary" id="modalCloseButton">Go to chat @fallacytcg</button>
-  </div>
-</div>
+<div class="scrim" id="scrim"></div>
+<div class="panel" id="panel"><div class="panel-head"><button class="backbtn" id="panelBack">&#8592; Back</button><h2 id="panelTitle"></h2><span class="timer" id="panelTimer" style="display:none"></span></div><div class="panel-body" id="panelBody"></div></div>
+<div class="toast" id="toast"></div>
 
 <script>
-window.onerror = function (message, source, lineno, colno, error) {
-  const banner = document.createElement("div");
-  banner.style.cssText =
-    "position:fixed;top:0;left:0;right:0;background:#c0392b;color:#fff;padding:10px;font-size:12px;z-index:9999;white-space:pre-wrap;";
-  banner.textContent = "Page error: " + message + " (line " + lineno + ")";
-  document.body.appendChild(banner);
-  console.error("Uncaught error:", message, source, lineno, colno, error);
-  return false;
-};
+let CARDS=[];
+const RAW="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/";
+const QR_SRC=RAW+"PayNowQR.jpg";
+const $=s=>document.querySelector(s);
+const byId=id=>CARDS.find(c=>c.id===id);
+const RANK={"Near Mint":0,"Lightly Played":1,"Moderately Played":2,"Heavily Played":3};
+const REF_MULT={"Lightly Played":1.3,"Moderately Played":1.6,"Heavily Played":2};
+const CART_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>';
+const MAIL_FEE=3;
+let cart={};let only=null;let savedScroll=0;let appliedDiscount=null;let promoMsg="";
+function discountAmt(sub){if(!appliedDiscount)return 0;return appliedDiscount.type==="percent"?sub*(Number(appliedDiscount.value)||0)/100:Math.min(Number(appliedDiscount.value)||0,sub)}
 
-let products = [];
+const conds=p=>[...p.conds].sort((a,b)=>RANK[a.cond]-RANK[b.cond]);
+const inStock=p=>conds(p).filter(c=>c.stock>0);
+const bestCond=p=>inStock(p)[0]||null;
+const dealCond=p=>inStock(p).find(c=>c.cond!=="Near Mint")||bestCond(p);
+const isSold=p=>inStock(p).length===0;
+const defaultCond=(p,ctx)=>ctx==="deal"?dealCond(p):bestCond(p);
+const nmCond=p=>p.conds.find(c=>c.cond==="Near Mint");
+const setLabel=s=>String(s||"").replace(/^[A-Za-z0-9]+\s+/,"");   // drop leading set code
+const setName=p=>setLabel(p.set);
+const ck=(id,cond)=>id+"::"+cond;
+const round90=x=>{const r=Math.round(x-0.9)+0.9;return r>0?r:0.9};
+const hasDeal=p=>inStock(p).some(c=>c.cond!=="Near Mint");
+// Show every rarity except N.A.; only the 3 TTGX labels are renamed.
+const RAR_MAP={"RR (TTGX)":"Tag Team GX","SR (TTGX)":"SR Tag Team GX","HR (TTGX)":"HR Tag Team GX"};
+const rarLabel=p=>{const r=p.rarity||"";if(!r||r==="N.A."||r==="N.A")return"";return RAR_MAP[r]||r};
+const NOTIFY_EMAIL="fallacycardshop@gmail.com";
+const TG_CHAT="https://t.me/fallacytcg";
 
-// Fingerprint of the last rendered catalogue, used to skip pointless rebuilds.
-let lastProductsSignature = "";
+// --- Telegram Mini App identity (prefill + order record); null in a browser ---
+let telegramUser=null,telegramInitData=null;
+if(window.Telegram&&window.Telegram.WebApp){const tg=window.Telegram.WebApp;try{tg.ready();tg.expand()}catch(e){}
+  telegramUser=tg.initDataUnsafe&&tg.initDataUnsafe.user?tg.initDataUnsafe.user:null;telegramInitData=tg.initData||null}
+function openTg(url){const tg=window.Telegram&&window.Telegram.WebApp;if(tg&&tg.openTelegramLink){tg.openTelegramLink(url)}else{window.open(url,"_blank")}}
 
-// Headings above the featured and newly-in rows. Both overridden by
-// /api/products, which the admin page can edit.
-let featuredTitle = "🔥 Popular this week";
-let newTitle = "✨ Newly in stock!";
-// Promo strip copy, editable from the admin page. Blank hides the strip.
-let promoText = "";
-let currentScreen = "products";
-
-// Tracks which product fields (name/condition/rarity/set/stock) are currently
-// expanded, so a background refresh doesn't silently reset them. Keyed by
-// "<stockKey>:<field>" rather than the array index, since stockKey is stable
-// across fetches while numeric ids can shift if products are added/removed.
-let expandedFields = new Set();
-
-function fieldKey(product, field) {
-  return `${product.stockKey || product.name}:${field}`;
+// --- Funnel analytics: one HINCRBY per event on the recent-sales endpoint ---
+function trackEvent(name,data){
+  try{if(typeof window.va==="function")window.va("event",{name,...(data||{})})}catch(e){}
+  try{fetch("/api/recent-sales",{method:"POST",headers:{"Content-Type":"application/json"},keepalive:true,body:JSON.stringify({event:name,...(data||{})})})}catch(e){}
 }
 
-function toggleExpandedField(key) {
-  if (expandedFields.has(key)) {
-    expandedFields.delete(key);
-  } else {
-    expandedFields.add(key);
-  }
-}
-
-// Telegram Mini App identity (populated below if running inside Telegram).
-let telegramUser = null;
-let telegramInitData = null;
-
-if (window.Telegram && window.Telegram.WebApp) {
-  const tg = window.Telegram.WebApp;
-  tg.ready();
-  tg.expand();
-  telegramUser = tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user : null;
-  telegramInitData = tg.initData || null;
-}
-
-let cart;
-try {
-  cart = JSON.parse(localStorage.getItem("fallacyCart") || "{}");
-  if (typeof cart !== "object" || cart === null || Array.isArray(cart)) {
-    cart = {};
-  }
-} catch (e) {
-  console.error("Corrupted cart data found, resetting cart.", e);
-  cart = {};
-}
-
-const productListEl = document.getElementById("productList");
-const cartListEl = document.getElementById("cartList");
-const cartButtonEl = document.getElementById("cartButton");
-
-// Hiding the nudge must not depend on showCartNudge having run — it returns
-// early when the cart is empty, so a closure assigned inside it was sometimes
-// never set and the bubble stayed on screen.
-function hideCartNudge() {
-  const el = document.getElementById("cartNudge");
-  if (el) el.style.display = "none";
-}
-const productsScreenEl = document.getElementById("productsScreen");
-const cartScreenEl = document.getElementById("cartScreen");
-const paynowScreenEl = document.getElementById("paynowScreen");
-const subtotalTextEl = document.getElementById("subtotalText");
-const shippingTextEl = document.getElementById("shippingText");
-const holdCheckboxEl = document.getElementById("holdCheckbox");
-const telegramUsernameInputEl = document.getElementById("telegramUsernameInput");
-const fullDetailsFieldsEl = document.getElementById("fullDetailsFields");
-const holdModeFieldsEl = document.getElementById("holdModeFields");
-const discountBoxEl = document.getElementById("discountBox");
-const discountCodeInputEl = document.getElementById("discountCodeInput");
-const applyDiscountButtonEl = document.getElementById("applyDiscountButton");
-const discountErrorTextEl = document.getElementById("discountErrorText");
-const discountRowEl = document.getElementById("discountRow");
-const discountTextEl = document.getElementById("discountText");
-const totalTextEl = document.getElementById("totalText");
-const totalBoxEl = document.getElementById("totalBox");
-const checkoutSectionEl = document.getElementById("checkoutSection");
-const searchInputEl = document.getElementById("searchInput");
-const resultsCounterEl = document.getElementById("resultsCounter");
-const promoBannerEl = document.getElementById("promoBanner");
-const promoTextEl = document.getElementById("promoText");
-const categoryFilterEl = document.getElementById("categoryFilter");
-const setFilterEl = document.getElementById("setFilter");
-const checkoutButtonEl = document.getElementById("checkoutButton");
-const paynowAmountEl = document.getElementById("paynowAmount");
-const paynowConfirmButtonEl = document.getElementById("paynowConfirmButton");
-const modalBackdropEl = document.getElementById("modalBackdrop");
-const modalCloseButtonEl = document.getElementById("modalCloseButton");
-const statusTextEl = document.getElementById("statusText");
-const backToShopButtonEl = document.getElementById("backToShopButton");
-const backToCartButtonEl = document.getElementById("backToCartButton");
-const imageLightboxEl = document.getElementById("imageLightbox");
-const recentSalesBannerEl = document.getElementById("recentSalesBanner");
-const recentSalesTextEl = document.getElementById("recentSalesText");
-const lightboxImgEl = document.getElementById("lightboxImg");
-const paynowTimerEl = document.getElementById("paynowTimer");
-
-function openLightbox(src, alt) {
-  lightboxImgEl.src = src;
-  lightboxImgEl.alt = alt || "";
-  imageLightboxEl.style.display = "flex";
-}
-
-imageLightboxEl.onclick = () => {
-  imageLightboxEl.style.display = "none";
-};
-
-// Prefill the checkout fields from Telegram's profile, if available.
-//
-// Only works when the store is opened as a Mini App (t.me/<bot>/<app>) — a
-// plain link opens the in-app browser, which passes no identity at all.
-if (telegramUser) {
-  const nameInputEl = document.getElementById("nameInput");
-  const fullName = [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ");
-  if (fullName) nameInputEl.value = fullName;
-
-  const hint = document.createElement("p");
-  hint.className = "field-hint";
-
-  if (telegramUser.username) {
-    telegramUsernameInputEl.value = `@${telegramUser.username}`;
-    hint.textContent = "Filled in from your Telegram account — edit if you'd like.";
-  } else {
-    // Plenty of Telegram accounts have no @username. Saying so beats leaving
-    // the buyer staring at a required field they can't guess the format for.
-    hint.textContent =
-      "Your Telegram account has no @username yet. Add one in Telegram → Settings → Username so we can reach you about your order.";
-    hint.classList.add("field-hint-warn");
-  }
-
-  telegramUsernameInputEl.insertAdjacentElement("afterend", hint);
-  trackEvent("telegram_prefill", { username: telegramUser.username ? "yes" : "no" });
-}
-
-// IMPORTANT: replace this with your real notification email address.
-const ORDER_NOTIFY_EMAIL = "fallacycardshop@gmail.com";
-
-function formatDateDDMMYYYY(timestamp) {
-  const d = new Date(timestamp);
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
-}
-
-// Builds the full order record. Used for BOTH the FormSubmit email and the
-// server-side backup, so the two can never drift apart.
-// Sanity check: do the order's own line items still add up to the subtotal it
-// was charged on? They must, and a mismatch means the cart changed after the
-// totals were captured — which is how one order was billed for a card that
-// wasn't in it. Logged loudly rather than silently producing a wrong receipt.
-function verifyOrderTotals(order) {
-  const lineSum = Object.values(order.cart).reduce(
-    (sum, { product, quantity }) => sum + Number(product.price || 0) * quantity,
-    0
-  );
-  const captured = Number(String(order.subtotal || "").replace(/[^0-9.]/g, "")) || 0;
-  const drift = Math.abs(lineSum - captured);
-
-  if (drift > 0.01) {
-    console.error(
-      `Order ${order.id}: items total $${lineSum.toFixed(2)} but subtotal says $${captured.toFixed(2)}`
-    );
-    trackEvent("order_total_mismatch", { drift: Number(drift.toFixed(2)) });
-  }
-  return { lineSum, captured, drift };
-}
-
-function buildOrderPayload(order) {
-  {
-    const telegramUsernameDisplay = telegramUser ? (telegramUser.username || "(no username set)") : "not available";
-    const telegramUserIdDisplay = telegramUser ? (telegramUser.id || "") : "";
-
-    // Two small paste-ready blocks per item, matching your Excel sheet's
-    // exact manual-entry columns. Deliberately skips the Card Name / Rarity
-    // columns since those are formula-driven (VLOOKUP off CardID) — pasting
-    // over them would overwrite the formulas.
-    const dateStr = formatDateDDMMYYYY(order.id);
-
-    // Block 1 → paste into column A, then use Excel's Text to Columns
-    // (Data tab → Text to Columns → Delimited → Other: "|") to split into
-    // A:C (Date, CardID, Condition). We use "|" instead of a tab character
-    // because HTML email rendering collapses tabs into plain spaces.
-    // One row PER PHYSICAL CARD, not per cart line: buying 2 copies produces
-    // 2 identical rows, matching how the Excel sheet records individual sales.
-    const block1_DateCardIdCondition = Object.values(order.cart)
-      .flatMap(({ product, quantity }) => {
-        const line = [dateStr, product.cardId || "", product.description || ""].join(" | ");
-        return Array.from({ length: Math.max(Number(quantity) || 0, 0) }, () => line);
-      })
-      .join("\n");
-
-    // Block 2 → paste into column F, then Text to Columns to split into F:G (Buyer, Price).
-    // Price here is net of any discount, prorated across items by their share
-    // of the subtotal, so per-card revenue in Excel still adds up correctly
-    // even when a discount code was used.
-    const buyerDisplay = order.telegramUsername || (telegramUser && telegramUser.username ? `@${telegramUser.username}` : order.name);
-    const rawSubtotal = Object.values(order.cart).reduce(
-      (sum, { product, quantity }) => sum + Number(product.price || 0) * quantity,
-      0
-    );
-    const totalDiscount = Number(order.discountAmount || 0);
-
-    // Also one row per physical card, so this block stays line-for-line aligned
-    // with block 1 when both are pasted into the sheet.
-    const block2_BuyerPriceOrderId = Object.values(order.cart)
-      .flatMap(({ product, quantity }) => {
-        const price = Number(product.price || 0);
-        const qty = Math.max(Number(quantity) || 0, 0);
-        const lineTotal = price * qty;
-        const lineDiscountShare = rawSubtotal > 0 ? (lineTotal / rawSubtotal) * totalDiscount : 0;
-        const netUnitPrice = qty > 0 ? Math.max(lineTotal - lineDiscountShare, 0) / qty : price;
-        // Buyer and price are unchanged; the order ID is appended as a third
-        // column so every row can be traced back to its order.
-        const line = [buyerDisplay, netUnitPrice.toFixed(2), order.id].join(" | ");
-        return Array.from({ length: qty }, () => line);
-      })
-      .join("\n");
-
-    const itemsSummary = Object.values(order.cart)
-      .map(({ product, quantity }) => {
-        const price = Number(product.price || 0);
-        return `${product.name} [${product.cardId || "no CardID set"}] (${product.category || ""}, ${product.description || ""}) x${quantity} @ $${price.toFixed(2)} = $${(price * quantity).toFixed(2)}`;
-      })
-      .join("\n");
-
-    return {
-        _subject: `New order #${order.id} — ${order.name} — ${order.total || ""}`,
-        _template: "table",
-        Order_ID: order.id,
-        Buyer_Name: order.name,
-        Phone: order.phone,
-        Address: order.address,
-        Address_Line: order.addressLine || "",
-        Unit_Number: order.unitNumber || "",
-        Postal_Code: order.postalCode || "",
-        Telegram_Username: telegramUsernameDisplay,
-        Telegram_User_ID: telegramUserIdDisplay,
-        Buyer_Entered_Telegram_Username: order.telegramUsername || "",
-        "Buyer_Claims_Package_On_Hold": order.holdClaimed ? "YES — verify against hold list before confirming" : "No",
-        Mail_Preference: order.mailPreference || "",
-        Subtotal: order.subtotal || "",
-        Discount_Code: order.discountCode || "None",
-        Discount_Amount: order.discountAmount && Number(order.discountAmount) > 0 ? `$${order.discountAmount}` : "$0.00",
-        Shipping: order.shipping || "",
-        Total: order.total || "",
-        Items_Readable: itemsSummary,
-        "PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition": block1_DateCardIdCondition,
-        "PASTE_INTO_COLUMNS_F_to_H_Buyer_Price_OrderID": block2_BuyerPriceOrderId,
-    };
-  }
-}
-
-// Sent directly from the browser (not via our own backend) — FormSubmit sits
-// behind Cloudflare, which blocks server-to-server requests but allows genuine
-// browser requests like this one.
-//
-// This is now a CONVENIENCE only: the authoritative copy of every order is
-// written to Redis by /api/confirm-order at the moment the sale is recorded,
-// so an email failure can no longer lose an order.
-async function sendOrderToBackend(order) {
-  try {
-    const res = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(ORDER_NOTIFY_EMAIL)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify(buildOrderPayload(order)),
-    });
-    if (!res.ok) {
-      console.error("Order logging failed:", await res.text());
-      return false;
-    }
-    return true;
-  } catch (err) {
-    // Never let a logging failure block the buyer's checkout flow, but DO
-    // report it so the caller can keep the order queued and retry.
-    console.error("Order logging request failed:", err);
-    return false;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Order-notification queue
-//
-// An order is confirmed server-side (stock decremented) before the notification
-// email is sent. Previously the send was fired without awaiting it and the
-// buyer was immediately shown the success modal — which opens Telegram and
-// navigates away. In the Telegram in-app browser that tears down the page and
-// kills the in-flight request, so the order went through with no email.
-//
-// Orders are now queued in localStorage first, only removed once the send is
-// confirmed, and retried on the next page load. Nothing can be lost to a
-// closed tab or a dropped connection.
-// ---------------------------------------------------------------------------
-
-const NOTIFY_QUEUE_KEY = "fallacy_pending_order_notifications";
-
-function readNotifyQueue() {
-  try {
-    const raw = localStorage.getItem(NOTIFY_QUEUE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    return [];
-  }
-}
-
-function writeNotifyQueue(queue) {
-  try {
-    localStorage.setItem(NOTIFY_QUEUE_KEY, JSON.stringify(queue));
-  } catch (e) {
-    console.error("Could not save the notification queue:", e);
-  }
-}
-
-function queueOrderNotification(order) {
-  const queue = readNotifyQueue();
-  if (!queue.some(o => o.id === order.id)) {
-    queue.push(order);
-    writeNotifyQueue(queue);
-  }
-}
-
-// Attempts every queued order, keeping any that fail for the next attempt.
-async function flushOrderNotifications() {
-  const queue = readNotifyQueue();
-  if (queue.length === 0) return true;
-
-  const stillPending = [];
-  for (const order of queue) {
-    const sent = await sendOrderToBackend(order);
-    if (!sent) stillPending.push(order);
-  }
-  writeNotifyQueue(stillPending);
-  return stillPending.length === 0;
-}
-
-const MAILING_FEE = 3;
-let currentSubtotal = 0;
-let pendingOrder = null;
-let paynowTimerInterval = null;
-let paynowExpiresAt = null;
-
-function generateReservationId() {
-  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
-  return `res_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-}
-
-// The active reservation id is mirrored into localStorage so it can be cleaned
-// up even if the page dies without running any of the normal exit paths.
-//
-// Without this, a buyer who closed the Mini App mid-checkout kept holding their
-// own stock for the full TTL — and on returning was told the cards were sold
-// out, by their own abandoned session.
-const RESERVATION_KEY = "fallacy_active_reservation";
-
-function rememberReservation(reservationId) {
-  try {
-    if (reservationId) localStorage.setItem(RESERVATION_KEY, reservationId);
-    else localStorage.removeItem(RESERVATION_KEY);
-  } catch (e) {
-    // Storage unavailable — the normal exit paths still release the hold.
-  }
-}
-
-function storedReservationId() {
-  try {
-    return localStorage.getItem(RESERVATION_KEY);
-  } catch (e) {
-    return null;
-  }
-}
-
-// Fire-and-forget release that survives the page being torn down.
-function releaseReservationBeacon(reservationId) {
-  if (!reservationId) return;
-  try {
-    fetch("/api/release-reservation", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reservationId }),
-      keepalive: true,
-    }).catch(() => {});
-  } catch (e) {
-    /* ignored */
-  }
-}
-
-async function releaseReservation(reservationId) {
-  rememberReservation(null);
-  if (!reservationId) return;
-  try {
-    await fetch("/api/release-reservation", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reservationId }),
-    });
-  } catch (err) {
-    console.error("Release reservation failed:", err);
-  }
-}
-
-function clearPaynowTimer() {
-  if (paynowTimerInterval) {
-    clearInterval(paynowTimerInterval);
-    paynowTimerInterval = null;
-  }
-  paynowExpiresAt = null;
-}
-
-function updatePaynowTimerDisplay() {
-  if (!paynowExpiresAt) return;
-  const remainingMs = Math.max(paynowExpiresAt - Date.now(), 0);
-  const totalSeconds = Math.ceil(remainingMs / 1000);
-  const mins = Math.floor(totalSeconds / 60);
-  const secs = totalSeconds % 60;
-  paynowTimerEl.textContent = `Time remaining to complete payment: ${mins}:${String(secs).padStart(2, "0")}`;
-}
-
-async function expirePaynowSession() {
-  clearPaynowTimer();
-  const idToRelease = pendingOrder ? pendingOrder.reservationId : null;
-  pendingOrder = null;
-  await releaseReservation(idToRelease);
-  loadProducts();
-  alert("Your payment session has expired. Please review your cart and try again.");
-  showCart();
-}
-
-function startPaynowTimer() {
-  clearPaynowTimer();
-  // 5 minutes. Must stay in step with RESERVATION_TTL_SECONDS in api/reserve.js
-  // (330s), which is deliberately a little longer so the reservation never
-  // expires while the buyer still sees time on the clock.
-  //
-  // Kept at 5 rather than shortened: the funnel showed a quarter of buyers who
-  // reached the QR code were already timing out at this length.
-  paynowExpiresAt = Date.now() + 5 * 60 * 1000;
-  updatePaynowTimerDisplay();
-  paynowTimerInterval = setInterval(() => {
-    if (Date.now() >= paynowExpiresAt) {
-      expirePaynowSession();
-      return;
-    }
-    updatePaynowTimerDisplay();
-  }, 1000);
-}
-
-function getMailPreference() {
-  const checked = document.querySelector('input[name="mailPreference"]:checked');
-  return checked ? checked.value : "hold";
-}
-
-function getHoldMailPreference() {
-  const checked = document.querySelector('input[name="holdMailPreference"]:checked');
-  return checked ? checked.value : "continue_hold";
-}
-
-let appliedDiscount = null; // { code, type: "percent"|"fixed", value }
-
-function computeDiscountAmount(subtotal, discount) {
-  if (!discount || !(subtotal > 0)) return 0;
-  if (discount.type === "percent") {
-    return Math.min(subtotal * (discount.value / 100), subtotal);
-  }
-  if (discount.type === "fixed") {
-    return Math.min(discount.value, subtotal);
-  }
-  return 0;
-}
-
-const MIN_DISCOUNT_SPEND = 10;
-
-function updateTotals() {
-  const hasHold = holdCheckboxEl.checked;
-
-  // If items were removed from the cart after a discount was applied and
-  // the subtotal has since dropped below the minimum, revoke it automatically.
-  if (appliedDiscount && currentSubtotal < MIN_DISCOUNT_SPEND) {
-    appliedDiscount = null;
-    discountCodeInputEl.value = "";
-    discountErrorTextEl.textContent = `Discount removed — a minimum spend of $${MIN_DISCOUNT_SPEND} is required.`;
-    discountErrorTextEl.style.display = "block";
-  }
-
-  // Mailing fee applies whenever there's no existing hold — both "mail
-  // immediately" and "hold with us" are paid upfront; the choice only
-  // tells the seller what to physically do with the package.
-  const shipping = currentSubtotal > 0 && !hasHold ? MAILING_FEE : 0;
-  const discountAmount = computeDiscountAmount(currentSubtotal, appliedDiscount);
-  const total = Math.max(currentSubtotal - discountAmount, 0) + shipping;
-
-  subtotalTextEl.textContent = `$${currentSubtotal.toFixed(2)}`;
-  shippingTextEl.textContent = `$${shipping.toFixed(2)}`;
-  const shippingNoteEl = document.getElementById("shippingNote");
-  if (shippingNoteEl) shippingNoteEl.style.display = shipping > 0 ? "block" : "none";
-  totalTextEl.textContent = `$${total.toFixed(2)}`;
-
-  if (discountAmount > 0) {
-    discountRowEl.style.display = "flex";
-    discountTextEl.textContent = `-$${discountAmount.toFixed(2)}`;
-  } else {
-    discountRowEl.style.display = "none";
-  }
-}
-
-function updateCheckoutFieldsVisibility() {
-  // If the buyer already has a package on hold, this order is just being
-  // added to it — we only need their Telegram username plus what to do
-  // with this addition (mail everything now, or keep holding), instead
-  // of full shipping details.
-  const hasHold = holdCheckboxEl.checked;
-  fullDetailsFieldsEl.style.display = hasHold ? "none" : "block";
-  holdModeFieldsEl.style.display = hasHold ? "block" : "none";
-  updateTotals();
-}
-
-holdCheckboxEl.onchange = updateCheckoutFieldsVisibility;
-document.getElementById("mailPrefImmediate").onchange = updateTotals;
-document.getElementById("mailPrefHold").onchange = updateTotals;
-
-function saveCart() {
-  localStorage.setItem("fallacyCart", JSON.stringify(cart));
-}
-
-function saveLastOrder(order) {
-  localStorage.setItem("fallacyLastOrder", JSON.stringify(order));
-}
-
-async function loadProducts() {
-  try {
-    statusTextEl.textContent = "Loading inventory…";
-    const res = await fetch("/api/products");
-    if (!res.ok) {
-      throw new Error("Failed to load inventory");
-    }
-    const data = await res.json();
-    // Backend may return either a bare array (older shape) or
-    // { products, featuredTitle } (current shape) — accept both so a
-    // mismatch between deployed files can't crash the whole page.
-    products = Array.isArray(data) ? data : (Array.isArray(data.products) ? data.products : []);
-    // Editable featured heading, set from the admin page.
-    if (!Array.isArray(data) && data.featuredTitle) featuredTitle = data.featuredTitle;
-    if (!Array.isArray(data) && data.newTitle) newTitle = data.newTitle;
-    if (!Array.isArray(data)) {
-      promoText = typeof data.promoText === "string" ? data.promoText : "";
-      renderPromoBanner();
-    }
-    statusTextEl.textContent = "All items have been updated.";
-
-    // A background refresh usually returns exactly what's already on screen.
-    // Rebuilding the grid anyway threw away the shopper's scroll position and
-    // collapsed any sold-out section they'd opened — so only re-render when
-    // something actually changed.
-    const signature = products
-      .map(p => `${p.id}:${p.stock}:${p.price}:${p.isNew ? 1 : 0}`)
-      .join("|");
-    const unchanged = signature === lastProductsSignature && productListEl.children.length > 0;
-    lastProductsSignature = signature;
-
-    renderCategoryFilter();
-    renderSetFilter();
-    reconcileCartWithStock();
-
-    // Now the cart has been checked against real stock, so anything left is
-    // genuinely buyable and worth mentioning.
-    if (!cartNudgeShown) setTimeout(showCartNudge, 600);
-
-    if (!unchanged) {
-      // Something did change. Hold the scroll position across the rebuild so
-      // the page doesn't jump under the shopper's thumb.
-      const scrollY = window.scrollY;
-      renderProducts();
-      requestAnimationFrame(() => window.scrollTo(0, scrollY));
-    } else {
-      // Same data — just refresh the cards in place for cart state.
-      refreshProductCards();
-    }
-
-    updateCartBadge();
-  } catch (e) {
-    console.error(e);
-    statusTextEl.textContent = "Failed to load inventory. Please try again later.";
-  }
-}
-
-function reconcileCartWithStock() {
-  // Keeps a saved cart (from a previous visit) in sync with the current
-  // real inventory: trims quantities down to available stock, drops items
-  // that no longer exist, and refreshes each cart item's product snapshot
-  // (price/photo/stock) so the cart screen always shows current data.
-  //
-  // Important: this uses trueStock (genuine permanent sales only), NOT the
-  // reservation-aware "stock" field — otherwise another buyer's temporary
-  // in-progress checkout (which briefly drops "stock" to 0) would silently
-  // empty this buyer's cart even though nothing was actually, permanently sold.
-  let changed = false;
-
-  Object.keys(cart).forEach(id => {
-    const fresh = products.find(p => p.stockKey === id);
-
-    if (!fresh) {
-      delete cart[id];
-      changed = true;
-      return;
-    }
-
-    const stock = Number(fresh.trueStock ?? fresh.stock ?? 0);
-
-    if (cart[id].quantity > stock) {
-      cart[id].quantity = stock;
-      changed = true;
-    }
-
-    if (cart[id].quantity <= 0) {
-      delete cart[id];
-      changed = true;
-      return;
-    }
-
-    cart[id].product = fresh;
+// --- Reservation (real stock hold, TTL-expiring) ---
+const RESERVATION_KEY="fallacy_active_reservation";
+let reservationId=null;
+function newResId(){return (window.crypto&&crypto.randomUUID)?crypto.randomUUID():"res_"+Date.now()+"_"+Math.random().toString(36).slice(2)}
+function rememberReservation(id){try{if(id)localStorage.setItem(RESERVATION_KEY,id);else localStorage.removeItem(RESERVATION_KEY)}catch(e){}}
+function reserveItemList(){return Object.entries(cart).filter(([,q])=>q>0).map(([k,q])=>({key:k,quantity:q}))}
+function releaseReservation(){if(!reservationId)return;const id=reservationId;reservationId=null;rememberReservation(null);
+  try{fetch("/api/release-reservation",{method:"POST",headers:{"Content-Type":"application/json"},keepalive:true,body:JSON.stringify({reservationId:id})})}catch(e){}}
+
+// Group the flat /api/products list (one row per CardID+Condition) into cards.
+function groupProducts(list){
+  const m=new Map();
+  list.forEach(p=>{
+    const id=p.cardId||p.name;
+    if(!m.has(id))m.set(id,{id,name:p.name||id,set:p.set||"",rarity:p.category||"",
+      img:p.photo?RAW+"thumbs/"+p.photo.split("/").pop():"",imgFull:p.photo||"",conds:[],isNew:false,featured:false});
+    const g=m.get(id);
+    g.conds.push({cond:p.description||"Near Mint",price:Number(p.price)||0,stock:Math.max(Number(p.stock)||0,0)});
+    if(p.isNew)g.isNew=true;
+    if(p.featured)g.featured=true;
   });
-
-  if (changed) {
-    saveCart();
-
-    // CRITICAL: currentSubtotal is only recalculated inside renderCart, so
-    // dropping an item here without re-rendering left the totals counting a
-    // card that was no longer in the cart. One buyer was charged for four
-    // cards and received three.
-    //
-    // This runs on every 60s inventory refresh, so it can fire while the buyer
-    // is sitting on the checkout screen.
-    updateCartBadge();
-    if (currentScreen === "cart") {
-      renderCart();
-    } else {
-      // Not on the cart screen: recompute the subtotal directly so the figure
-      // is already correct whenever they arrive there.
-      currentSubtotal = Object.values(cart).reduce(
-        (sum, { product, quantity }) => sum + Number(product.price || 0) * quantity,
-        0
-      );
-      updateTotals();
-    }
-  }
+  return [...m.values()];
+}
+function boot(){
+  $("#content").innerHTML='<div class="empty">Loading the store…</div>';
+  fetch("/api/products").then(r=>r.json()).then(d=>{
+    CARDS=groupProducts(Array.isArray(d)?d:(d.products||[]));
+    loadCart();
+    init();
+  }).catch(err=>{console.error(err);$("#content").innerHTML='<div class="empty">Couldn&rsquo;t load the store. Pull to refresh.</div>'});
+}
+function saveCart(){try{localStorage.setItem("fallacyCart",JSON.stringify(cart))}catch(e){}}
+function loadCart(){
+  let saved={};try{saved=JSON.parse(localStorage.getItem("fallacyCart")||"{}")}catch(e){}
+  cart={};
+  Object.entries(saved).forEach(([k,q])=>{const[cid,cond]=k.split("::");const p=byId(cid);if(!p)return;const c=p.conds.find(x=>x.cond===cond);if(c&&c.stock>0)cart[k]=Math.min(Number(q)||0,c.stock)});
+}
+function init(){
+  if(telegramUser&&telegramUser.username&&!form.user){form.user="@"+telegramUser.username;trackEvent("telegram_prefill",{username:"yes"})}
+  fillSel($("#rarity"),[...new Set(CARDS.map(c=>c.rarity))].filter(Boolean).sort());
+  fillSel($("#set"),[...new Set(CARDS.map(setName))].filter(Boolean).sort());
+  render();updateBar();loadTicker();
 }
 
-// Special filters use a "__" prefix so they can't collide with a rarity value
-// from the CSV.
-const SPECIAL_FILTERS = {
-  __featured: p => p.featured,
-  __new: p => p.isNew,
-};
-
-function renderCategoryFilter() {
-  const categories = [...new Set(products.map(p => p.category))].filter(Boolean).sort((a, b) => a.localeCompare(b));
-  const previousValue = categoryFilterEl.value;
-  categoryFilterEl.innerHTML = '<option value="">All categories</option>';
-
-  // Featured and newly-in sit at the top of the same dropdown, above the
-  // rarities — they're the two rows shoppers actually look for, and adding a
-  // fourth control to the toolbar would crowd it.
-  if (products.some(p => p.isNew)) {
-    const opt = document.createElement("option");
-    opt.value = "__new";
-    opt.textContent = newTitle;
-    categoryFilterEl.appendChild(opt);
-  }
-  if (products.some(p => p.featured)) {
-    const opt = document.createElement("option");
-    opt.value = "__featured";
-    opt.textContent = featuredTitle;
-    categoryFilterEl.appendChild(opt);
-  }
-
-  categories.forEach(cat => {
-    const opt = document.createElement("option");
-    opt.value = cat;
-    opt.textContent = cat;
-    categoryFilterEl.appendChild(opt);
-  });
-  if (categories.includes(previousValue) || SPECIAL_FILTERS[previousValue]) {
-    categoryFilterEl.value = previousValue;
-  }
+// Reference ("was") price for a discounted card: in-stock NM price if we have one,
+// otherwise the played price scaled up (LP x1.3, MP x1.6, HP x2) rounded to $xx.90.
+function refPrice(p,dc){
+  const nm=nmCond(p);
+  if(nm&&nm.stock>0)return nm.price;
+  const m=REF_MULT[dc.cond];
+  return m?round90(dc.price*m):null;
 }
 
-function renderSetFilter() {
-  const sets = [...new Set(products.map(p => p.set))].filter(Boolean).sort((a, b) => a.localeCompare(b));
-  const previousValue = setFilterEl.value;
-  setFilterEl.innerHTML = '<option value="">All sets</option>';
-  sets.forEach(setName => {
-    const opt = document.createElement("option");
-    opt.value = setName;
-    opt.textContent = setName;
-    setFilterEl.appendChild(opt);
-  });
-  if (sets.includes(previousValue)) setFilterEl.value = previousValue;
-}
+function hashSeed(s){let h=0;for(let i=0;i<s.length;i++){h=(h<<5)-h+s.charCodeAt(i);h|=0}return h>>>0}
+function mulberry32(a){return function(){a=(a+0x6d2b79f5)|0;let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296}}
+function dailyShuffle(arr){const d=new Date();const rng=mulberry32(hashSeed(`${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`));const a=arr.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
 
-// Card photos are ~270KB each but display at 92px wide in the grid — roughly
-// ten times more data than needed, times 390 listings. Thumbnails live beside
-// the originals in images/thumbs/ and are used everywhere except the lightbox.
-//
-// If a thumbnail is missing the img falls back to the full-size original, so
-// the store works whether or not the thumbs have been generated.
-function thumbUrl(photo) {
-  if (!photo) return "";
-  return photo.replace("/images/", "/images/thumbs/");
-}
+function fillSel(sel,v){v.forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;sel.appendChild(o)})}
 
-function cardImgHtml(photo, alt, extraClass) {
-  const placeholder = "https://via.placeholder.com/300x420?text=Card";
-  if (!photo) {
-    return `<img src="${placeholder}" loading="lazy" alt="${alt}" class="${extraClass || ""}">`;
-  }
-  return `<img src="${thumbUrl(photo)}" loading="lazy" decoding="async" alt="${alt}"
-    class="${extraClass || ""}"
-    onerror="this.onerror=null;this.src='${photo}';">`;
-}
+const qtyOf=(id,cond)=>cart[ck(id,cond)]||0;
+function addCart(id,cond){const c=byId(id).conds.find(x=>x.cond===cond);if(!c||c.stock<=0)return;if(qtyOf(id,cond)<c.stock)cart[ck(id,cond)]=qtyOf(id,cond)+1;updateBar()}
+function setQty(id,cond,q){const c=byId(id).conds.find(x=>x.cond===cond);const v=Math.max(0,Math.min(q,c.stock));if(v<=0)delete cart[ck(id,cond)];else cart[ck(id,cond)]=v;updateBar()}
+function cartCount(){return Object.values(cart).reduce((a,b)=>a+b,0)}
+function subtotal(){let t=0;Object.entries(cart).forEach(([k,q])=>{const[id,cond]=k.split("::");t+=byId(id).conds.find(x=>x.cond===cond).price*q});return t}
+function updateBar(){saveCart();$("#cn").textContent=cartCount();$("#tot").textContent="$"+subtotal().toFixed(2)}
 
-function buildProductActionsHtml(stock, inCart) {
-  const remaining = stock - inCart;
-  if (stock <= 0) {
-    return '<button class="btn btn-primary" disabled>Sold out</button>';
-  }
-  if (inCart <= 0) {
-    return '<button class="btn btn-primary js-add-to-cart">Add to cart</button>';
-  }
-  return `
-    <div class="quantity-control">
-      <button class="qty-minus" aria-label="Remove one from cart">-</button>
-      <span class="card-qty-value">${inCart}</span>
-      <button class="qty-plus" aria-label="Add one to cart" ${remaining <= 0 ? "disabled" : ""}>+</button>
+function priceHTML(p,ctx){
+  const dc=defaultCond(p,ctx);if(!dc)return"";
+  if(ctx==="deal"&&dc.cond!=="Near Mint"){const ref=refPrice(p,dc);if(ref&&ref>dc.price)return `<div class="price-col"><span class="now tag">$${dc.price.toFixed(2)}</span><s class="was tag">$${ref.toFixed(2)}</s></div>`;}
+  return `<span class="price tag">$${dc.price.toFixed(2)}</span>`;
+}
+function badgeHTML(p,ctx){
+  if(isSold(p))return"";
+  if(ctx==="deal")return '<span class="badge b-deal">Deal</span>';
+  if(p.isNew)return '<span class="badge b-new">New</span>';
+  if(p.rarity==="SAR")return '<span class="badge b-sar">SAR</span>';
+  const dc=defaultCond(p,ctx);if(dc&&dc.stock===1)return '<span class="badge b-scarce">1 left</span>';
+  return"";
+}
+function miniAct(id,cond,stock){
+  const q=qtyOf(id,cond);
+  if(q>0)return `<div class="qadj"><button data-dec="${id}" data-c="${cond}">&minus;</button><span class="qn tag">${q}</span><button data-inc="${id}" data-c="${cond}" ${q>=stock?"disabled":""}>+</button></div>`;
+  return `<button class="addcart" data-add="${id}" data-c="${cond}" aria-label="Add">${CART_SVG}</button>`;
+}
+function cardHTML(p,ctx){
+  ctx=ctx||"best";
+  const sold=isSold(p);const dc=defaultCond(p,ctx)||conds(p)[0];
+  const nOther=inStock(p).length-1;
+  const multi=(!sold&&nOther>0)?`<span class="multi">+${nOther} condition${nOther>1?"s":""}</span>`:"";
+  return `<article class="card${sold?" sold":""}" data-card="${p.id}">
+    <div class="imgwrap">${badgeHTML(p,ctx)}<img loading="lazy" src="${p.img}" alt="${p.name}"><div class="wm"></div>${sold?'<div class="sold-veil"><span>Sold out</span></div>':""}</div>
+    <div class="body">
+      <p class="nm">${p.name}</p>
+      <div class="rs">${rarLabel(p)?`<span class="rar">${rarLabel(p)}</span> &middot; `:""}${setName(p)}</div>
+      <div class="cond"><span>${dc.cond}</span>${multi}</div>
+      <div class="row">${priceHTML(p,ctx)}<div class="act" data-act="${p.id}::${dc.cond}">${sold?'<span class="soldtag">Sold out</span>':miniAct(p.id,dc.cond,dc.stock)}</div></div>
     </div>
-  `;
+  </article>`;
 }
+function refreshSku(id,cond){document.querySelectorAll(`[data-act="${id}::${cond}"]`).forEach(n=>{const c=byId(id).conds.find(x=>x.cond===cond);n.innerHTML=miniAct(id,cond,c.stock);wireActs(n)})}
 
-function wireProductActions(card, p) {
-  const addBtn = card.querySelector(".js-add-to-cart");
-  if (addBtn) addBtn.onclick = () => addToCart(p);
-
-  const minus = card.querySelector(".product-actions .qty-minus");
-  const plus = card.querySelector(".product-actions .qty-plus");
-  if (minus) minus.onclick = () => changeQuantity(cartKeyFor(p), -1);
-  if (plus) plus.onclick = () => changeQuantity(cartKeyFor(p), 1);
+function orderRail(list){const sold=list.filter(isSold);if(sold.length<=5)return list;return[...list.filter(p=>!isSold(p)),...sold]}
+function railTile(kind){return `<div class="endtile" data-see="${kind}"><div class="ic">&#9776;</div>See all &amp; filter</div>`}
+function railSection(title,sub,list,kind,ctx){
+  if(!list.length)return"";
+  const ordered=orderRail(list).slice(0,10);
+  return `<div class="sec railsec"><div class="sec-head"><h2>${title}</h2><div class="right"><span class="count">${list.length}</span><button class="seeall" data-see="${kind}">See all &rarr;</button></div></div>
+    ${sub?`<div class="sec-sub">${sub}</div>`:""}
+    <div class="rail">${ordered.map(p=>cardHTML(p,ctx)).join("")}${railTile(kind)}</div></div>`;
 }
+function featSection(list){
+  // Featured = 20 IN-STOCK cards priced $9.90+, randomised daily. No sold-out
+  // block here — as cards sell, fresh ones take their place.
+  const pool=list.filter(p=>!isSold(p)&&Math.max(...p.conds.map(c=>c.price))>=9.9);
+  const picked=dailyShuffle(pool).slice(0,20);
+  if(!picked.length)return"";
+  return `<div class="sec"><div class="sec-head"><h2>&#128293; Featured</h2><span class="count">${picked.length} cards</span></div>
+    <div class="grid">${picked.map(p=>cardHTML(p,"best")).join("")}</div></div>`;
+}
+// Sort-aware ordering: honour the sort dropdown, else the daily shuffle.
+const sortActive=()=>$("#sort").value==="low"||$("#sort").value==="high";
+function arrange(list){return sortActive()?sortList(list):dailyShuffle(list)}
+// Sold-out cards in their OWN 2-column grid; show `showN` (kept even by callers
+// so rows stay complete), collapse the rest behind a button.
+function soldBlockN(sold,showN){
+  if(!sold.length)return"";
+  showN=Math.max(0,Math.min(showN,sold.length));
+  let h=`<div class="soldout-head">Sold out (${sold.length})</div><div class="grid">${sold.slice(0,showN).map(p=>cardHTML(p,"best")).join("")}</div>`;
+  if(sold.length>showN)h+=`<button class="showmore" data-showsold>Show ${sold.length-showN} more sold out</button><div class="grid" id="soldHidden" style="display:none">${sold.slice(showN).map(p=>cardHTML(p,"best")).join("")}</div>`;
+  return h;
+}
+function soldBlock(sold){return soldBlockN(sold,4)}
+function allSection(list){
+  if(!list.length)return"";
+  const live=arrange(list.filter(p=>!isSold(p)));
+  const sold=list.filter(isSold);
+  return `<div class="sec"><div class="sec-head"><h2>All cards</h2><span class="count">${live.length} in stock</span></div>
+    <div class="grid">${live.map(p=>cardHTML(p,"best")).join("")}</div>${soldBlock(sold)}</div>`;
+}
+function activeFilters(){return $("#q").value.trim()||$("#rarity").value||$("#set").value||$("#instock").classList.contains("on")||only||sortActive()}
+function matchP(p){
+  const qv=$("#q").value.trim().toLowerCase();
+  if(qv&&!(p.name.toLowerCase().includes(qv)||p.set.toLowerCase().includes(qv)))return false;
+  if($("#instock").classList.contains("on")&&isSold(p))return false;
+  if($("#rarity").value&&p.rarity!==$("#rarity").value)return false;
+  if($("#set").value&&setName(p)!==$("#set").value)return false;
+  if(only==="new"&&!p.isNew)return false;
+  if(only==="disc"&&!hasDeal(p))return false;
+  return true;
+}
+function sortList(list){const s=$("#sort").value;const key=p=>{const d=bestCond(p)||conds(p)[0];return d.price};
+  if(s==="low")return[...list].sort((a,b)=>key(a)-key(b));if(s==="high")return[...list].sort((a,b)=>key(b)-key(a));return list}
 
-function updateProductCardState(card) {
-  const p = card._product;
-  if (!p) return;
-  const stock = Number(p.stock || 0);
-  const inCart = getCartQuantity(cartKeyFor(p));
-
-  const stockLine = card.querySelector(".product-stock-line");
-  if (stockLine) {
-    stockLine.innerHTML =
-      `Stock: ${stock}` +
-      (stock === 1 ? ' <span class="last-one">Last one</span>' : "") +
-      (inCart > 0 ? ` (${inCart} in your cart)` : "");
+function render(){
+  const c=$("#content");
+  if(activeFilters()){
+    const res=sortList(CARDS.filter(matchP));const liveR=res.filter(p=>!isSold(p)),soldR=res.filter(isSold);
+    const ctx=only==="disc"?"deal":"best";
+    let label="Results";if(only==="new")label="Newly in stock &amp; restocked";else if(only==="disc")label="Discounted";else if($("#rarity").value==="SAR")label="Special Art Rares";else if($("#rarity").value==="AR")label="Art Rares";else if($("#rarity").value==="S")label="Baby Shinies";else if(!$("#q").value.trim()&&!$("#set").value&&!$("#instock").classList.contains("on"))label="All cards";
+    c.innerHTML=`<div class="results-head"><button class="backbtn" data-back>&#8592; Back</button><h2>${label} (${res.length})</h2></div>
+      ${res.length?`<div class="grid">${liveR.map(p=>cardHTML(p,ctx)).join("")}</div>${soldBlock(soldR)}`:`<div class="empty">No cards match &mdash; try clearing a filter.</div>`}
+      <div class="results-foot"><button class="backbtn" data-back>&#8592; Back to browsing</button></div>`;
+    $("#scroller").scrollTop=0;
+  }else{
+    const news=CARDS.filter(p=>p.isNew);
+    const notNew=CARDS.filter(p=>!p.isNew);
+    c.innerHTML=
+      railSection("&#10024; Newly in stock","Fresh drops &amp; restocks &mdash; swipe &rarr;",news,"new","best")+
+      featSection(notNew)+
+      railSection("&#128142; Special Art Rares","The chase cards &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="SAR"),"sar","best")+
+      railSection("&#127912; Art Rares","Full-art alt prints &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="AR"),"ar","best")+
+      railSection("&#127775; Baby Shinies","&ldquo;S&rdquo; rarity shinies &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="S"),"s","best")+
+      railSection("&#127991;&#65039; Discounted","Played copies at a lower price &mdash; swipe &rarr;",notNew.filter(hasDeal),"disc","deal")+
+      allSection(notNew);
   }
+  wireActs(c);
+}
+function wireActs(scope){
+  scope.querySelectorAll(".card").forEach(el=>el.onclick=e=>{if(e.target.closest("[data-act]"))return;openDetail(el.dataset.card)});
+  scope.querySelectorAll("[data-add]").forEach(b=>b.onclick=e=>{e.stopPropagation();addCart(b.dataset.add,b.dataset.c);refreshSku(b.dataset.add,b.dataset.c);bump("Added "+byId(b.dataset.add).name)});
+  scope.querySelectorAll("[data-inc]").forEach(b=>b.onclick=e=>{e.stopPropagation();setQty(b.dataset.inc,b.dataset.c,qtyOf(b.dataset.inc,b.dataset.c)+1);refreshSku(b.dataset.inc,b.dataset.c)});
+  scope.querySelectorAll("[data-dec]").forEach(b=>b.onclick=e=>{e.stopPropagation();setQty(b.dataset.dec,b.dataset.c,qtyOf(b.dataset.dec,b.dataset.c)-1);refreshSku(b.dataset.dec,b.dataset.c)});
+  scope.querySelectorAll("[data-see]").forEach(b=>b.onclick=e=>{e.stopPropagation();seeAll(b.dataset.see)});
+  scope.querySelectorAll("[data-back]").forEach(b=>b.onclick=clearFilters);
+  const sm=scope.querySelector("[data-showsold]");if(sm)sm.onclick=()=>{$("#soldHidden").style.display="grid";sm.remove();wireActs($("#soldHidden"))};
+}
+function seeAll(kind){savedScroll=$("#scroller").scrollTop;
+  if(kind==="new")only="new";
+  else if(kind==="sar")$("#rarity").value="SAR";
+  else if(kind==="ar")$("#rarity").value="AR";
+  else if(kind==="s")$("#rarity").value="S";
+  else if(kind==="disc")only="disc";
+  render()}
+function clearFilters(){only=null;$("#q").value="";$("#rarity").value="";$("#set").value="";$("#sort").value="curated";$("#instock").classList.remove("on");render();$("#scroller").scrollTop=savedScroll;savedScroll=0}
 
-  const actions = card.querySelector(".product-actions");
-  if (!actions) return;
-  actions.innerHTML = buildProductActionsHtml(stock, inCart);
-  wireProductActions(card, p);
+// back-to-top
+const scrollEl=$("#scroller"),toTop=$("#totop");
+scrollEl.addEventListener("scroll",()=>{toTop.classList.toggle("show",scrollEl.scrollTop>320)});
+toTop.onclick=()=>scrollEl.scrollTo({top:0,behavior:"smooth"});
+
+// ---------- panel plumbing ----------
+let curTimer=null;
+function openPanel(){$("#scrim").classList.add("open");$("#panel").classList.add("open")}
+function closePanel(){$("#scrim").classList.remove("open");$("#panel").classList.remove("open");stopTimer()}
+function setBack(fn){$("#panelBack").onclick=fn}
+function stopTimer(){if(curTimer){clearInterval(curTimer);curTimer=null}$("#panelTimer").style.display="none"}
+function startTimer(secs,onExpire){
+  stopTimer();let end=Date.now()+secs*1000;const el=$("#panelTimer");el.style.display="";
+  const upd=()=>{let r=Math.max(0,Math.round((end-Date.now())/1000));const m=Math.floor(r/60),s=r%60;el.textContent=`${m}:${s<10?"0":""}${s} left`;if(r<=0){stopTimer();onExpire&&onExpire()}};
+  upd();curTimer=setInterval(upd,1000);
+}
+$("#scrim").onclick=closePanel;
+
+// ---------- card detail (per-condition steppers) ----------
+let detailId=null,detailCond=null;
+function openDetail(id){
+  detailId=id;const p=byId(id);const dc=bestCond(p)||conds(p)[0];detailCond=dc.cond;
+  $("#panelTitle").textContent=p.name;$("#panelBody").scrollTop=0;stopTimer();setBack(closePanel);
+  $("#panelBody").innerHTML=`
+    <div class="detail-hero"><div class="frame"><div class="inner"><img src="${p.imgFull||p.img}" alt="${p.name}"><div class="wm"></div></div></div>
+      <p class="ref-note">Reference photo &mdash; you&rsquo;ll receive a card in the stated condition.</p></div>
+    <div class="detail-info"><h3>${p.name}</h3>
+      <p class="sub">${rarLabel(p)?`<span class="rar">${rarLabel(p)}</span> &middot; `:""}${setName(p)}</p>
+      <p class="cond-label">Select a condition</p><div class="cond-opts" id="condOpts"></div>
+      <div class="detail-actions"><button class="add-order" id="addOrder">Add to order</button><button class="view-cart-sm" id="viewCartSm">View cart</button></div>
+    </div>`;
+  renderCondOpts();openPanel();
+}
+function condRowHTML(p,c){
+  const out=c.stock<=0;const best=c.cond==="Near Mint"&&c.stock>0;const q=qtyOf(p.id,c.cond);const sel=c.cond===detailCond&&!out;
+  return `<div class="cond-opt selectable${sel?" sel":""}${out?" out":""}" data-cond="${c.cond}">
+    <div class="co-left"><span class="cn2">${c.cond}</span>${best?'<span class="best">Best</span>':""}<div class="meta2">${out?"Sold out":c.stock+" available"}</div></div>
+    <div class="co-right">${q>0?`<span class="incart">${q} in cart</span>`:""}<span class="pr">$${c.price.toFixed(2)}</span>${out?"":'<span class="sel-dot"></span>'}</div>
+  </div>`;
+}
+function renderCondOpts(){
+  const p=byId(detailId);
+  $("#condOpts").innerHTML=conds(p).map(c=>condRowHTML(p,c)).join("");
+  $("#condOpts").querySelectorAll(".cond-opt").forEach(el=>{if(!el.classList.contains("out"))el.onclick=()=>{detailCond=el.dataset.cond;renderCondOpts()}});
+  const c=p.conds.find(x=>x.cond===detailCond);const btn=$("#addOrder");
+  if(!c||c.stock<=0){btn.disabled=true;btn.textContent="Select a condition"}
+  else{btn.disabled=false;btn.innerHTML=`Add to order &middot; $${c.price.toFixed(2)}`}
+  btn.onclick=()=>{const cc=byId(detailId).conds.find(x=>x.cond===detailCond);if(!cc||cc.stock<=0)return;addCart(detailId,detailCond);refreshSku(detailId,detailCond);renderCondOpts();bump("Added to order")};
+  $("#viewCartSm").onclick=()=>openCart(()=>openDetail(detailId));
 }
 
-function refreshProductCards(id) {
-  document.querySelectorAll(".product-card").forEach(card => {
-    if (!card._product) return;
-    if (id && cartKeyFor(card._product) !== id) return;
-    updateProductCardState(card);
-  });
+// ---------- cart (step 1: edit + promo, NOT reserved) ----------
+// cartReturn = where "Back" goes: the card detail if opened via View cart, else close.
+let cartReturn=closePanel;
+function openCart(ret){
+  if(ret)cartReturn=ret;
+  stopTimer();setBack(cartReturn);$("#panelTitle").textContent="Your cart";
+  const entries=Object.entries(cart).filter(([,q])=>q>0);
+  if(!entries.length){$("#panelBody").innerHTML=`<div class="cart-empty"><p>Your cart is empty.</p><p style="font-size:13px">Add cards and they&rsquo;ll show up here.</p></div>`;openPanel();return}
+  const items=entries.map(([k,q])=>{const[id,cond]=k.split("::");const p=byId(id);const c=p.conds.find(x=>x.cond===cond);const line=c.price*q;
+    return `<div class="cart-item"><div class="th"><img src="${p.img}" alt=""><div class="wm"></div></div>
+      <div class="ci-body"><div>
+        <p class="ci-name">${p.name} <span class="ci-cond">&middot; ${cond}</span></p>
+        <p class="ci-meta">${rarLabel(p)?`<span class="ci-rar">${rarLabel(p)}</span> &middot; `:""}${setName(p)}</p></div>
+        <div class="ci-row"><div class="qadj"><button data-cdec="${id}" data-c="${cond}">&minus;</button><span class="qn tag">${q}</span><button data-cinc="${id}" data-c="${cond}" ${q>=c.stock?"disabled":""}>+</button></div><span class="ci-line tag">$${line.toFixed(2)}</span><button class="ci-x" data-crm="${id}" data-c="${cond}" aria-label="Remove">&times;</button></div>
+      </div></div>`}).join("");
+  const sub=subtotal();const disc=discountAmt(sub);
+  $("#panelBody").innerHTML=`<div class="cart-list">${items}</div>
+    <div class="cart-sticky">
+      <div class="promo"><input id="promoInput" placeholder="Promo code" value="${appliedDiscount?appliedDiscount.code:''}"><button id="promoApply">Apply</button></div>
+      ${promoMsg?`<div class="promo-msg ${appliedDiscount?'ok':'no'}">${promoMsg}</div>`:""}
+      <div class="sumrow"><span>Subtotal</span><span class="tag">$${sub.toFixed(2)}</span></div>
+      ${appliedDiscount?`<div class="sumrow"><span>Discount (${appliedDiscount.code})</span><span class="tag">&minus;$${disc.toFixed(2)}</span></div>`:""}
+      <div class="sumrow"><span>Mailing</span><span>Calculated at checkout</span></div>
+      <div class="sumrow tot"><span>Cart total</span><span class="tag">$${(sub-disc).toFixed(2)}</span></div>
+      <button class="primary" id="toDetails">Checkout and Payment</button></div>`;
+  $("#panelBody").querySelectorAll("[data-cinc]").forEach(b=>b.onclick=()=>{setQty(b.dataset.cinc,b.dataset.c,qtyOf(b.dataset.cinc,b.dataset.c)+1);refreshSku(b.dataset.cinc,b.dataset.c);openCart()});
+  $("#panelBody").querySelectorAll("[data-cdec]").forEach(b=>b.onclick=()=>{setQty(b.dataset.cdec,b.dataset.c,qtyOf(b.dataset.cdec,b.dataset.c)-1);refreshSku(b.dataset.cdec,b.dataset.c);openCart()});
+  $("#panelBody").querySelectorAll("[data-crm]").forEach(b=>b.onclick=()=>{setQty(b.dataset.crm,b.dataset.c,0);refreshSku(b.dataset.crm,b.dataset.c);openCart()});
+  $("#promoApply").onclick=async()=>{
+    const v=$("#promoInput").value.trim();if(!v){appliedDiscount=null;promoMsg="";return openCart()}
+    $("#promoApply").disabled=true;
+    try{
+      const res=await fetch("/api/validate-discount",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:v,subtotal:sub})});
+      const d=await res.json();
+      if(d.valid){appliedDiscount={code:v.toUpperCase(),type:d.type,value:d.value};promoMsg=appliedDiscount.type==="percent"?`${appliedDiscount.value}% off applied.`:`$${appliedDiscount.value} off applied.`}
+      else if(d.reason==="minimum_not_met"){appliedDiscount=null;promoMsg=`Minimum spend $${d.minimumRequired} to use a code.`}
+      else if(d.reason==="expired"){appliedDiscount=null;promoMsg="This promotion has ended."}
+      else{appliedDiscount=null;promoMsg="This code isn’t valid."}
+    }catch(e){appliedDiscount=null;promoMsg="Couldn’t check that code — try again."}
+    openCart();
+  };
+  $("#toDetails").onclick=gotoDetails;
+  openPanel();
 }
 
-function buildProductCard(p) {
-  const stock = Number(p.stock || 0);
-  const inCart = getCartQuantity(cartKeyFor(p));
-
-  const card = document.createElement("div");
-  card.className = "product-card";
-  const nameExpanded = expandedFields.has(fieldKey(p, "name")) ? " name-expanded" : "";
-  const stockExpanded = expandedFields.has(fieldKey(p, "stock")) ? " text-expanded" : "";
-  const descExpanded = expandedFields.has(fieldKey(p, "desc")) ? " text-expanded" : "";
-  const rarityExpanded = expandedFields.has(fieldKey(p, "rarity")) ? " text-expanded" : "";
-  const setExpanded = expandedFields.has(fieldKey(p, "set")) ? " text-expanded" : "";
-  card.innerHTML = `
-    <div class="photo-wrap">
-      ${cardImgHtml(p.photo, p.name)}
-      <span class="photo-watermark">@fallacycardshop</span>
+// ---------- step 2: mailing details (RESERVED, 5-min timer) ----------
+let hasPackage=false,mailMode="hold",form={user:"",name:"",phone:"",addr:"",unit:"",postal:""};
+const esc=s=>String(s||"").replace(/"/g,"&quot;");
+async function gotoDetails(){
+  const btn=$("#toDetails");if(btn){btn.disabled=true;btn.textContent="Reserving…"}
+  reservationId=newResId();
+  let r=null;try{r=await fetch("/api/reserve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reservationId,items:reserveItemList()})})}catch(e){}
+  if(btn){btn.disabled=false;btn.textContent="Checkout and Payment"}
+  if(!r||!r.ok){
+    reservationId=null;
+    if(r&&r.status===409){trackEvent("checkout_blocked",{reason:"stock_gone"});bump("Some items just sold out — please review your cart");openCart();return}
+    trackEvent("checkout_blocked",{reason:"reserve_failed"});bump("Couldn’t reserve your items — please try again");return;
+  }
+  rememberReservation(reservationId);trackEvent("payment_shown",{items:cartCount()});
+  openDetailsStep();
+}
+function openDetailsStep(){
+  $("#panelTitle").textContent="Your details";setBack(()=>{releaseReservation();openCart()});
+  startTimer(5*60,()=>{releaseReservation();bump("Reservation expired");openCart()});
+  drawDetails();openPanel();
+}
+function totals(){const sub=subtotal();const disc=discountAmt(sub);const fee=hasPackage?0:MAIL_FEE;return{sub,disc,fee,total:sub-disc+fee}}
+function detailsValid(){
+  if(!form.user.trim())return false;
+  if(!hasPackage&&["name","phone","addr","unit","postal"].some(k=>!form[k].trim()))return false;
+  return true;
+}
+function syncPay(){const ok=detailsValid();const b=$("#toPay");if(b)b.disabled=!ok;const n=$("#reqNote");if(n)n.textContent=ok?"Cards are reserved for you while the timer runs.":"Please fill in all required fields to continue."}
+function drawDetails(){
+  const t=totals();
+  $("#panelBody").innerHTML=`
+    <div class="total-bar"><span>Order total</span><span class="amt tag">$${t.total.toFixed(2)}</span></div>
+    <div class="form">
+      <label class="pkg"><input type="checkbox" id="pkg" ${hasPackage?"checked":""}><span>I already have a package on hold with <b>@fallacycardshop</b> &mdash; waive my mailing fee.</span></label>
+      <div class="fld"><label>Telegram username *</label><input id="f-user" value="${esc(form.user)}" placeholder="@yourusername"></div>
+      <div id="mailFields" style="${hasPackage?"display:none":""}">
+        <div class="fld"><label>Name *</label><input id="f-name" value="${esc(form.name)}"></div>
+        <div class="fld"><label>Phone *</label><input id="f-phone" inputmode="tel" value="${esc(form.phone)}"></div>
+        <div class="fld"><label>Address line *</label><input id="f-addr" value="${esc(form.addr)}"></div>
+        <div class="fld"><label>Unit number *</label><input id="f-unit" placeholder="e.g. #01-23" value="${esc(form.unit)}"></div>
+        <div class="fld"><label>Postal code *</label><input id="f-postal" inputmode="numeric" value="${esc(form.postal)}"></div>
+      </div>
+      <label class="cond-label" style="display:block;margin:12px 0 6px">What should we do with this order?</label>
+      <div class="mailopt">
+        <div class="ml ${mailMode==="hold"?"sel":""}" data-mode="hold"><span class="dot"></span>Hold my package (mailing fee paid upfront)</div>
+        <div class="ml ${mailMode==="mail"?"sel":""}" data-mode="mail"><span class="dot"></span>Mail it out now</div>
+      </div>
     </div>
-    <div class="product-info">
-      <div class="product-name${nameExpanded}">${p.name}</div>
-      <div class="product-price">$${Number(p.price || 0).toFixed(2)}</div>
-      <div class="product-stock-line${stockExpanded}">Stock: ${stock}${
-        stock === 1 ? ' <span class="last-one">Last one</span>' : ""
-      }${inCart > 0 ? ` (${inCart} in your cart)` : ""}</div>
-      <div class="product-desc${descExpanded}">${p.description || ""}</div>
-      <div class="product-meta${rarityExpanded}" data-field="rarity">Rarity: ${p.category || "Uncategorized"}</div>
-      <div class="product-meta${setExpanded}" data-field="set">${p.set || "N/A"}</div>
-    </div>
-    <div class="product-actions">
-      ${buildProductActionsHtml(stock, inCart)}
-    </div>
-  `;
-  card._product = p;
-  wireProductActions(card, p);
-  const productImgSrc = p.photo || 'https://via.placeholder.com/300x420?text=Card';
-  card.querySelector("img").onclick = () => openLightbox(productImgSrc, p.name);
-  card.querySelector(".product-name").onclick = (e) => {
-    e.currentTarget.classList.toggle("name-expanded");
-    toggleExpandedField(fieldKey(p, "name"));
+    <div class="step-foot">
+      <div class="sumrow"><span>Subtotal</span><span class="tag">$${t.sub.toFixed(2)}</span></div>
+      ${appliedDiscount?`<div class="sumrow"><span>Discount (${appliedDiscount.code})</span><span class="tag">&minus;$${t.disc.toFixed(2)}</span></div>`:""}
+      <div class="sumrow"><span>Mailing fee</span><span class="tag">${t.fee?"$"+t.fee.toFixed(2):"Waived"}</span></div>
+      <div class="sumrow tot"><span>Total</span><span class="tag">$${t.total.toFixed(2)}</span></div>
+      <button class="primary" id="toPay">Proceed to Pay &rarr;</button>
+      <p class="step-note" id="reqNote"></p></div>`;
+  const map={"f-user":"user","f-name":"name","f-phone":"phone","f-addr":"addr","f-unit":"unit","f-postal":"postal"};
+  Object.keys(map).forEach(fid=>{const el=$("#"+fid);if(el)el.oninput=()=>{form[map[fid]]=el.value;syncPay()}});
+  $("#pkg").onchange=e=>{hasPackage=e.target.checked;drawDetails()};
+  $("#panelBody").querySelectorAll("[data-mode]").forEach(el=>el.onclick=()=>{mailMode=el.dataset.mode;drawDetails()});
+  $("#toPay").onclick=()=>{if(detailsValid())gotoPay()};
+  syncPay();
+}
+
+// ---------- step 3: PayNow (5-min timer) ----------
+function gotoPay(){
+  const t=totals();$("#panelTitle").textContent="Pay by PayNow";setBack(openDetailsStep);
+  startTimer(5*60,()=>{releaseReservation();bump("Payment window expired");openCart()});
+  $("#panelBody").innerHTML=`<div class="pay">
+    <p class="pay-head">Scan the QR code below to make payment</p>
+    <div class="qr"><img src="${QR_SRC}" alt="PayNow QR"></div>
+    <p class="pay-alt">Or PayNow / Paylah to <b>8963 1819</b><br><span class="pay-small">(PayNow: CHXX YUX SHEXX RYXX &nbsp;&middot;&nbsp; Paylah: fallacytcg)</span></p>
+    <div class="amt-big tag">$${t.total.toFixed(2)}</div>
+    <ol class="steps">
+      <li>Scan the QR with your banking app.</li>
+      <li>Pay the exact amount above.</li>
+      <li>Tap <b>Confirm order</b> &mdash; you&rsquo;ll be taken to <b>@fallacytcg</b> to send your screenshot.</li>
+    </ol>
+    <p class="pay-note">Your order is only processed once we receive your screenshot and verify payment.</p>
+    <button class="primary" id="confirmPay">Confirm order</button></div>`;
+  $("#confirmPay").onclick=gotoDone;
+}
+// The full order record — posted with /api/confirm-order (authoritative backup)
+// AND to FormSubmit (email). Same field shape the admin Recent Orders parses.
+function orderRecord(orderId){
+  const t=totals();
+  const entries=Object.entries(cart).filter(([,q])=>q>0);
+  const d=new Date(orderId);const dateStr=`${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+  const buyer=(form.user||form.name||"").trim();
+  const rawSub=t.sub,totalDisc=t.disc;
+  const blockA=[],blockF=[],items=[];
+  entries.forEach(([k,q])=>{const[cid,cond]=k.split("::");const p=byId(cid);const c=p.conds.find(x=>x.cond===cond);
+    const lineTotal=c.price*q;const share=rawSub>0?(lineTotal/rawSub)*totalDisc:0;const netUnit=q>0?Math.max(lineTotal-share,0)/q:c.price;
+    for(let i=0;i<q;i++){blockA.push([dateStr,cid,cond].join(" | "));blockF.push([buyer,netUnit.toFixed(2),orderId].join(" | "))}
+    items.push(`${p.name} [${cid}] (${p.rarity||""}, ${cond}) x${q} @ $${c.price.toFixed(2)} = $${lineTotal.toFixed(2)}`)});
+  return {
+    _subject:`New order #${orderId} — ${form.name||buyer||"buyer"} — $${t.total.toFixed(2)}`,
+    _template:"table",
+    Order_ID:orderId, Buyer_Name:form.name||buyer, Phone:form.phone||"",
+    Address_Line:form.addr||"", Unit_Number:form.unit||"", Postal_Code:form.postal||"",
+    Telegram_Username:telegramUser&&telegramUser.username?"@"+telegramUser.username:(form.user||""),
+    Telegram_User_ID:telegramUser&&telegramUser.id?String(telegramUser.id):"",
+    Buyer_Entered_Telegram_Username:form.user||"",
+    Buyer_Claims_Package_On_Hold:hasPackage?"YES — verify against hold list before confirming":"No",
+    Mail_Preference:mailMode==="hold"?"Hold my package":"Mail it out now",
+    Subtotal:`$${t.sub.toFixed(2)}`, Discount_Code:appliedDiscount?appliedDiscount.code:"None",
+    Discount_Amount:appliedDiscount?`$${t.disc.toFixed(2)}`:"$0.00",
+    Shipping:t.fee?`$${t.fee.toFixed(2)}`:"$0.00", Total:`$${t.total.toFixed(2)}`,
+    Items_Readable:items.join("\n"),
+    "PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition":blockA.join("\n"),
+    "PASTE_INTO_COLUMNS_F_to_H_Buyer_Price_OrderID":blockF.join("\n")
   };
-  card.querySelector(".product-stock-line").onclick = (e) => {
-    e.currentTarget.classList.toggle("text-expanded");
-    toggleExpandedField(fieldKey(p, "stock"));
-  };
-  card.querySelector(".product-desc").onclick = (e) => {
-    e.currentTarget.classList.toggle("text-expanded");
-    toggleExpandedField(fieldKey(p, "desc"));
-  };
-  card.querySelector('[data-field="rarity"]').onclick = (e) => {
-    e.currentTarget.classList.toggle("text-expanded");
-    toggleExpandedField(fieldKey(p, "rarity"));
-  };
-  card.querySelector('[data-field="set"]').onclick = (e) => {
-    e.currentTarget.classList.toggle("text-expanded");
-    toggleExpandedField(fieldKey(p, "set"));
-  };
-  return card;
+}
+let isConfirming=false;
+async function gotoDone(){
+  if(isConfirming)return;isConfirming=true;
+  const btn=$("#confirmPay");if(btn){btn.disabled=true;btn.textContent="Confirming…"}
+  const orderId=Date.now();const record=orderRecord(orderId);
+  // 1) Confirm server-side: decrements stock + writes the authoritative order.
+  let cres=null;try{cres=await fetch("/api/confirm-order",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reservationId,record})})}catch(e){}
+  // Expiry rescue: reservation lapsed but the cards may still be there — re-hold and retry once.
+  if(cres&&cres.status===410){
+    const rid=newResId();let rr=null;try{rr=await fetch("/api/reserve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reservationId:rid,items:reserveItemList()})})}catch(e){}
+    if(rr&&rr.ok){reservationId=rid;rememberReservation(rid);trackEvent("reservation_rescued",{});
+      try{cres=await fetch("/api/confirm-order",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reservationId:rid,record})})}catch(e){}}
+  }
+  if(!cres||!cres.ok){
+    const err=cres?await cres.json().catch(()=>({})):{};
+    trackEvent("checkout_failed",{reason:"confirm_failed"});
+    isConfirming=false;if(btn){btn.disabled=false;btn.textContent="Confirm order"}
+    reservationId=null;rememberReservation(null);
+    bump(err.error||"Your reservation expired — please check your cart and try again.");openCart();return;
+  }
+  // 2) Sale is real. Track + send the notification email (keepalive survives navigation).
+  stopTimer();const t=totals();
+  trackEvent("purchase",{items:cartCount(),total:t.total,discount:appliedDiscount?"yes":"no"});
+  try{await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(NOTIFY_EMAIL)}`,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},keepalive:true,body:JSON.stringify(record)})}catch(e){console.error(e)}
+  reservationId=null;rememberReservation(null);cart={};appliedDiscount=null;promoMsg="";saveCart();updateBar();
+  // 3) Success -> Telegram to send proof.
+  setBack(()=>{closePanel();render()});
+  $("#panelTitle").textContent="Order confirmed";
+  $("#panelBody").innerHTML=`<div class="done"><div class="big">&#10003;</div><h3>Thank you!</h3>
+    <p>Your order is in. Please send your payment screenshot to <b>@fallacytcg</b> within 24 hours to complete it.</p>
+    <a class="tg-link" id="tgLink" href="${TG_CHAT}" target="_blank" rel="noopener">Send proof on @fallacytcg &rarr;</a></div>`;
+  const tl=$("#tgLink");if(tl)tl.onclick=e=>{e.preventDefault();openTg(TG_CHAT)};
+  isConfirming=false;
 }
 
-// soldOutVisible controls how many sold-out cards show before the rest are
-// collapsed behind a button. The featured and newly-in rows pass 0, so their
-// sold-out cards are hidden entirely until the shopper asks for them — those
-// rows are meant to showcase what's buyable.
-// Sections the shopper has expanded, kept across re-renders so a background
-// refresh doesn't silently collapse what they opened.
-const expandedSoldOutSections = new Set();
-
-function renderSection(headingText, matches, options = {}) {
-  if (matches.length === 0) return;
-
-  const soldOutVisible = options.soldOutVisible === undefined ? 5 : options.soldOutVisible;
-  // Optional word inserted into the button, e.g. "sold out featured items", so
-  // each row's button says what it will actually reveal.
-  const soldOutNoun = options.soldOutNoun ? `${options.soldOutNoun} ` : "";
-  // preserveOrder renders the row exactly as the API ordered it — sold-out
-  // cards stay in place rather than being pushed to the bottom and collapsed.
-  // Used by Newly In Stock, where seeing a fresh drop already gone creates
-  // urgency for the ones still available.
-  //
-  // preserveOrderUpTo caps that: once MORE than this many sold-out cards are in
-  // the row, keeping them inline would bury the available ones, so the row
-  // falls back to the normal layout (available first, sold-out collapsed).
-  const soldOutCount = matches.filter(p => Number(p.stock || 0) <= 0).length;
-  const preserveLimit =
-    options.preserveOrderUpTo === undefined ? Infinity : options.preserveOrderUpTo;
-  const preserveOrder = Boolean(options.preserveOrder) && soldOutCount <= preserveLimit;
-
-  const heading = document.createElement("h3");
-  heading.className = "section-heading";
-  heading.textContent = headingText;
-  productListEl.appendChild(heading);
-
-  if (preserveOrder) {
-    matches.forEach(p => productListEl.appendChild(buildProductCard(p)));
-    return;
-  }
-
-  const available = matches.filter(p => Number(p.stock || 0) > 0);
-  const soldOut = matches.filter(p => Number(p.stock || 0) <= 0);
-
-  available.forEach(p => productListEl.appendChild(buildProductCard(p)));
-
-  const visibleSoldOut = soldOut.slice(0, soldOutVisible);
-  const hiddenSoldOut = soldOut.slice(soldOutVisible);
-
-  visibleSoldOut.forEach(p => productListEl.appendChild(buildProductCard(p)));
-
-  if (hiddenSoldOut.length > 0) {
-    const hiddenWrap = document.createElement("div");
-    hiddenWrap.className = "hidden-sold-out-wrap";
-    hiddenSoldOut.forEach(p => hiddenWrap.appendChild(buildProductCard(p)));
-
-    const showMoreBtn = document.createElement("button");
-    showMoreBtn.className = "btn btn-secondary";
-    showMoreBtn.style.width = "100%";
-    // "more" only makes sense when some sold-out cards are already showing.
-    showMoreBtn.textContent = `Show ${hiddenSoldOut.length} more sold out ${soldOutNoun}item${hiddenSoldOut.length === 1 ? "" : "s"}`;
-    // Restore a previously opened section instead of re-collapsing it.
-    if (expandedSoldOutSections.has(headingText)) {
-      hiddenWrap.classList.add("expanded");
-      showMoreBtn.style.display = "none";
-    }
-
-    showMoreBtn.onclick = () => {
-      expandedSoldOutSections.add(headingText);
-      hiddenWrap.classList.add("expanded");
-      showMoreBtn.remove();
-    };
-
-    productListEl.appendChild(showMoreBtn);
-    productListEl.appendChild(hiddenWrap);
-  }
+// ---------- about ----------
+function openAbout(){
+  stopTimer();setBack(closePanel);$("#panelTitle").textContent="About us";
+  $("#panelBody").innerHTML=`<div class="about">
+    <img class="about-logo" src="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/fallacyministore-logo.png" alt="Fallacy's Mini Store">
+    <h3>Fallacy's Mini Store</h3>
+    <a class="handle-line" href="https://t.me/fallacycardshop" target="_blank" rel="noopener">@fallacycardshop</a>
+    <p class="lead">Singapore-based Pok&eacute;mon TCG singles &mdash; chase cards, daily restocks and live auctions, run out of our Telegram channel.</p>
+    <div class="stat-row" id="statRow"></div>
+    <div class="pill-row"><span class="pill">PayNow</span><span class="pill">Mail consolidation</span><span class="pill">Daily restocks</span><span class="pill">Live auctions</span></div>
+    <div class="faq"><h3>FAQ</h3>
+    <p class="q">What if I already have other items on hold with your shop?</p><p class="a">Your Mini Store purchase will be packed together with your hold package. Just check the box (on checkout) that you already have a package on hold with us!</p>
+    <p class="q">Do I still need to pay a separate mailing fee then?</p><p class="a">No. Checking the box to indicate that you already have a package on hold will automatically waive the mailing fee at checkout.</p>
+    <p class="q">Do I need to provide my address every time I checkout?</p><p class="a">Not required if you are a returning customer with a hold package! All you will need to provide is your Tele username &amp; proof of payment. The address fields are only required for new packages &amp; new customers.</p>
+    <p class="q">Why did my order not go through?</p><p class="a">Your order will only be sent to us when you tap &ldquo;Confirm Order&rdquo; at the payment page. If you miss this step, we will not be notified and your cart items will be released back into the store.</p>
+    <p class="q">What happens after I send proof of payment?</p><p class="a">We will verify your payment and send you a receipt. This means that your cards have made it into your package! If we did not receive payment, you will receive a payment reminder slip instead.</p>
+    <p class="q">Can I still continue to hold my package or must I mail it out immediately?</p><p class="a">We have both options available at checkout. However, note that indicating to mail at store checkout will trigger mailing for your entire package on hold!</p>
+    <p class="a" style="margin-top:16px">&#129528; We are continually fine-tuning our Mini Store &amp; we welcome all feedback! Just drop us a message <b>@fallacytcg</b> &#128149;</p></div></div>`;
+  loadAboutStats();openPanel();
 }
-
-function renderPromoBanner() {
-  if (!promoText) {
-    promoBannerEl.style.display = "none";
-    promoTextEl.textContent = "";
-    return;
-  }
-
-  // textContent first (never innerHTML — the copy is admin-supplied but this
-  // keeps it impossible for a stray angle bracket to break the page), then a
-  // single safe pass to highlight any ALL-CAPS discount code.
-  promoTextEl.textContent = promoText;
-  const highlighted = promoTextEl.innerHTML.replace(
-    /\b([A-Z][A-Z0-9]{4,19})\b/g,
-    '<span class="promo-code" role="button" tabindex="0">$1</span>'
-  );
-  promoTextEl.innerHTML = highlighted;
-
-  const codeEls = promoTextEl.querySelectorAll(".promo-code");
-  codeEls.forEach(el => {
-    el.onclick = () => copyPromoCode(el);
-  });
-
-  // Only worth telling people it's tappable if there's actually a code.
-  if (codeEls.length > 0 && !promoBannerEl.querySelector(".promo-copy-hint")) {
-    const hint = document.createElement("span");
-    hint.className = "promo-copy-hint";
-    hint.textContent = "Tap the code to copy it";
-    promoBannerEl.appendChild(hint);
-  }
-
-  promoBannerEl.style.display = "block";
+function loadAboutStats(){
+  fetch("/api/recent-sales?full=1").then(r=>r.json()).then(d=>{
+    const s=(d&&d.stats)||{};const el=$("#statRow");if(!el)return;
+    const cards=Number(s.cards)||0,cust=Number(s.customers)||0,since=s.sinceLabel||"";
+    const tiles=[[cards?cards.toLocaleString()+"+":"","cards sold"],[cust?cust.toLocaleString()+"+":"","subscribers"],[since,"active since"]].filter(t=>t[0]);
+    el.innerHTML=tiles.map(([n,l])=>`<div class="stat-tile"><div class="stat-n">${n}</div><div class="stat-l">${l}</div></div>`).join("");
+  }).catch(()=>{});
 }
+$("#aboutBtn").onclick=openAbout;$("#cartbar").onclick=()=>openCart(closePanel);
 
-// Clipboard access needs a secure context and isn't available in every in-app
-// browser (the Telegram webview among them), so fall back to selecting the
-// text and using execCommand. If even that fails, the code stays selected so
-// it can be copied manually — user-select: all makes one tap select it whole.
-async function copyPromoCode(el) {
-  const code = el.textContent.trim();
-  let copied = false;
+["#q","#sort","#set"].forEach(s=>$(s).addEventListener("input",render));
+$("#rarity").addEventListener("input",()=>{only=null;render()});
+$("#instock").onclick=()=>{$("#instock").classList.toggle("on");render()};
 
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(code);
-      copied = true;
-    }
-  } catch (e) {
-    copied = false;
-  }
-
-  if (!copied) {
-    try {
-      const temp = document.createElement("textarea");
-      temp.value = code;
-      temp.setAttribute("readonly", "");
-      temp.style.position = "fixed";
-      temp.style.opacity = "0";
-      document.body.appendChild(temp);
-      temp.select();
-      temp.setSelectionRange(0, code.length);
-      copied = document.execCommand("copy");
-      document.body.removeChild(temp);
-    } catch (e) {
-      copied = false;
-    }
-  }
-
-  if (copied) {
-    const original = el.textContent;
-    el.classList.add("copied");
-    el.textContent = "Copied!";
-    setTimeout(() => {
-      el.textContent = original;
-      el.classList.remove("copied");
-    }, 1500);
-  } else {
-    // Leave it selected so a long-press copy is one step away.
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(range);
-  }
-}
-
-function renderProducts() {
-  const search = searchInputEl.value.trim().toLowerCase();
-  const category = categoryFilterEl.value;
-  const setValue = setFilterEl.value;
-
-  productListEl.innerHTML = "";
-
-  const matches = products.filter(p => {
-    const matchesSearch =
-      !search ||
-      p.name.toLowerCase().includes(search) ||
-      (p.description || "").toLowerCase().includes(search);
-    const matchesCategory = !category
-      ? true
-      : SPECIAL_FILTERS[category]
-        ? SPECIAL_FILTERS[category](p)
-        : p.category === category;
-    const matchesSet = !setValue || p.set === setValue;
-    return matchesSearch && matchesCategory && matchesSet;
-  });
-
-  // Drip-released cards get their own row at the very top for their first day.
-  // They're excluded from the other two rows meanwhile; once isNew lapses they
-  // fall back into featured or All Cards automatically and join the rotation.
-  const newMatches = matches.filter(p => p.isNew);
-  const featuredMatches = matches.filter(p => p.featured && !p.isNew);
-  const otherMatches = matches.filter(p => !p.featured && !p.isNew);
-
-  // Counter reflects what is actually buyable, so sold-out listings are excluded
-  // even though they are still rendered further down the page.
-  const inStockMatches = matches.filter(p => Number(p.stock || 0) > 0).length;
-  resultsCounterEl.textContent = `${inStockMatches} item${inStockMatches === 1 ? "" : "s"} available`;
-
-  renderSection(newTitle, newMatches, {
-    preserveOrder: true,
-    preserveOrderUpTo: 3,
-    soldOutVisible: 3,
-    soldOutNoun: "newly added",
-  });
-  renderSection(featuredTitle, featuredMatches, { soldOutVisible: 0, soldOutNoun: "featured" });
-  renderSection("All Cards", otherMatches);
-
-  // Must include newMatches: this overwrites the whole list, so omitting the
-  // Newly In Stock row meant a filter matching only newly-released cards wiped
-  // the results it had just rendered and claimed nothing was found.
-  if (newMatches.length === 0 && featuredMatches.length === 0 && otherMatches.length === 0) {
-    productListEl.innerHTML =
-      '<p style="text-align:center;color:#777;">No products found.</p>';
-  }
-}
-
-searchInputEl.oninput = renderProducts;
-searchInputEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    searchInputEl.blur();
-  }
-});
-categoryFilterEl.onchange = renderProducts;
-setFilterEl.onchange = renderProducts;
-
-function getCartQuantity(productId) {
-  return cart[productId] ? cart[productId].quantity : 0;
-}
-
-function cartKeyFor(product) {
-  return product.stockKey || product.name;
-}
-
-// ---------------------------------------------------------------------------
-// Funnel tracking (Vercel Web Analytics custom events)
-//
-// Fires: view_product_list -> add_to_cart -> view_cart -> begin_checkout ->
-//        payment_shown -> purchase
-//
-// Each step tells you where buyers drop off. Never sends personal data — only
-// counts and coarse values, so nothing identifying leaves the browser. Wrapped
-// so a blocked analytics script can never break the shop.
-// ---------------------------------------------------------------------------
-function trackEvent(name, data) {
-  // Vercel custom events (Pro plans only — harmless no-op otherwise).
-  try {
-    if (typeof window.va === "function") {
-      window.va("event", { name, ...(data || {}) });
-    }
-  } catch (e) {
-    // Analytics must never interfere with a sale.
-  }
-
-  // Our own counter, which works on any plan. One Redis HINCRBY per event.
-  // keepalive lets the request survive the page navigating away — important for
-  // the purchase event, which fires just before we open Telegram.
-  try {
-    // Funnel counters live on the recent-sales endpoint (Hobby plan caps the
-    // project at 12 serverless functions, so the two share one).
-    fetch("/api/recent-sales", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        event: name,
-        revenue: data && data.total ? data.total : undefined,
-        // Sent top-level so the tracker can count it as its own sub-counter.
-        reason: data && data.reason ? data.reason : undefined,
-      }),
-      keepalive: true,
-    }).catch(() => {});
-  } catch (e) {
-    // Ignored on purpose — tracking must never block a sale.
-  }
-}
-
-// order.total is a display string like "$25.00"; events want a number.
-function orderTotalValue(order) {
-  return Number(String((order && order.total) || "").replace(/[^0-9.]/g, "")) || 0;
-}
-
-function cartItemCount() {
-  return Object.values(cart).reduce((sum, { quantity }) => sum + quantity, 0);
-}
-
-function addToCart(product) {
-  const id = cartKeyFor(product);
-  const stock = Number(product.stock || 0);
-  const currentQty = getCartQuantity(id);
-
-  if (currentQty >= stock) {
-    alert("Not enough stock for this item.");
-    return;
-  }
-
-  if (!cart[id]) {
-    cart[id] = { product, quantity: 0 };
-  }
-
-  cart[id].quantity++;
-  saveCart();
-  updateCartBadge();
-  refreshProductCards(id);
-
-  trackEvent("add_to_cart", {
-    card: product.name,
-    set: product.set || "",
-    price: Number(product.price || 0),
-  });
-}
-
-function updateCartBadge() {
-  const count = Object.values(cart).reduce(
-    (sum, item) => sum + item.quantity,
-    0
-  );
-  if (currentScreen === "products") {
-    cartButtonEl.textContent = `Cart (${count})`;
-  }
-}
-
-function changeQuantity(id, delta) {
-  if (!cart[id]) return;
-  const product = cart[id].product;
-  const stock = Number(product.stock || 0);
-  const newQty = cart[id].quantity + delta;
-
-  if (newQty > stock) {
-    alert("Not enough stock.");
-    return;
-  }
-
-  cart[id].quantity = newQty;
-  if (cart[id].quantity <= 0) delete cart[id];
-
-  saveCart();
-  renderCart();
-  updateCartBadge();
-  refreshProductCards(id);
-}
-
-function removeItem(id) {
-  delete cart[id];
-  saveCart();
-  renderCart();
-  updateCartBadge();
-  refreshProductCards(id);
-}
-
-function renderCart() {
-  try {
-    cartListEl.innerHTML = "";
-    const items = Object.values(cart);
-
-    if (items.length === 0) {
-      cartListEl.innerHTML =
-        '<p style="text-align:center;color:#777;">Your cart is empty.</p>';
-      totalBoxEl.style.display = "none";
-      discountBoxEl.style.display = "none";
-      checkoutSectionEl.style.display = "none";
-      return;
-    }
-
-    let subtotal = 0;
-
-    items.forEach(({ product, quantity }) => {
-      const price = Number(product.price || 0);
-      const stock = Number(product.stock || 0);
-      subtotal += price * quantity;
-
-      const item = document.createElement("div");
-      item.className = "cart-item";
-      // `stock` is already reservation-aware, so if someone else reserves the
-      // last copy while this one sits in the cart it can fall below the
-      // quantity held here — which showed as "-1 left". Clamped, and the
-      // shortfall is called out instead, since that's the useful signal.
-      const stockLeft = Math.max(stock - quantity, 0);
-      const shortfall = Math.max(quantity - stock, 0);
-
-      item.innerHTML = `
-        <div class="photo-wrap">
-          ${cardImgHtml(product.photo, product.name)}
-          <span class="photo-watermark">@fallacycardshop</span>
-        </div>
-        <div class="cart-info">
-          <div class="product-name">${product.name}</div>
-          <div class="product-meta">${product.description || ""}</div>
-          <div class="product-price">$${price.toFixed(2)} × ${quantity}</div>
-          ${
-            shortfall > 0
-              ? `<div class="stock-warning">Only ${stock} available now — please reduce this item.</div>`
-              : stockLeft === 0
-                ? '<div class="stock-warning">Last one — it\'s in your cart</div>'
-                : stockLeft === 1
-                  ? '<div class="stock-warning">Only 1 more left</div>'
-                  : `<div class="product-meta">${stockLeft} more available</div>`
-          }
-        </div>
-        <div class="cart-actions">
-          <div class="quantity-control">
-            <button class="qty-minus" aria-label="Decrease quantity">-</button>
-            <span>${quantity}</span>
-            <button class="qty-plus" aria-label="Increase quantity">+</button>
-          </div>
-          <button class="btn btn-secondary">Remove</button>
-        </div>
-      `;
-
-      const minus = item.querySelector(".qty-minus");
-      const plus = item.querySelector(".qty-plus");
-      minus.onclick = () => changeQuantity(cartKeyFor(product), -1);
-      plus.onclick = () => changeQuantity(cartKeyFor(product), 1);
-      item.querySelector(".btn-secondary").onclick = () => removeItem(cartKeyFor(product));
-      item.querySelector("img").onclick = () => openLightbox(product.photo || 'https://via.placeholder.com/300x420?text=Card', product.name);
-
-      cartListEl.appendChild(item);
+// Rolling banner of the last 2 days of real sales (falls back to catalogue cards).
+let ticker=[],tickI=0;
+function loadTicker(){
+  fetch("/api/recent-sales").then(r=>r.json()).then(list=>{
+    const cutoff=Date.now()-2*86400000;
+    ticker=(Array.isArray(list)?list:[]).filter(s=>!s.timestamp||s.timestamp>=cutoff).map(s=>{
+      const cid=(s.key||"").split("::")[0];const p=cid&&byId(cid);const rar=p?rarLabel(p):"";
+      const main=(s.name||"card")+(rar?" "+rar:"");const set=setLabel(s.set);
+      return `<b>${main}</b>${set?" &middot; "+set:""}`;
     });
-
-    currentSubtotal = subtotal;
-    updateTotals();
-
-    totalBoxEl.style.display = "block";
-    discountBoxEl.style.display = "block";
-    checkoutSectionEl.style.display = "block";
-  } catch (err) {
-    console.error("renderCart failed:", err);
-    cartListEl.innerHTML =
-      '<p style="text-align:center;color:#c0392b;padding:12px;">' +
-      'Something went wrong showing your cart: ' + (err && err.message ? err.message : err) +
-      '<br><br>Please screenshot this message and send it over.</p>';
-    totalBoxEl.style.display = "none";
-    discountBoxEl.style.display = "none";
-    checkoutSectionEl.style.display = "none";
-  }
+  }).catch(()=>{});
 }
-
-function showProducts() {
-  currentScreen = "products";
-  productsScreenEl.style.display = "block";
-  cartScreenEl.style.display = "none";
-  paynowScreenEl.style.display = "none";
-  syncFooterButton();
-  applyRecentSalesVisibility();
-  loadProducts(); // always pull the latest stock from the server, not just re-render cached data
-  window.scrollTo(0, 0);
+function tick(){
+  let html="";
+  if(ticker.length)html=ticker[tickI%ticker.length];
+  else if(CARDS.length){const p=CARDS[Math.floor(Math.random()*CARDS.length)];const rar=rarLabel(p);html=`<b>${p.name}${rar?" "+rar:""}</b>${setName(p)?" &middot; "+setName(p):""}`}
+  if(html)$("#tick").innerHTML="Recently purchased: "+html;
+  tickI++;
 }
+tick();setInterval(tick,2600);
+let tt;function bump(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(tt);tt=setTimeout(()=>t.classList.remove("show"),1500)}
 
-function showCart() {
-  trackEvent("view_cart", { items: cartItemCount() });
-  hideCartNudge();
-  currentScreen = "cart";
-  productsScreenEl.style.display = "none";
-  cartScreenEl.style.display = "block";
-  paynowScreenEl.style.display = "none";
-  syncFooterButton();
-  applyRecentSalesVisibility();
-  // Fetch on arrival, so the cart is checked against live stock immediately
-  // rather than up to a minute later.
-  lastStockRefresh = Date.now();
-  loadProducts();
-  renderCart();
-  window.scrollTo(0, 0);
+// --- keep stock fresh: 60s, only while visible and browsing (not mid-checkout).
+//     Reserve/confirm are fail-closed server-side, so a briefly stale view can't oversell.
+function pruneCart(){Object.keys(cart).forEach(k=>{const[cid,cond]=k.split("::");const p=byId(cid);const c=p&&p.conds.find(x=>x.cond===cond);if(!c||c.stock<=0)delete cart[k];else if(cart[k]>c.stock)cart[k]=c.stock})}
+function refreshProducts(){
+  fetch("/api/products").then(r=>r.json()).then(d=>{
+    CARDS=groupProducts(Array.isArray(d)?d:(d.products||[]));pruneCart();
+    if(!$("#panel").classList.contains("open")){const sc=$("#scroller").scrollTop;render();$("#scroller").scrollTop=sc}
+    updateBar();loadTicker();
+  }).catch(()=>{});
 }
-
-function showPayNow() {
-  hideCartNudge();
-  currentScreen = "paynow";
-  productsScreenEl.style.display = "none";
-  cartScreenEl.style.display = "none";
-  paynowScreenEl.style.display = "block";
-  syncFooterButton();
-  applyRecentSalesVisibility();
-  window.scrollTo(0, 0);
-}
-
-function syncFooterButton() {
-  if (currentScreen === "products") {
-    cartButtonEl.style.display = "inline-block";
-    cartButtonEl.onclick = showCart;
-    updateCartBadge();
-  } else {
-    // On the cart / paynow screens the footer button isn't needed —
-    // dedicated "Continue Shopping" / "Back to Cart" buttons handle navigation.
-    cartButtonEl.style.display = "none";
-  }
-}
-
-applyDiscountButtonEl.onclick = async () => {
-  const code = discountCodeInputEl.value.trim();
-  discountErrorTextEl.style.display = "none";
-
-  if (!code) return;
-
-  applyDiscountButtonEl.disabled = true;
-  try {
-    const res = await fetch("/api/validate-discount", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, subtotal: currentSubtotal }),
-    });
-    const data = await res.json();
-
-    if (data.valid) {
-      appliedDiscount = { code: code.toUpperCase(), type: data.type, value: data.value };
-      discountCodeInputEl.value = appliedDiscount.code;
-      discountErrorTextEl.style.display = "none";
-    } else if (data.reason === "minimum_not_met") {
-      appliedDiscount = null;
-      discountCodeInputEl.value = "";
-      discountErrorTextEl.textContent = `A minimum spend of $${data.minimumRequired} is required to use this code.`;
-      discountErrorTextEl.style.display = "block";
-    } else if (data.reason === "expired") {
-      // A real code that has simply ended reads better than "invalid" — the
-      // buyer typed it correctly and shouldn't be left wondering.
-      appliedDiscount = null;
-      discountCodeInputEl.value = "";
-      discountErrorTextEl.textContent = "This promotion has ended.";
-      discountErrorTextEl.style.display = "block";
-    } else {
-      appliedDiscount = null;
-      discountCodeInputEl.value = "";
-      discountErrorTextEl.textContent = "This discount code is invalid.";
-      discountErrorTextEl.style.display = "block";
-    }
-  } catch (err) {
-    console.error("Discount validation failed:", err);
-    appliedDiscount = null;
-    discountErrorTextEl.textContent = "Something went wrong checking that code. Please try again.";
-    discountErrorTextEl.style.display = "block";
-  } finally {
-    applyDiscountButtonEl.disabled = false;
-    updateTotals();
-  }
-};
-
-discountCodeInputEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    applyDiscountButtonEl.click();
-  }
-});
-
-cartButtonEl.onclick = showCart;
-backToShopButtonEl.onclick = showProducts;
-backToCartButtonEl.onclick = async () => {
-  clearPaynowTimer();
-  if (pendingOrder) {
-    await releaseReservation(pendingOrder.reservationId);
-    pendingOrder = null;
-    loadProducts(); // refresh stock counts now that the reservation was released
-  }
-  showCart();
-};
-
-// Shown when part of the cart sold while the buyer was filling in their
-// details. Adjusts the cart to what's actually left and reserves immediately —
-// the new total is stated on the dialogue, so nothing changes behind their back.
-function showStockConflict(unavailable) {
-  const backdrop = document.getElementById("stockConflictBackdrop");
-  const listEl = document.getElementById("conflictList");
-  const titleEl = document.getElementById("conflictTitle");
-  const subEl = document.getElementById("conflictSub");
-  const totalEl = document.getElementById("conflictTotal");
-  const continueBtn = document.getElementById("conflictContinue");
-  const removeBtn = document.getElementById("conflictRemove");
-
-  // Some stock left on at least one line means "continue with fewer" is
-  // meaningful; if everything is gone, removal is the only sensible action.
-  const anyPartial = unavailable.some(u => Number(u.available) > 0);
-  const multiple = unavailable.length > 1;
-
-  titleEl.textContent = multiple
-    ? "Some cards just sold"
-    : "Someone just bought one first";
-  subEl.textContent = "The rest of your cart is still available.";
-
-  listEl.innerHTML = unavailable.map(u => {
-    const item = cart[u.key];
-    const wanted = item ? item.quantity : 0;
-    const left = Math.max(Number(u.available) || 0, 0);
-    const photo = item && item.product ? item.product.photo : "";
-    return `
-      <div class="conflict-item">
-        ${photo ? `<img src="${thumbUrl(photo)}" alt="" loading="lazy"
-          onerror="this.onerror=null;this.src='${photo}';">` : ""}
-        <div class="conflict-item-text">
-          <div class="conflict-item-name">${u.name}</div>
-          <div class="conflict-item-meta">${u.key.split("::")[0]}${
-            item && item.product ? " · " + (item.product.description || "") : ""
-          }</div>
-          <div class="conflict-item-meta">${
-            left > 0 ? `You wanted ${wanted} · only ${left} left` : "No longer available"
-          }</div>
-        </div>
-      </div>`;
-  }).join("");
-
-  // What the cart would come to under each choice.
-  const totalIf = mode => {
-    let sum = 0;
-    Object.entries(cart).forEach(([key, { product, quantity }]) => {
-      const hit = unavailable.find(u => u.key === key);
-      let qty = quantity;
-      if (hit) qty = mode === "trim" ? Math.max(Number(hit.available) || 0, 0) : 0;
-      sum += Number(product.price || 0) * qty;
-    });
-    return sum;
-  };
-
-  const applyAndReserve = mode => {
-    unavailable.forEach(u => {
-      const left = Math.max(Number(u.available) || 0, 0);
-      if (mode === "trim" && left > 0) cart[u.key].quantity = left;
-      else delete cart[u.key];
-    });
-    saveCart();
-    updateCartBadge();
-    refreshProductCards();
-    backdrop.style.display = "none";
-
-    if (Object.keys(cart).length === 0) {
-      alert("Your cart is now empty.");
-      loadProducts();
-      showCart();
-      return;
-    }
-
-    // CRITICAL: recompute the money before re-entering checkout.
-    //
-    // currentSubtotal is only recalculated inside renderCart, so trimming the
-    // cart and going straight back to checkout captured the PRE-TRIM subtotal —
-    // the PayNow screen then showed a total for cards that had just been
-    // removed. Same fault as the reconcile path, different route in.
-    currentSubtotal = Object.values(cart).reduce(
-      (sum, { product, quantity }) => sum + Number(product.price || 0) * quantity,
-      0
-    );
-    updateTotals();
-
-    trackEvent("stock_conflict_resolved", { mode });
-    // Straight back into checkout with the corrected cart.
-    checkoutButtonEl.click();
-  };
-
-  continueBtn.style.display = anyPartial ? "block" : "none";
-  // "Continue with 1" reads clearly for a single card; listing several numbers
-  // ("Continue with 1, 2") does not.
-  continueBtn.textContent = !anyPartial
-    ? "Continue"
-    : multiple
-      ? "Continue with what's left"
-      : `Continue with ${unavailable[0].available}`;
-  totalEl.textContent = `New total: $${(anyPartial ? totalIf("trim") : totalIf("drop")).toFixed(2)}`;
-
-  continueBtn.onclick = () => applyAndReserve("trim");
-  removeBtn.textContent = multiple ? "Remove them and continue" : "Remove it and continue";
-  removeBtn.onclick = () => applyAndReserve("drop");
-
-  document.getElementById("conflictBack").onclick = () => {
-    backdrop.style.display = "none";
-    loadProducts();
-    renderCart();
-    showCart();
-  };
-
-  backdrop.style.display = "flex";
-}
-
-checkoutButtonEl.onclick = async () => {
-  const telegramUsername = telegramUsernameInputEl.value.trim();
-  const hasHold = holdCheckboxEl.checked;
-
-  // Fired before validation, so abandoned attempts are visible too — a gap
-  // between this and payment_shown means the form itself is losing people.
-  trackEvent("begin_checkout", {
-    items: cartItemCount(),
-    hold: hasHold ? "yes" : "no",
-    discount: appliedDiscount ? "yes" : "no",
-  });
-
-  if (!telegramUsername) {
-    trackEvent("checkout_blocked", { reason: "missing_telegram" });
-    alert("Please enter your Telegram username.");
-    return;
-  }
-
-  let name = "";
-  let phone = "";
-  let addressLine = "";
-  let unitNumber = "";
-  let postalCode = "";
-  let mailPreference = "";
-
-  if (!hasHold) {
-    name = document.getElementById("nameInput").value.trim();
-    phone = document.getElementById("phoneInput").value.trim();
-    addressLine = document.getElementById("addressLineInput").value.trim();
-    unitNumber = document.getElementById("unitNumberInput").value.trim();
-    postalCode = document.getElementById("postalCodeInput").value.trim();
-    // Stored as readable text, so the notification email, the Recent Orders
-    // panel and the generated confirmation/receipt images all show the same
-    // wording the buyer saw. The radio VALUES stay "hold"/"immediate" because
-    // updateTotals keys the mailing fee off them.
-    mailPreference =
-      getMailPreference() === "immediate" ? "Mail out now" : "Hold my package";
-
-    if (!name || !phone || !addressLine || !postalCode) {
-      // Which field is missing matters — it tells us whether the address block
-      // or something simpler is losing people at this step.
-      const missing = [
-        !name && "name",
-        !phone && "phone",
-        !addressLine && "address",
-        !postalCode && "postal",
-      ].filter(Boolean).join("+");
-      trackEvent("checkout_blocked", { reason: "missing_details", missing });
-      alert("Please fill in Name, Phone, Address Line, and Postal Code.");
-      return;
-    }
-  } else {
-    mailPreference =
-      getHoldMailPreference() === "mail_with_hold"
-        ? "Mail it out with the rest of my cards"
-        : "Continue to hold with the rest of package";
-  }
-
-  const fullAddress = hasHold
-    ? "(on hold — no new address needed)"
-    : [addressLine, unitNumber, postalCode].filter(Boolean).join(", ");
-
-  const total = totalTextEl.textContent;
-  const order = {
-    id: Date.now(),
-    telegramUsername,
-    name,
-    phone,
-    address: fullAddress,
-    // Kept separately as well as joined, so the admin page can offer each part
-    // as its own copy button instead of making you select text by hand.
-    addressLine,
-    unitNumber,
-    postalCode,
-    // DEEP COPY, not a reference.
-    //
-    // The money fields below are captured as text at this moment, but `cart`
-    // used to point at the live cart object — so if an item left the cart
-    // afterwards (sold out during checkout, or dropped by a reservation
-    // conflict) the totals kept counting it while the item list didn't. One
-    // order was charged for a card that never appeared on its receipt.
-    cart: JSON.parse(JSON.stringify(cart)),
-    subtotal: subtotalTextEl.textContent,
-    discountCode: appliedDiscount ? appliedDiscount.code : "",
-    discountAmount: computeDiscountAmount(currentSubtotal, appliedDiscount).toFixed(2),
-    shipping: shippingTextEl.textContent,
-    holdClaimed: hasHold,
-    mailPreference,
-    total
-  };
-
-  // Reserve stock now, at the moment they commit to checkout — this locks
-  // the item so another buyer can't also claim it while this buyer is on
-  // the payment screen. The reservation auto-expires in ~5.5 minutes on
-  // the server side even if this page is closed or crashes, and the order
-  // itself isn't emailed/considered a real sale yet — that only happens
-  // once they confirm they've actually paid.
-  // Clear any hold left over from an abandoned session first, so the buyer
-  // isn't blocked by their own previous reservation.
-  const leftover = storedReservationId();
-  if (leftover) await releaseReservation(leftover);
-
-  const reservationId = generateReservationId();
-  const reservationItems = Object.values(order.cart).map(({ product, quantity }) => ({
-    key: product.stockKey || product.cardId || product.name,
-    quantity,
-  }));
-
-  let reserveRes;
-  try {
-    reserveRes = await fetch("/api/reserve", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reservationId, items: reservationItems }),
-    });
-  } catch (err) {
-    console.error("Stock reservation request failed:", err);
-    trackEvent("checkout_blocked", { reason: "network" });
-    alert("Something went wrong reserving your items. Please try again.");
-    return;
-  }
-
-  if (!reserveRes.ok) {
-    const errData = await reserveRes.json().catch(() => ({}));
-    if (reserveRes.status === 409 && Array.isArray(errData.unavailable)) {
-      trackEvent("checkout_blocked", { reason: "stock_gone", items: errData.unavailable.length });
-      // Offer to fix the cart rather than sending them back to do it by hand.
-      // They've already filled in their details at this point, so every extra
-      // step is somewhere to give up.
-      showStockConflict(errData.unavailable);
-      return;
-    }
-    trackEvent("checkout_blocked", { reason: "reserve_failed" });
-    alert("Something went wrong reserving your items. Please try again.");
-    loadProducts();
-    renderCart();
-    return;
-  }
-
-  order.reservationId = reservationId;
-  rememberReservation(reservationId);
-
-  // Stock reserved and the PayNow QR is on screen. Anyone lost between here and
-  // "purchase" is hesitating at payment, not at the form.
-  trackEvent("payment_shown", {
-    items: cartItemCount(),
-    total: orderTotalValue(order),
-  });
-  pendingOrder = order;
-  saveLastOrder(order);
-  paynowAmountEl.textContent = total;
-  showPayNow();
-  startPaynowTimer();
-};
-
-// Guards against a double-tap. The whole handler is async, so without this a
-// second tap starts a second confirmation before the first has finished and
-// cleared pendingOrder — which is exactly how one order was recorded twice.
-let isConfirmingOrder = false;
-
-paynowConfirmButtonEl.onclick = async () => {
-  if (isConfirmingOrder) return;
-
-  clearPaynowTimer();
-
-  if (!pendingOrder) {
-    showCart();
-    return;
-  }
-
-  isConfirmingOrder = true;
-  const confirmLabel = paynowConfirmButtonEl.textContent;
-  paynowConfirmButtonEl.disabled = true;
-  paynowConfirmButtonEl.textContent = "Confirming…";
-
-  try {
-    let confirmRes = await fetch("/api/confirm-order", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      // The order record travels WITH the confirmation, so it is stored
-      // server-side in the same request that decrements stock. If the buyer's
-      // device dies immediately afterwards, the order is still recoverable
-      // from the admin page.
-      body: JSON.stringify({
-        reservationId: pendingOrder.reservationId,
-        record: (verifyOrderTotals(pendingOrder), buildOrderPayload(pendingOrder)),
-      }),
-    });
-    // EXPIRY RESCUE.
-    //
-    // A lapsed reservation doesn't mean the cards sold — usually nobody else
-    // took them and they're still sitting there. Rather than losing a buyer who
-    // was 30 seconds late (often after they've already sent payment), try to
-    // reserve the same cards again and complete the order.
-    //
-    // If someone genuinely claimed them in the meantime the re-reservation
-    // fails and they get the honest message. No stock is held any longer than
-    // the normal window.
-    if (confirmRes.status === 410) {
-      const rescueId = generateReservationId();
-      const rescueItems = Object.values(pendingOrder.cart).map(({ product, quantity }) => ({
-        key: product.stockKey || product.cardId || product.name,
-        quantity,
-      }));
-
-      try {
-        const rescueRes = await fetch("/api/reserve", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reservationId: rescueId, items: rescueItems }),
-        });
-
-        if (rescueRes.ok) {
-          pendingOrder.reservationId = rescueId;
-          rememberReservation(rescueId);
-          trackEvent("reservation_rescued", { items: rescueItems.length });
-
-          // One retry only — if this fails too, fall through to the normal
-          // error path rather than looping.
-          confirmRes = await fetch("/api/confirm-order", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              reservationId: rescueId,
-              record: buildOrderPayload(pendingOrder),
-            }),
-          });
-        }
-      } catch (rescueErr) {
-        console.error("Reservation rescue failed:", rescueErr);
-      }
-    }
-
-    if (!confirmRes.ok) {
-      const errData = await confirmRes.json().catch(() => ({}));
-      // Worth watching: a buyer who paid attention all the way here and then
-      // lost their reservation is the most expensive kind of drop-off.
-      trackEvent("checkout_failed", { reason: "reservation_expired" });
-      alert(
-        errData.error ||
-        "Your reservation expired and someone else has since claimed one of these cards. Please check your cart and try again."
-      );
-      pendingOrder = null;
-      isConfirmingOrder = false;
-      paynowConfirmButtonEl.disabled = false;
-      paynowConfirmButtonEl.textContent = confirmLabel;
-      loadProducts();
-      showCart();
-      return;
-    }
-  } catch (err) {
-    console.error("Confirm order failed:", err);
-    alert("Something went wrong confirming your order. Please try again, or message us directly if this keeps happening.");
-    return;
-  }
-
-  // Order is confirmed server-side at this point — the sale is real.
-  trackEvent("purchase", {
-    items: cartItemCount(),
-    total: orderTotalValue(pendingOrder),
-    discount: pendingOrder.discountCode ? "yes" : "no",
-  });
-
-  // Queue BEFORE sending, so the order survives even if this page dies mid
-  // request. Awaited so the send completes before the success modal (which
-  // navigates to Telegram) can tear the page down.
-  queueOrderNotification(pendingOrder);
-  const notified = await flushOrderNotifications();
-  if (!notified) {
-    console.error("Order notification could not be sent yet — queued for retry.");
-  }
-  pendingOrder = null;
-
-  cart = {};
-  saveCart();
-  updateCartBadge();
-  holdCheckboxEl.checked = false;
-  document.getElementById("mailPrefHold").checked = true;
-  document.getElementById("holdMailPrefContinue").checked = true;
-  appliedDiscount = null;
-  discountCodeInputEl.value = "";
-  discountErrorTextEl.style.display = "none";
-  updateCheckoutFieldsVisibility();
-  modalBackdropEl.style.display = "flex";
-
-  rememberReservation(null);
-
-  // Order complete. Re-enable for the NEXT order, but only now that
-  // pendingOrder is null — a further tap can't resubmit this one.
-  isConfirmingOrder = false;
-  paynowConfirmButtonEl.disabled = false;
-  paynowConfirmButtonEl.textContent = confirmLabel;
-};
-
-modalCloseButtonEl.onclick = () => {
-  // Last chance to clear the queue before we navigate to Telegram.
-  flushOrderNotifications();
-  const telegramChatUrl = "https://t.me/fallacytcg";
-  if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openTelegramLink) {
-    window.Telegram.WebApp.openTelegramLink(telegramChatUrl);
-  } else {
-    window.open(telegramChatUrl, "_blank");
-  }
-  modalBackdropEl.style.display = "none";
-  showProducts();
-  loadProducts(); // refresh stock counts now that this order was just recorded
-};
-
-// Tapping anywhere outside the currently focused field dismisses the mobile
-// keyboard — browsers don't do this automatically for bare <input> elements
-// that aren't inside a <form>.
-document.addEventListener("click", (e) => {
-  const active = document.activeElement;
-  const isFormField = active && ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName);
-  if (isFormField && e.target !== active) {
-    active.blur();
-  }
-});
-
-let recentSales = [];
-let recentSalesIndex = 0;
-let recentSalesInterval = null;
-
-// Tapping the ticker opens the proof panel: headline figures for the business
-// as a whole, then what's sold here in the last three days.
-//
-// Deliberately no timestamps on the list. With a sale every few hours, "5h ago"
-// reads as quiet — the run of cards itself is the evidence.
-async function openSocialProof() {
-  const backdrop = document.getElementById("proofBackdrop");
-  const listEl = document.getElementById("proofList");
-  const subEl = document.getElementById("proofSub");
-
-  backdrop.style.display = "flex";
-  listEl.innerHTML = '<p class="proof-sub">Loading…</p>';
-  subEl.textContent = "";
-  trackEvent("view_social_proof");
-
-  try {
-    const res = await fetch("/api/recent-sales?full=1");
-    const data = await res.json();
-    const sales = Array.isArray(data) ? data : data.sales || [];
-    const stats = (data && data.stats) || {};
-
-    const tiles = [
-      stats.cards ? `<div class="proof-stat"><strong>${stats.cards.toLocaleString()}+</strong><span>cards sold</span></div>` : "",
-      stats.customers ? `<div class="proof-stat"><strong>${stats.customers.toLocaleString()}+</strong><span>subscribers</span></div>` : "",
-      stats.sinceLabel ? `<div class="proof-stat"><strong>${stats.sinceLabel}</strong><span>active since</span></div>` : "",
-    ].filter(Boolean).join("");
-
-    subEl.textContent = "This is us across our auction channel and mini store:";
-
-    const rows = sales.length
-      ? `<p class="proof-sub proof-heading">Our recently sold items:</p>` +
-        sales.map(sale => `
-          <div class="proof-row">
-            <span>${sale.name}</span>
-            <span class="proof-when">${sale.set || ""}</span>
-          </div>`).join("")
-      : "";
-
-    listEl.innerHTML = (tiles ? `<div class="proof-stats">${tiles}</div>` : "") + rows;
-  } catch (e) {
-    listEl.innerHTML = '<p class="proof-sub">Couldn\'t load right now — please try again.</p>';
-  }
-}
-
-function showRecentSaleAt(index) {
-  if (recentSales.length === 0) return;
-  const sale = recentSales[index];
-  // Sales logged before the set name was recorded won't have one — fall back
-  // to just the card name rather than showing an empty bracket.
-  const setPart = sale.set ? ` · ${sale.set}` : "";
-  recentSalesTextEl.textContent = `🎉 Sold! ${sale.name}${setPart}`;
-}
-
-// The ticker sits in the fixed footer, which an on-screen keyboard pushes up
-// over the field being typed into. Hiding it while a field has focus keeps the
-// checkout form usable — the cart button stays put, only the ticker goes.
-let keyboardLikelyOpen = false;
-
-const footerEl = document.querySelector("footer");
-
-function applyRecentSalesVisibility() {
-  // Shop screen only. On the cart and PayNow screens the buyer is concentrating
-  // on their order and a rotating ticker beside the total is a distraction at
-  // exactly the wrong moment.
-  const shouldShow =
-    recentSales.length > 0 && !keyboardLikelyOpen && currentScreen === "products";
-  recentSalesBannerEl.style.display = shouldShow ? "flex" : "none";
-}
-
-// The whole fixed footer is hidden while typing, not just the ticker — on a
-// phone the keyboard pushes the footer up over the field being filled in, and
-// the cart button covers it just as much as the ticker did. It comes straight
-// back as soon as the field loses focus.
-function applyKeyboardUi() {
-  if (footerEl) footerEl.style.display = keyboardLikelyOpen ? "none" : "flex";
-  applyRecentSalesVisibility();
-}
-
-function setKeyboardOpen(isOpen) {
-  if (keyboardLikelyOpen === isOpen) return;
-  keyboardLikelyOpen = isOpen;
-  applyKeyboardUi();
-}
-
-// Primary signal: any text field gaining focus. Works in every browser,
-// including the Telegram in-app webview.
-recentSalesBannerEl.onclick = openSocialProof;
-const COMMUNITY_CHANNEL_URL = "https://t.me/fallacycardshop";
-
-// openTelegramLink hands the link to the Telegram client rather than opening a
-// browser tab, so the buyer lands in the channel with the Mini App collapsed
-// behind them — reopenable from the header without losing their cart, which
-// survives in localStorage regardless.
-//
-// Deliberately NOT WebApp.close(): that would terminate the session outright.
-document.getElementById("proofJoinButton").onclick = () => {
-  trackEvent("join_channel_click");
-
-  const tg = window.Telegram && window.Telegram.WebApp;
-  if (tg && tg.openTelegramLink) {
-    // Close the panel first so the store is in a clean state to return to.
-    document.getElementById("proofBackdrop").style.display = "none";
-    tg.openTelegramLink(COMMUNITY_CHANNEL_URL);
-  } else {
-    window.open(COMMUNITY_CHANNEL_URL, "_blank");
-  }
-};
-
-document.getElementById("proofCloseButton").onclick = () => {
-  document.getElementById("proofBackdrop").style.display = "none";
-};
-
-document.addEventListener("focusin", e => {
-  if (e.target && e.target.matches("input, textarea, select")) setKeyboardOpen(true);
-});
-
-document.addEventListener("focusout", e => {
-  if (e.target && e.target.matches("input, textarea, select")) {
-    // Small delay so moving between two fields doesn't flicker the ticker.
-    setTimeout(() => {
-      const active = document.activeElement;
-      if (!active || !active.matches("input, textarea, select")) setKeyboardOpen(false);
-    }, 120);
-  }
-});
-
-// Backup signal: the visual viewport shrinking is what a keyboard actually
-// does, and catches cases where focus tracking alone misses.
-if (window.visualViewport) {
-  window.visualViewport.addEventListener("resize", () => {
-    const shrunk = window.visualViewport.height < window.innerHeight * 0.75;
-    if (shrunk) setKeyboardOpen(true);
-    else if (!document.activeElement || !document.activeElement.matches("input, textarea, select")) {
-      setKeyboardOpen(false);
-    }
-  });
-}
-
-function startRecentSalesRotation() {
-  if (recentSalesInterval) clearInterval(recentSalesInterval);
-  if (recentSales.length === 0) {
-    applyRecentSalesVisibility();
-    return;
-  }
-
-  applyRecentSalesVisibility();
-  recentSalesIndex = 0;
-  showRecentSaleAt(recentSalesIndex);
-
-  if (recentSales.length > 1) {
-    recentSalesInterval = setInterval(() => {
-      recentSalesTextEl.classList.add("fading");
-      setTimeout(() => {
-        recentSalesIndex = (recentSalesIndex + 1) % recentSales.length;
-        showRecentSaleAt(recentSalesIndex);
-        recentSalesTextEl.classList.remove("fading");
-      }, 300);
-    }, 4000);
-  }
-}
-
-async function loadRecentSales() {
-  try {
-    const res = await fetch("/api/recent-sales");
-    if (!res.ok) return;
-    recentSales = await res.json();
-    startRecentSalesRotation();
-  } catch (err) {
-    console.error("Failed to load recent sales:", err);
-  }
-}
-
-loadProducts();
-loadRecentSales();
-
-// If someone returns with a cart still saved, say so once — the cart survives
-// in localStorage but nothing acknowledged it, so it was easy to forget.
-let cartNudgeShown = false;
-
-function showCartNudge() {
-  // Only ever once per visit.
-  if (cartNudgeShown) return;
-
-  // Counts only entries that are actually valid. A saved cart can hold items
-  // that have since sold out or left the catalogue; those are stripped by
-  // reconcileCartWithStock, which can't run until the inventory has loaded.
-  const count = Object.values(cart).reduce(
-    (sum, { product, quantity }) => (product && quantity > 0 ? sum + quantity : sum),
-    0
-  );
-  if (count === 0) return;
-
-  cartNudgeShown = true;
-
-  const nudgeEl = document.getElementById("cartNudge");
-  const textEl = document.getElementById("cartNudgeText");
-  textEl.textContent = `You still have ${count} card${count === 1 ? "" : "s"} in your cart — ready when you are.`;
-  nudgeEl.style.display = "flex";
-
-  trackEvent("cart_nudge_shown", { items: count });
-
-  const dismiss = hideCartNudge;
-  document.getElementById("cartNudgeClose").onclick = dismiss;
-  nudgeEl.onclick = e => {
-    if (e.target.id === "cartNudgeClose") return;
-    dismiss();
-    showCart();
-  };
-
-  // Fades itself out — a permanent banner would just become furniture.
-  setTimeout(dismiss, 9000);
-}
-
-// Deliberately NOT on a timer. Firing before the inventory loaded meant
-// counting a stale saved cart that reconciliation was about to empty — one
-// shopper was told they had items when they had none.
-// It's triggered from loadProducts instead, after reconciliation has run.
-
-// Counted once per page load (not on the 60s refresh), giving the funnel a
-// top-of-funnel number to measure the other steps against.
-trackEvent("page_view");
-
-// A reservation left over from a previous visit can only be stale: pendingOrder
-// lives in memory and doesn't survive a reload, so the buyer could never
-// confirm it anyway. Release it rather than let it block their own cart.
-const staleReservation = storedReservationId();
-if (staleReservation) {
-  releaseReservationBeacon(staleReservation);
-  rememberReservation(null);
-}
-
-// Closing the Mini App or backgrounding the tab mid-checkout previously left
-// the hold in place for the full TTL.
-window.addEventListener("pagehide", () => {
-  if (pendingOrder && pendingOrder.reservationId) {
-    releaseReservationBeacon(pendingOrder.reservationId);
-  }
-});
-
-// Retry any order notification that never made it out — e.g. the buyer closed
-// the Telegram webview before the request finished on a previous visit.
-flushOrderNotifications();
-updateCartBadge();
-showProducts();
-
-// Background stock refresh.
-//
-// Two rates, because staleness costs differently by screen. Someone browsing
-// can wait a minute; someone sitting on the cart screen is about to commit to
-// specific cards, so a copy released by an abandoned checkout should reach them
-// quickly. The cart screen is also the rarest place to be, so the faster rate
-// costs little — a minute of cart-screen polling is a handful of requests, not
-// one per browsing visitor.
-//
-// Both are gated on tab visibility: background tabs never poll.
-const REFRESH_BROWSING_MS = 60000;
-const REFRESH_CART_MS = 15000;
-
-let lastStockRefresh = 0;
-
-setInterval(() => {
-  if (document.hidden) return;
-
-  const wanted =
-    currentScreen === "cart" ? REFRESH_CART_MS
-      : currentScreen === "products" ? REFRESH_BROWSING_MS
-        : 0; // PayNow: stock is already reserved, nothing to gain
-
-  if (wanted === 0) return;
-  if (Date.now() - lastStockRefresh < wanted) return;
-
-  lastStockRefresh = Date.now();
-  loadProducts();
-
-  // The ticker only shows while browsing, so don't fetch it from the cart.
-  if (currentScreen === "products") loadRecentSales();
-}, 5000);
-
-// Refresh immediately on returning to the tab, so the longer interval never
-// means looking at stale stock.
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden || currentScreen === "paynow") return;
-  lastStockRefresh = Date.now();
-  loadProducts();
-  if (currentScreen === "products") loadRecentSales();
-});
+setInterval(()=>{if(document.hidden||$("#panel").classList.contains("open"))return;refreshProducts()},60000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&!$("#panel").classList.contains("open"))refreshProducts()});
+trackEvent("page_view",{});
+boot();
 </script>
-
-<!-- Vercel Web Analytics (requires Web Analytics to be enabled in the Vercel dashboard) -->
-<script>
-  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
-</script>
+<!-- Vercel Web Analytics -->
+<script>window.va=window.va||function(){(window.vaq=window.vaq||[]).push(arguments)};</script>
 <script defer src="/_vercel/insights/script.js"></script>
-
-</body>
-</html>
