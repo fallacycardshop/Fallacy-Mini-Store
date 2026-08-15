@@ -43,7 +43,7 @@
   .tgbar .logo{height:32px;flex:0 0 auto;display:flex;align-items:center}
   .tgbar .logo img{height:32px;width:auto;display:block}
   .tgbar .name{font-weight:700;font-size:15px;color:var(--pink-deep);line-height:1.1}
-  .tgbar .handle{font-size:11px;color:var(--ink-soft)}
+  .tgbar .handle{font-size:11px;color:var(--accent);text-decoration:none;display:inline-block}
   .tgbar .spacer{flex:1}
   .about-btn{display:flex;align-items:center;gap:5px;background:var(--surface-2);border:1px solid var(--line);color:var(--pink-deep);font:inherit;font-size:12px;font-weight:600;padding:6px 11px 6px 9px;border-radius:999px;cursor:pointer}
   .about-btn svg{width:14px;height:14px}
@@ -64,12 +64,13 @@
   .sec{margin-top:16px}
   /* rails read clearly as a horizontal "shelf": tinted band, hairline borders, and a right-edge fade cueing more content */
   .sec.railsec{background:var(--rail-bg);padding-top:2px;padding-bottom:8px;margin-top:14px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);position:relative}
-  .sec.railsec::after{content:"";position:absolute;top:0;right:0;bottom:8px;width:34px;background:linear-gradient(to right,transparent,var(--rail-bg));pointer-events:none;z-index:1}
+  .sec.railsec .rail{position:relative}
   .sec.railsec .sec-head h2{display:flex;align-items:center;gap:6px}
-  .sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:8px var(--gutter)}
-  .sec-head h2{margin:0;font-size:16px;color:var(--pink-deep);font-weight:600}
-  .sec-head .right{display:flex;align-items:baseline;gap:10px;flex:0 0 auto}.sec-head .count{font-size:12px;color:var(--ink-soft)}
-  .seeall{font-size:12.5px;font-weight:600;color:var(--accent);background:none;border:none;cursor:pointer;padding:0}
+  /* each subsection header is a solid pink bar with white text */
+  .sec-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--accent)}
+  .sec-head h2{margin:0;font-size:15px;color:#fff;font-weight:700}
+  .sec-head .right{display:flex;align-items:center;gap:10px;flex:0 0 auto}.sec-head .count{font-size:12px;color:rgba(255,255,255,.85)}
+  .seeall{font-size:12.5px;font-weight:700;color:#fff;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline}
   .sec-sub{font-size:12px;color:var(--ink-soft);padding:0 var(--gutter) 8px;margin-top:-6px}
   .rail{display:flex;gap:12px;overflow-x:auto;padding:2px var(--gutter) 4px;scroll-snap-type:x mandatory;scroll-padding-left:var(--gutter);scrollbar-width:none;-webkit-overflow-scrolling:touch}
   .rail::-webkit-scrollbar{display:none}.rail .card,.rail .endtile{flex:0 0 47%;scroll-snap-align:start}
@@ -79,7 +80,7 @@
   .endtile .ic{width:38px;height:38px;border-radius:50%;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:2px var(--gutter)}
 
-  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);cursor:pointer;position:relative;transition:transform .12s}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);cursor:pointer;position:relative;transition:transform .12s;display:flex;flex-direction:column}
   .card:active{transform:scale(.975)}.card.sold{opacity:.9}
   .card .imgwrap{position:relative;width:100%;padding-top:133.33%;background:var(--surface-2);overflow:hidden}
   .card .imgwrap img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
@@ -90,13 +91,13 @@
   .b-sar{background:var(--gold-bg);color:var(--gold)}.b-deal{background:var(--deal-bg);color:var(--deal)}
   .sold-veil{position:absolute;inset:0;display:grid;place-items:center;z-index:3}
   .sold-veil span{background:rgba(20,10,15,.72);color:#fff;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:5px 12px;border-radius:999px}
-  .card .body{padding:9px 10px 11px}
+  .card .body{padding:9px 10px 11px;display:flex;flex-direction:column;flex:1 1 auto}
   .card .nm{font-size:13px;font-weight:600;line-height:1.25;margin:0 0 3px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
   .card .rs{font-size:11px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .card .rs .rar{font-weight:700;color:var(--accent)}
   .card .cond{font-size:11px;color:var(--ink-soft);margin-top:1px;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
   .multi{font-size:9px;font-weight:700;color:var(--deal);background:var(--deal-bg);border-radius:5px;padding:1px 5px}
-  .card .row{display:flex;align-items:center;justify-content:space-between;gap:5px;margin-top:8px;min-height:30px}
+  .card .row{display:flex;align-items:center;justify-content:space-between;gap:5px;margin-top:auto;padding-top:8px;min-height:30px}
   .card .price{font-size:14.5px;font-weight:700;color:var(--ink);white-space:nowrap}
   .price-col{display:flex;flex-direction:column;line-height:1.02;white-space:nowrap}
   .price-col .now{font-size:14.5px;font-weight:700;color:var(--ink)}
@@ -125,7 +126,7 @@
   .ticker .live{width:7px;height:7px;border-radius:50%;background:var(--fresh);flex:0 0 auto;animation:pulse 2s infinite}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(31,140,96,.5)}70%{box-shadow:0 0 0 7px rgba(31,140,96,0)}100%{box-shadow:0 0 0 0 rgba(31,140,96,0)}}
   .ticker b{color:var(--pink-deep);font-weight:600}
-  .cartbar{background:var(--accent);color:var(--on-accent);display:flex;align-items:center;gap:12px;padding:13px 16px;cursor:pointer}
+  .cartbar{background:#1c1c1e;color:#fff;display:flex;align-items:center;gap:12px;padding:13px 16px;cursor:pointer}
   .cartbar .cn{background:rgba(255,255,255,.22);border-radius:8px;padding:2px 9px;font-weight:700;font-size:14px}
   .cartbar .lbl{font-weight:600;font-size:15px}.cartbar .tot{margin-left:auto;font-weight:700;font-size:16px}
 
@@ -164,16 +165,25 @@
   .view-cart-sm{flex:0 0 auto;height:50px;padding:0 15px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--pink-deep);font:inherit;font-weight:600;font-size:13px;cursor:pointer}
 
   .cart-empty{padding:60px 24px;text-align:center;color:var(--ink-soft)}
-  .cart-list{padding:8px 14px}
-  .cart-item{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
-  .cart-item .th{width:58px;flex:0 0 auto;border-radius:8px;overflow:hidden;background:var(--surface-2);position:relative;height:77px}
+  .cart-list{padding:6px 14px}
+  .cart-item{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+  /* each row is exactly the height of the card image */
+  .cart-item .th{width:58px;height:77px;flex:0 0 auto;border-radius:8px;overflow:hidden;background:var(--surface-2);position:relative}
   .cart-item .th img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-  .cart-item .ci-body{flex:1;min-width:0}
-  .cart-item .ci-name{font-size:14px;font-weight:600;margin:0}
-  .cart-item .ci-meta{font-size:11px;color:var(--ink-soft);margin:2px 0 8px}
-  .cart-item .ci-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
-  .ci-remove{background:none;border:none;color:var(--scarce);font:inherit;font-size:12px;cursor:pointer;padding:0}
-  .ci-line{font-weight:700;font-size:14px}
+  .cart-item .ci-body{flex:1;min-width:0;min-height:77px;display:flex;flex-direction:column;justify-content:space-between}
+  .cart-item .ci-name{font-size:14px;font-weight:600;margin:0;line-height:1.25}
+  .cart-item .ci-cond{font-weight:500;color:var(--ink-soft);font-size:12px}
+  .cart-item .ci-meta{font-size:11px;color:var(--ink-soft);margin:2px 0 0}
+  .cart-item .ci-rar{color:var(--accent);font-weight:700}
+  .cart-item .ci-row{display:flex;align-items:center;gap:8px}
+  .ci-line{font-weight:700;font-size:14px;margin-left:auto}
+  .ci-x{border:none;background:none;color:var(--sold);font-size:20px;line-height:1;cursor:pointer;padding:0 2px}
+  /* promo + total pinned to the bottom of the cart */
+  .cart-sticky{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:10px 14px 12px}
+  .cart-sticky .promo{padding:0 0 8px}
+  .cart-total-line{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:14px;margin:2px 0 9px}
+  .cart-total-line .ct-amt{font-size:19px;color:var(--ink)}
+  .cart-mini-note{font-size:11px;color:var(--ink-soft);text-align:center;margin:8px 0 0}
   .promo{padding:14px 18px;display:flex;gap:8px}
   .promo input{flex:1;padding:11px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:14px;background:var(--surface-2);color:var(--ink);text-transform:uppercase}
   .promo button{flex:0 0 auto;padding:0 16px;border:1px solid var(--accent);background:var(--surface);color:var(--accent);font:inherit;font-weight:600;border-radius:10px;cursor:pointer}
@@ -213,7 +223,8 @@
 
   .about{padding:20px}
   .about-logo{width:150px;margin:4px auto 8px;display:block}
-  .about .handle-line{text-align:center;font-size:13px;color:var(--accent);font-weight:600;margin:0 0 10px}
+  .about .handle-line{display:block;text-align:center;font-size:13px;color:var(--accent);font-weight:600;margin:0 0 10px;text-decoration:none}
+  .about .handle-line:hover{text-decoration:underline}
   .stat-row{display:flex;gap:10px;justify-content:center;margin:14px 0 6px;flex-wrap:wrap}
   .stat-tile{flex:1 1 0;min-width:92px;background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:14px 8px;text-align:center}
   .stat-n{font-size:20px;font-weight:800;color:var(--pink-deep);line-height:1.1}
@@ -236,7 +247,7 @@
   <div class="scroller" id="scroller">
   <div class="tgbar">
     <div class="logo" id="logo"><img src="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/fallacyministore-logo.png" alt="Fallacy"></div>
-    <div><div class="name">Fallacy's Mini Store</div><div class="handle">@fallacycardshop</div></div>
+    <div><div class="name">Fallacy's Mini Store</div><a class="handle" href="https://t.me/fallacycardshop" target="_blank" rel="noopener">@fallacycardshop</a></div>
     <div class="spacer"></div>
     <button class="about-btn" id="aboutBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><circle cx="12" cy="8" r="0.6" fill="currentColor"></circle></svg>About us</button>
   </div>
@@ -247,7 +258,7 @@
     </div>
     <div class="chips">
       <label class="toggle" id="instock"><span class="sw"></span>In stock</label>
-      <select id="sort"><option value="curated">Sort: Featured</option><option value="low">Price: low to high</option><option value="high">Price: high to low</option></select>
+      <select id="sort"><option value="curated">Sort: Home page</option><option value="low">Price: low to high</option><option value="high">Price: high to low</option></select>
       <select id="rarity"><option value="">All rarities</option></select>
       <select id="set"><option value="">All sets</option></select>
     </div>
@@ -386,26 +397,13 @@ function railSection(title,sub,list,kind,ctx){
     <div class="rail">${ordered.map(p=>cardHTML(p,ctx)).join("")}${railTile(kind)}</div></div>`;
 }
 function featSection(list){
-  // Featured = 20 IN-STOCK cards priced $9.90+, in a stable daily order. We take
-  // the prefix of that order holding the first 20 in-stock, so cards that sell
-  // during the day still appear (as sold) within the featured window.
-  const elig=list.filter(p=>Math.max(...p.conds.map(c=>c.price))>=9.9);
-  const pool=dailyShuffle(elig);
-  const win=[];let live=0;
-  for(const p of pool){if(live>=20)break;win.push(p);if(!isSold(p))live++}
-  if(!win.length)return"";
-  const liveW=win.filter(p=>!isSold(p)),soldW=win.filter(isSold);
-  let body;
-  if(soldW.length<=3){
-    // 3 or fewer sold: grey them out in place.
-    body=`<div class="grid">${arrange(win).map(p=>cardHTML(p,"best")).join("")}</div>`;
-  }else{
-    // 4+ sold: live first, then sold at the bottom — showing an even count
-    // (~2/3) so rows stay complete, the rest collapsed.
-    let sn=Math.ceil(soldW.length*2/3);if(sn%2)sn++;
-    body=`<div class="grid">${arrange(liveW).map(p=>cardHTML(p,"best")).join("")}</div>${soldBlockN(soldW,sn)}`;
-  }
-  return `<div class="sec"><div class="sec-head"><h2>&#128293; Featured</h2><span class="count">${liveW.length} cards</span></div>${body}</div>`;
+  // Featured = 20 IN-STOCK cards priced $9.90+, randomised daily. No sold-out
+  // block here — as cards sell, fresh ones take their place.
+  const pool=list.filter(p=>!isSold(p)&&Math.max(...p.conds.map(c=>c.price))>=9.9);
+  const picked=dailyShuffle(pool).slice(0,20);
+  if(!picked.length)return"";
+  return `<div class="sec"><div class="sec-head"><h2>&#128293; Featured</h2><span class="count">${picked.length} cards</span></div>
+    <div class="grid">${picked.map(p=>cardHTML(p,"best")).join("")}</div></div>`;
 }
 // Sort-aware ordering: honour the sort dropdown, else the daily shuffle.
 const sortActive=()=>$("#sort").value==="low"||$("#sort").value==="high";
@@ -427,7 +425,7 @@ function allSection(list){
   return `<div class="sec"><div class="sec-head"><h2>All cards</h2><span class="count">${live.length} in stock</span></div>
     <div class="grid">${live.map(p=>cardHTML(p,"best")).join("")}</div>${soldBlock(sold)}</div>`;
 }
-function activeFilters(){return $("#q").value.trim()||$("#rarity").value||$("#set").value||$("#instock").classList.contains("on")||only}
+function activeFilters(){return $("#q").value.trim()||$("#rarity").value||$("#set").value||$("#instock").classList.contains("on")||only||sortActive()}
 function matchP(p){
   const qv=$("#q").value.trim().toLowerCase();
   if(qv&&!(p.name.toLowerCase().includes(qv)||p.set.toLowerCase().includes(qv)))return false;
@@ -446,7 +444,7 @@ function render(){
   if(activeFilters()){
     const res=sortList(CARDS.filter(matchP));const liveR=res.filter(p=>!isSold(p)),soldR=res.filter(isSold);
     const ctx=only==="disc"?"deal":"best";
-    let label="Results";if(only==="new")label="Newly in stock &amp; restocked";else if(only==="disc")label="Discounted";else if($("#rarity").value==="SAR")label="Special Art Rares";else if($("#rarity").value==="AR")label="Art Rares";else if($("#rarity").value==="S")label="Baby Shinies";
+    let label="Results";if(only==="new")label="Newly in stock &amp; restocked";else if(only==="disc")label="Discounted";else if($("#rarity").value==="SAR")label="Special Art Rares";else if($("#rarity").value==="AR")label="Art Rares";else if($("#rarity").value==="S")label="Baby Shinies";else if(!$("#q").value.trim()&&!$("#set").value&&!$("#instock").classList.contains("on"))label="All cards";
     c.innerHTML=`<div class="results-head"><button class="backbtn" data-back>&#8592; Back</button><h2>${label} (${res.length})</h2></div>
       ${res.length?`<div class="grid">${liveR.map(p=>cardHTML(p,ctx)).join("")}</div>${soldBlock(soldR)}`:`<div class="empty">No cards match &mdash; try clearing a filter.</div>`}
       <div class="results-foot"><button class="backbtn" data-back>&#8592; Back to browsing</button></div>`;
@@ -461,7 +459,7 @@ function render(){
       railSection("&#127912; Art Rares","Full-art alt prints &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="AR"),"ar","best")+
       railSection("&#127775; Baby Shinies","&ldquo;S&rdquo; rarity shinies &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="S"),"s","best")+
       railSection("&#127991;&#65039; Discounted","Played copies at a lower price &mdash; swipe &rarr;",notNew.filter(hasDeal),"disc","deal")+
-      allSection(notNew.filter(p=>!(p.rarity==="SAR"||p.rarity==="AR"||p.rarity==="S"||hasDeal(p))));
+      allSection(notNew);
   }
   wireActs(c);
 }
@@ -481,7 +479,7 @@ function seeAll(kind){savedScroll=$("#scroller").scrollTop;
   else if(kind==="s")$("#rarity").value="S";
   else if(kind==="disc")only="disc";
   render()}
-function clearFilters(){only=null;$("#q").value="";$("#rarity").value="";$("#set").value="";$("#instock").classList.remove("on");render();$("#scroller").scrollTop=savedScroll;savedScroll=0}
+function clearFilters(){only=null;$("#q").value="";$("#rarity").value="";$("#set").value="";$("#sort").value="curated";$("#instock").classList.remove("on");render();$("#scroller").scrollTop=savedScroll;savedScroll=0}
 
 // back-to-top
 const scrollEl=$("#scroller"),toTop=$("#totop");
@@ -543,21 +541,20 @@ function openCart(ret){
   const entries=Object.entries(cart).filter(([,q])=>q>0);
   if(!entries.length){$("#panelBody").innerHTML=`<div class="cart-empty"><p>Your cart is empty.</p><p style="font-size:13px">Add cards and they&rsquo;ll show up here.</p></div>`;openPanel();return}
   const items=entries.map(([k,q])=>{const[id,cond]=k.split("::");const p=byId(id);const c=p.conds.find(x=>x.cond===cond);const line=c.price*q;
-    return `<div class="cart-item"><div class="th"><img src="${p.img}" alt=""><div class="wm"></div></div><div class="ci-body">
-      <p class="ci-name">${p.name}</p><p class="ci-meta">${p.rarity} &middot; ${setName(p)} &middot; ${cond} &middot; $${c.price.toFixed(2)} ea</p>
-      <div class="ci-row"><div class="qadj"><button data-cdec="${id}" data-c="${cond}">&minus;</button><span class="qn tag">${q}</span><button data-cinc="${id}" data-c="${cond}" ${q>=c.stock?"disabled":""}>+</button></div><span class="ci-line tag">$${line.toFixed(2)}</span></div>
-      <button class="ci-remove" data-crm="${id}" data-c="${cond}">Remove</button></div></div>`}).join("");
+    return `<div class="cart-item"><div class="th"><img src="${p.img}" alt=""><div class="wm"></div></div>
+      <div class="ci-body"><div>
+        <p class="ci-name">${p.name} <span class="ci-cond">&middot; ${cond}</span></p>
+        <p class="ci-meta">${rarLabel(p)?`<span class="ci-rar">${p.rarity}</span> &middot; `:""}${setName(p)}</p></div>
+        <div class="ci-row"><div class="qadj"><button data-cdec="${id}" data-c="${cond}">&minus;</button><span class="qn tag">${q}</span><button data-cinc="${id}" data-c="${cond}" ${q>=c.stock?"disabled":""}>+</button></div><span class="ci-line tag">$${line.toFixed(2)}</span><button class="ci-x" data-crm="${id}" data-c="${cond}" aria-label="Remove">&times;</button></div>
+      </div></div>`}).join("");
   const sub=subtotal();const disc=sub*promoPct;
   $("#panelBody").innerHTML=`<div class="cart-list">${items}</div>
-    <div class="promo"><input id="promoInput" placeholder="Promo code" value="${promoPct?'MINI10':''}"><button id="promoApply">Apply</button></div>
-    ${promoMsg?`<div class="promo-msg ${promoPct?'ok':'no'}">${promoMsg}</div>`:""}
-    <div class="step-foot">
-      <div class="sumrow"><span>Subtotal</span><span class="tag">$${sub.toFixed(2)}</span></div>
-      ${promoPct?`<div class="sumrow"><span>Promo (MINI10)</span><span class="tag">&minus;$${disc.toFixed(2)}</span></div>`:""}
-      <div class="sumrow"><span>Mailing</span><span>added at next step</span></div>
-      <div class="sumrow tot"><span>Cart total</span><span class="tag">$${(sub-disc).toFixed(2)}</span></div>
+    <div class="cart-sticky">
+      <div class="promo"><input id="promoInput" placeholder="Promo code" value="${promoPct?'MINI10':''}"><button id="promoApply">Apply</button></div>
+      ${promoMsg?`<div class="promo-msg ${promoPct?'ok':'no'}">${promoMsg}</div>`:""}
+      <div class="cart-total-line"><span>Cart total${promoPct?" &middot; 10% off":""}</span><span class="ct-amt tag">$${(sub-disc).toFixed(2)}</span></div>
       <button class="primary" id="toDetails">Continue to details &rarr;</button>
-      <p class="step-note">Your cards are <b>not reserved yet</b> &mdash; nothing is held until the next step.</p></div>`;
+      <p class="cart-mini-note">Mailing added next step &middot; not reserved yet</p></div>`;
   $("#panelBody").querySelectorAll("[data-cinc]").forEach(b=>b.onclick=()=>{setQty(b.dataset.cinc,b.dataset.c,qtyOf(b.dataset.cinc,b.dataset.c)+1);refreshSku(b.dataset.cinc,b.dataset.c);openCart()});
   $("#panelBody").querySelectorAll("[data-cdec]").forEach(b=>b.onclick=()=>{setQty(b.dataset.cdec,b.dataset.c,qtyOf(b.dataset.cdec,b.dataset.c)-1);refreshSku(b.dataset.cdec,b.dataset.c);openCart()});
   $("#panelBody").querySelectorAll("[data-crm]").forEach(b=>b.onclick=()=>{setQty(b.dataset.crm,b.dataset.c,0);refreshSku(b.dataset.crm,b.dataset.c);openCart()});
@@ -626,11 +623,11 @@ function gotoPay(){
     <p class="pay-alt">Or PayNow / Paylah to <b>8963 1819</b><br><span class="pay-small">(PayNow: CHXX YUX SHEXX RYXX &nbsp;&middot;&nbsp; Paylah: fallacytcg)</span></p>
     <div class="amt-big tag">$${t.total.toFixed(2)}</div>
     <ol class="steps">
-      <li><b>Step 1:</b> Screenshot your payment as proof.</li>
-      <li><b>Step 2:</b> Tap <b>Confirm order</b> below.</li>
-      <li><b>Step 3:</b> Send your screenshot to our Telegram DMs <b>@fallacytcg</b> within 24 hours.</li>
+      <li>Scan the QR with your banking app.</li>
+      <li>Pay the exact amount above.</li>
+      <li>Tap <b>Confirm order</b> &mdash; you&rsquo;ll be taken to <b>@fallacytcg</b> to send your screenshot.</li>
     </ol>
-    <p class="pay-note">Your order will only be processed once we receive your screenshot and verify payment.</p>
+    <p class="pay-note">Your order is only processed once we receive your screenshot and verify payment.</p>
     <button class="primary" id="confirmPay">Confirm order</button></div>`;
   $("#confirmPay").onclick=gotoDone;
 }
@@ -681,7 +678,7 @@ function openAbout(){
   $("#panelBody").innerHTML=`<div class="about">
     <img class="about-logo" src="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/fallacyministore-logo.png" alt="Fallacy's Mini Store">
     <h3>Fallacy's Mini Store</h3>
-    <div class="handle-line">@fallacycardshop</div>
+    <a class="handle-line" href="https://t.me/fallacycardshop" target="_blank" rel="noopener">@fallacycardshop</a>
     <p class="lead">Singapore-based Pok&eacute;mon TCG singles &mdash; chase cards, daily restocks and live auctions, run out of our Telegram channel.</p>
     <div class="stat-row" id="statRow"></div>
     <div class="pill-row"><span class="pill">PayNow</span><span class="pill">Mail consolidation</span><span class="pill">Daily restocks</span><span class="pill">Live auctions</span></div>
