@@ -207,7 +207,13 @@
   .done h3{color:var(--ink);margin:0 0 6px}.done p{color:var(--ink-soft);font-size:14px}
 
   .about{padding:20px}
-  .about-logo{width:150px;margin:4px auto 12px;display:block}
+  .about-logo{width:150px;margin:4px auto 8px;display:block}
+  .about .handle-line{text-align:center;font-size:13px;color:var(--accent);font-weight:600;margin:0 0 10px}
+  .stat-row{display:flex;gap:10px;justify-content:center;margin:14px 0 6px;flex-wrap:wrap}
+  .stat-tile{flex:1 1 0;min-width:92px;background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:14px 8px;text-align:center}
+  .stat-n{font-size:20px;font-weight:800;color:var(--pink-deep);line-height:1.1}
+  .stat-l{font-size:11px;color:var(--ink-soft);margin-top:4px}
+  .tg-link{display:block;text-align:center;text-decoration:none;background:var(--accent);color:var(--on-accent);font-weight:700;font-size:15px;padding:14px;border-radius:13px;margin:14px 0 0}
   .about h3{color:var(--pink-deep);font-size:17px;margin:18px 0 6px;text-align:center}
   .about .lead{font-size:13.5px;color:var(--ink);text-align:center;margin:0 0 12px}
   .about .pill-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:6px 0 8px}
@@ -277,6 +283,9 @@ const setName=p=>p.set.replace(/^[A-Za-z0-9]+\s+/,"");
 const ck=(id,cond)=>id+"::"+cond;
 const round90=x=>{const r=Math.round(x-0.9)+0.9;return r>0?r:0.9};
 const hasDeal=p=>inStock(p).some(c=>c.cond!=="Near Mint");
+const rarLabel=p=>(p.rarity&&p.rarity!=="N.A."&&p.rarity!=="N.A")?p.rarity:"";   // hide N.A. rarities
+const NOTIFY_EMAIL="fallacycardshop@gmail.com";
+const TG_CHAT="https://t.me/fallacytcg";
 
 // Group the flat /api/products list (one row per CardID+Condition) into cards.
 function groupProducts(list){
@@ -354,7 +363,7 @@ function cardHTML(p,ctx){
     <div class="imgwrap">${badgeHTML(p,ctx)}<img loading="lazy" src="${p.img}" alt="${p.name}"><div class="wm"></div>${sold?'<div class="sold-veil"><span>Sold out</span></div>':""}</div>
     <div class="body">
       <p class="nm">${p.name}</p>
-      <div class="rs"><span class="rar">${p.rarity}</span> &middot; ${setName(p)}</div>
+      <div class="rs">${rarLabel(p)?`<span class="rar">${p.rarity}</span> &middot; `:""}${setName(p)}</div>
       <div class="cond"><span>${dc.cond}</span>${multi}</div>
       <div class="row">${priceHTML(p,ctx)}<div class="act" data-act="${p.id}::${dc.cond}">${sold?'<span class="soldtag">Sold out</span>':miniAct(p.id,dc.cond,dc.stock)}</div></div>
     </div>
@@ -372,9 +381,13 @@ function railSection(title,sub,list,kind,ctx){
     <div class="rail">${ordered.map(p=>cardHTML(p,ctx)).join("")}${railTile(kind)}</div></div>`;
 }
 function featSection(list){
-  if(!list.length)return"";
-  const shown=dailyShuffle(list).slice(0,15);
-  return `<div class="sec"><div class="sec-head"><h2>&#128293; Featured</h2><span class="count">${shown.length} cards</span></div><div class="grid">${shown.map(p=>cardHTML(p,"best")).join("")}</div></div>`;
+  // Featured = 20 cards priced $9.90+, randomised daily (stable for the day).
+  const pool=list.filter(p=>{const d=bestCond(p)||conds(p)[0];return d&&d.price>=9.9});
+  const picked=dailyShuffle(pool).slice(0,20);
+  if(!picked.length)return"";
+  const live=picked.filter(p=>!isSold(p)),sold=picked.filter(isSold);
+  return `<div class="sec"><div class="sec-head"><h2>&#128293; Featured</h2><span class="count">${live.length} cards</span></div>
+    <div class="grid">${live.map(p=>cardHTML(p,"best")).join("")}</div>${soldBlock(sold)}</div>`;
 }
 function soldBlock(sold){
   // Sold-out cards live in their OWN 2-column grid, never mixed into the live
@@ -410,7 +423,7 @@ function render(){
   if(activeFilters()){
     const res=sortList(CARDS.filter(matchP));const liveR=res.filter(p=>!isSold(p)),soldR=res.filter(isSold);
     const ctx=only==="disc"?"deal":"best";
-    let label="Results";if(only==="new")label="Newly in stock &amp; restocked";else if(only==="disc")label="Discounted";else if($("#rarity").value==="SAR")label="Special Art Rares";
+    let label="Results";if(only==="new")label="Newly in stock &amp; restocked";else if(only==="disc")label="Discounted";else if($("#rarity").value==="SAR")label="Special Art Rares";else if($("#rarity").value==="AR")label="Art Rares";else if($("#rarity").value==="S")label="Baby Shinies";
     c.innerHTML=`<div class="results-head"><button class="backbtn" data-back>&#8592; Back</button><h2>${label} (${res.length})</h2></div>
       ${res.length?`<div class="grid">${liveR.map(p=>cardHTML(p,ctx)).join("")}</div>${soldBlock(soldR)}`:`<div class="empty">No cards match &mdash; try clearing a filter.</div>`}
       <div class="results-foot"><button class="backbtn" data-back>&#8592; Back to browsing</button></div>`;
@@ -420,10 +433,12 @@ function render(){
     const notNew=CARDS.filter(p=>!p.isNew);
     c.innerHTML=
       railSection("&#10024; Newly in stock","Fresh drops &amp; restocks &mdash; swipe &rarr;",news,"new","best")+
-      featSection(notNew.filter(p=>p.featured))+
+      featSection(notNew)+
       railSection("&#128142; Special Art Rares","The chase cards &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="SAR"),"sar","best")+
+      railSection("&#127912; Art Rares","Full-art alt prints &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="AR"),"ar","best")+
+      railSection("&#127775; Baby Shinies","&ldquo;S&rdquo; rarity shinies &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="S"),"s","best")+
       railSection("&#127991;&#65039; Discounted","Played copies at a lower price &mdash; swipe &rarr;",notNew.filter(hasDeal),"disc","deal")+
-      allSection(notNew.filter(p=>!p.featured));
+      allSection(notNew);
   }
   wireActs(c);
 }
@@ -436,7 +451,13 @@ function wireActs(scope){
   scope.querySelectorAll("[data-back]").forEach(b=>b.onclick=clearFilters);
   const sm=scope.querySelector("[data-showsold]");if(sm)sm.onclick=()=>{$("#soldHidden").style.display="grid";sm.remove();wireActs($("#soldHidden"))};
 }
-function seeAll(kind){savedScroll=$("#scroller").scrollTop;if(kind==="new")only="new";else if(kind==="sar"){$("#rarity").value="SAR"}else if(kind==="disc")only="disc";render()}
+function seeAll(kind){savedScroll=$("#scroller").scrollTop;
+  if(kind==="new")only="new";
+  else if(kind==="sar")$("#rarity").value="SAR";
+  else if(kind==="ar")$("#rarity").value="AR";
+  else if(kind==="s")$("#rarity").value="S";
+  else if(kind==="disc")only="disc";
+  render()}
 function clearFilters(){only=null;$("#q").value="";$("#rarity").value="";$("#set").value="";$("#instock").classList.remove("on");render();$("#scroller").scrollTop=savedScroll;savedScroll=0}
 
 // back-to-top
@@ -466,7 +487,7 @@ function openDetail(id){
     <div class="detail-hero"><div class="frame"><div class="inner"><img src="${p.imgFull||p.img}" alt="${p.name}"><div class="wm"></div></div></div>
       <p class="ref-note">Reference photo &mdash; you&rsquo;ll receive a card in the stated condition.</p></div>
     <div class="detail-info"><h3>${p.name}</h3>
-      <p class="sub"><span class="rar">${p.rarity}</span> &middot; ${setName(p)}</p>
+      <p class="sub">${rarLabel(p)?`<span class="rar">${p.rarity}</span> &middot; `:""}${setName(p)}</p>
       <p class="cond-label">Select a condition</p><div class="cond-opts" id="condOpts"></div>
       <div class="detail-actions"><button class="add-order" id="addOrder">Add to order</button><button class="view-cart-sm" id="viewCartSm">View cart</button></div>
     </div>`;
@@ -585,11 +606,44 @@ function gotoPay(){
     <p class="step-note">Confirming records your order and opens @fallacytcg to send proof.</p></div>`;
   $("#confirmPay").onclick=gotoDone;
 }
-function gotoDone(){
-  stopTimer();setBack(()=>{cart={};promoPct=0;promoMsg="";updateBar();closePanel();render()});
+// Builds the FormSubmit order email — same field shape as the live store, so the
+// admin Recent Orders panel would parse it. Subject is prefixed [CONCEPT TEST].
+function orderEmailPayload(){
+  const id=Date.now();const t=totals();
+  const entries=Object.entries(cart).filter(([,q])=>q>0);
+  const d=new Date(id);const dateStr=`${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+  const buyer=(form.user||form.name||"").trim();
+  const blockA=[],blockF=[],items=[];
+  entries.forEach(([k,q])=>{const[cid,cond]=k.split("::");const p=byId(cid);const c=p.conds.find(x=>x.cond===cond);
+    for(let i=0;i<q;i++){blockA.push([dateStr,cid,cond].join(" | "));blockF.push([buyer,c.price.toFixed(2),id].join(" | "))}
+    items.push(`${p.name} [${cid}] (${p.rarity||""}, ${cond}) x${q} @ $${c.price.toFixed(2)} = $${(c.price*q).toFixed(2)}`)});
+  return {
+    _subject:`[CONCEPT TEST] Order #${id} — ${buyer||"buyer"} — $${t.total.toFixed(2)}`,
+    _template:"table",
+    _test_note:"Concept-preview test order — no stock was changed on the live store.",
+    Order_ID:id, Buyer_Name:form.name||buyer, Phone:form.phone||"",
+    Address_Line:form.addr||"", Unit_Number:form.unit||"", Postal_Code:form.postal||"",
+    Telegram_Username:form.user||"", Buyer_Entered_Telegram_Username:form.user||"",
+    Buyer_Claims_Package_On_Hold:hasPackage?"YES — verify against hold list before confirming":"No",
+    Mail_Preference:mailMode==="hold"?"Hold my package":"Mail it out now",
+    Subtotal:`$${t.sub.toFixed(2)}`, Discount_Code:promoPct?"MINI10":"None",
+    Discount_Amount:promoPct?`$${t.disc.toFixed(2)}`:"$0.00",
+    Shipping:t.fee?`$${t.fee.toFixed(2)}`:"$0.00", Total:`$${t.total.toFixed(2)}`,
+    Items_Readable:items.join("\n"),
+    "PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition":blockA.join("\n"),
+    "PASTE_INTO_COLUMNS_F_to_H_Buyer_Price_OrderID":blockF.join("\n")
+  };
+}
+async function gotoDone(){
+  stopTimer();const btn=$("#confirmPay");if(btn){btn.disabled=true;btn.textContent="Sending…"}
+  let sent=false;
+  try{const res=await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(NOTIFY_EMAIL)}`,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify(orderEmailPayload())});sent=res.ok}catch(e){console.error(e)}
+  setBack(()=>{cart={};promoPct=0;promoMsg="";updateBar();closePanel();render()});
   $("#panelTitle").textContent="Order confirmed";
   $("#panelBody").innerHTML=`<div class="done"><div class="big">&#10003;</div><h3>Thank you!</h3>
-    <p>Your order has been sent to Fallacy Card Shop. In the live store this records the order and opens <b>@fallacytcg</b> so you can send your payment screenshot.</p></div>`;
+    <p>${sent?"Your order email has been sent to Fallacy Card Shop.":"Order recorded."} Now hop over to Telegram to send your payment screenshot.</p>
+    <a class="tg-link" href="${TG_CHAT}" target="_blank" rel="noopener">Open @fallacytcg &rarr;</a>
+    <p class="step-note">Test build: this sends a real (test-marked) order email but does <b>not</b> change any stock.</p></div>`;
   cart={};updateBar();
 }
 
@@ -599,17 +653,27 @@ function openAbout(){
   $("#panelBody").innerHTML=`<div class="about">
     <img class="about-logo" src="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/fallacyministore-logo.png" alt="Fallacy's Mini Store">
     <h3>Fallacy's Mini Store</h3>
+    <div class="handle-line">@fallacycardshop</div>
     <p class="lead">Singapore-based Pok&eacute;mon TCG singles &mdash; chase cards, daily restocks and live auctions, run out of our Telegram channel.</p>
-    <div class="pill-row"><span class="pill">PayNow</span><span class="pill">Mailing &amp; consolidation</span><span class="pill">Daily restocks</span><span class="pill">Live auctions</span></div>
+    <div class="stat-row" id="statRow"></div>
+    <div class="pill-row"><span class="pill">PayNow</span><span class="pill">Mail consolidation</span><span class="pill">Daily restocks</span><span class="pill">Live auctions</span></div>
     <div class="faq"><h3>FAQ</h3>
-    <p class="q">How do I order?</p><p class="a">Add cards to your cart and check out &mdash; payment is by PayNow.</p>
-    <p class="q">How long do I have to pay?</p><p class="a">Cards are reserved for 5 minutes once you reach the details step. If the timer runs out they go back on sale.</p>
-    <p class="q">How do I send proof of payment?</p><p class="a">Send your payment screenshot to @fallacytcg after checking out.</p>
-    <p class="q">Can I hold my cards and mail later?</p><p class="a">Yes &mdash; choose &ldquo;hold my package&rdquo;. The mailing fee is paid upfront and we&rsquo;ll consolidate with your other wins.</p>
-    <p class="q">Are the photos the actual card?</p><p class="a">Photos are reference images. The condition stated on each listing is what you&rsquo;ll receive.</p>
-    <p class="q">When does new stock drop?</p><p class="a">New cards are released daily &mdash; check the &ldquo;Newly in stock&rdquo; row at the top.</p>
-    <p class="a" style="margin-top:16px">Still stuck? Message <b>@fallacytcg</b>.</p></div></div>`;
-  openPanel();
+    <p class="q">What if I already have a package on hold from auctions?</p><p class="a">Your store and auction purchases are combined into a single package at checkout &mdash; just check the box that you already have a package on hold with us!</p>
+    <p class="q">Do I pay a separate mailing fee if I combine my package?</p><p class="a">Nope!! Mail consolidation works across auctions and mini-store purchases. Once you check the box, the mailing fee shows as $0 &mdash; this is verified separately on our end.</p>
+    <p class="q">Do I need to provide my address every time I check out?</p><p class="a">No. Once you check the box that you have a package with us, all you need is your Telegram username + proof of payment.</p>
+    <p class="q">Why did my order not go through?</p><p class="a">Your order is only sent to us when you tap &ldquo;Confirm Order&rdquo; at the end of the payment page. If you miss this step, we won&rsquo;t be notified and your held cart items are released back into the store.</p>
+    <p class="q">What happens after I send proof of payment?</p><p class="a">We verify payment and you should get a receipt almost immediately (unless we&rsquo;re asleep)! That means your cards have made it into your package. If we didn&rsquo;t receive payment, you&rsquo;ll get an order confirmation &amp; payment-reminder slip instead.</p>
+    <p class="q">Can I keep holding my package, or must I mail out immediately?</p><p class="a">Both options are available at checkout. Note: choosing to mail out on the store triggers mailing for your <b>entire</b> package on hold!!</p>
+    <p class="a" style="margin-top:16px">&#129528; We&rsquo;re continually fine-tuning our mini store &amp; welcome all feedback &mdash; just PM us <b>@fallacytcg</b> &#128149;</p></div></div>`;
+  loadAboutStats();openPanel();
+}
+function loadAboutStats(){
+  fetch("/api/recent-sales?full=1").then(r=>r.json()).then(d=>{
+    const s=(d&&d.stats)||{};const el=$("#statRow");if(!el)return;
+    const cards=Number(s.cards)||0,cust=Number(s.customers)||0,since=s.sinceLabel||"";
+    const tiles=[[cards?cards.toLocaleString()+"+":"","cards sold"],[cust?cust.toLocaleString()+"+":"","subscribers"],[since,"active since"]].filter(t=>t[0]);
+    el.innerHTML=tiles.map(([n,l])=>`<div class="stat-tile"><div class="stat-n">${n}</div><div class="stat-l">${l}</div></div>`).join("");
+  }).catch(()=>{});
 }
 $("#aboutBtn").onclick=openAbout;$("#cartbar").onclick=()=>openCart(closePanel);
 
