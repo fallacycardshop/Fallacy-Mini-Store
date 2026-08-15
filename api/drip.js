@@ -122,6 +122,7 @@ export default async function handler(req, res) {
         // has no image before it goes live.
         photo: group ? group.photo || "" : "",
         cardId: group ? group.cardId : "",
+        price: group ? Number(group.price || 0) : 0,
         // How many copies this release will actually add to the store: the
         // increase for a pending restock, or everything it has for a listing
         // that hasn't been released yet.
@@ -329,6 +330,10 @@ export default async function handler(req, res) {
         // restocked in the same upload, that increase was absorbed — publish
         // them manually if they should have been treated as new stock.
         newlyTracked: newlyTracked.map(describe),
+        // Sorted by CSV position, matching the order these will actually be
+        // scheduled in. Previously this was new listings followed by restocks,
+        // so a restock always sank to the bottom of the list however high its
+        // row sat in the file.
         unscheduled: [
           ...freshListings.map(describe),
           ...restocks.map(r => ({
@@ -337,7 +342,7 @@ export default async function handler(req, res) {
             from: r.from,
             to: r.to,
           })),
-        ],
+        ].sort((a, b) => rowIndexOf(a.groupKey) - rowIndexOf(b.groupKey)),
       };
     };
 
