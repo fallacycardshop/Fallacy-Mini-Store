@@ -294,14 +294,14 @@ const dealCond=p=>inStock(p).find(c=>c.cond!=="Near Mint")||bestCond(p);
 const isSold=p=>inStock(p).length===0;
 const defaultCond=(p,ctx)=>ctx==="deal"?dealCond(p):bestCond(p);
 const nmCond=p=>p.conds.find(c=>c.cond==="Near Mint");
-const setName=p=>p.set.replace(/^[A-Za-z0-9]+\s+/,"");
+const setLabel=s=>String(s||"").replace(/^[A-Za-z0-9]+\s+/,"");   // drop leading set code
+const setName=p=>setLabel(p.set);
 const ck=(id,cond)=>id+"::"+cond;
 const round90=x=>{const r=Math.round(x-0.9)+0.9;return r>0?r:0.9};
 const hasDeal=p=>inStock(p).some(c=>c.cond!=="Near Mint");
-// Rarity is shown only for these categories; a few TTGX ones are relabelled.
-const RAR_MAP={"RR (TTGX)":"Tag Team GX","SR (TTGX)":"SR Tag Team GX","HR (TTGX)":"HR (TTGX)"};
-const RAR_SHOW=new Set(["AR","SAR","CHR","UR","HR","SR","S","SSR","RR","RRR","RR (TTGX)","SR (TTGX)","HR (TTGX)"]);
-const rarLabel=p=>{const r=p.rarity||"";return RAR_MAP[r]||(RAR_SHOW.has(r)?r:"")};
+// Show every rarity except N.A.; only the 3 TTGX labels are renamed.
+const RAR_MAP={"RR (TTGX)":"Tag Team GX","SR (TTGX)":"SR Tag Team GX","HR (TTGX)":"HR Tag Team GX"};
+const rarLabel=p=>{const r=p.rarity||"";if(!r||r==="N.A."||r==="N.A")return"";return RAR_MAP[r]||r};
 const NOTIFY_EMAIL="fallacycardshop@gmail.com";
 const TG_CHAT="https://t.me/fallacytcg";
 
@@ -554,9 +554,11 @@ function openCart(ret){
     <div class="cart-sticky">
       <div class="promo"><input id="promoInput" placeholder="Promo code" value="${promoPct?'MINI10':''}"><button id="promoApply">Apply</button></div>
       ${promoMsg?`<div class="promo-msg ${promoPct?'ok':'no'}">${promoMsg}</div>`:""}
-      <div class="cart-total-line"><span>Cart total${promoPct?" &middot; 10% off":""}</span><span class="ct-amt tag">$${(sub-disc).toFixed(2)}</span></div>
-      <button class="primary" id="toDetails">Continue to details &rarr;</button>
-      <p class="cart-mini-note">Mailing added next step &middot; not reserved yet</p></div>`;
+      <div class="sumrow"><span>Subtotal</span><span class="tag">$${sub.toFixed(2)}</span></div>
+      ${promoPct?`<div class="sumrow"><span>Discount (MINI10)</span><span class="tag">&minus;$${disc.toFixed(2)}</span></div>`:""}
+      <div class="sumrow"><span>Mailing</span><span>calculated at checkout</span></div>
+      <div class="sumrow tot"><span>Cart total</span><span class="tag">$${(sub-disc).toFixed(2)}</span></div>
+      <button class="primary" id="toDetails">Checkout and Payment</button></div>`;
   $("#panelBody").querySelectorAll("[data-cinc]").forEach(b=>b.onclick=()=>{setQty(b.dataset.cinc,b.dataset.c,qtyOf(b.dataset.cinc,b.dataset.c)+1);refreshSku(b.dataset.cinc,b.dataset.c);openCart()});
   $("#panelBody").querySelectorAll("[data-cdec]").forEach(b=>b.onclick=()=>{setQty(b.dataset.cdec,b.dataset.c,qtyOf(b.dataset.cdec,b.dataset.c)-1);refreshSku(b.dataset.cdec,b.dataset.c);openCart()});
   $("#panelBody").querySelectorAll("[data-crm]").forEach(b=>b.onclick=()=>{setQty(b.dataset.crm,b.dataset.c,0);refreshSku(b.dataset.crm,b.dataset.c);openCart()});
@@ -715,15 +717,16 @@ function loadTicker(){
     const cutoff=Date.now()-2*86400000;
     ticker=(Array.isArray(list)?list:[]).filter(s=>!s.timestamp||s.timestamp>=cutoff).map(s=>{
       const cid=(s.key||"").split("::")[0];const p=cid&&byId(cid);const rar=p?rarLabel(p):"";
-      return (s.name||"card")+(rar?" "+rar:"");
+      const main=(s.name||"card")+(rar?" "+rar:"");const set=setLabel(s.set);
+      return `<b>${main}</b>${set?" &middot; "+set:""}`;
     });
   }).catch(()=>{});
 }
 function tick(){
-  let txt="";
-  if(ticker.length)txt=ticker[tickI%ticker.length];
-  else if(CARDS.length){const p=CARDS[Math.floor(Math.random()*CARDS.length)];txt=p.name+(rarLabel(p)?" "+rarLabel(p):"")}
-  if(txt)$("#tick").innerHTML=`Recently purchased: <b>${txt}</b>`;
+  let html="";
+  if(ticker.length)html=ticker[tickI%ticker.length];
+  else if(CARDS.length){const p=CARDS[Math.floor(Math.random()*CARDS.length)];const rar=rarLabel(p);html=`<b>${p.name}${rar?" "+rar:""}</b>${setName(p)?" &middot; "+setName(p):""}`}
+  if(html)$("#tick").innerHTML="Recently purchased: "+html;
   tickI++;
 }
 tick();setInterval(tick,2600);
