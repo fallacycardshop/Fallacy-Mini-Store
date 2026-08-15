@@ -196,8 +196,13 @@
   .mailopt .dot{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);flex:0 0 auto}.mailopt .ml.sel .dot{border-color:var(--accent);background:radial-gradient(var(--accent) 40%,transparent 44%)}
 
   .pay{padding:24px 20px;text-align:center}
+  .pay,.pay *{overflow-wrap:break-word;word-break:normal;max-width:100%}
   .pay .qr{width:230px;height:230px;margin:8px auto 14px;background:#fff;border-radius:16px;padding:12px;box-shadow:var(--shadow)}
   .pay .qr img{width:100%;height:100%;object-fit:contain;display:block}
+  .pay .pay-head{font-size:15px;font-weight:600;color:var(--pink-deep);margin:0 0 2px}
+  .pay .pay-alt{font-size:14px;color:var(--ink-soft);margin:6px 0 10px;line-height:1.5}
+  .pay .pay-small{font-size:12px;color:var(--ink-soft)}
+  .pay .pay-note{font-size:12px;color:var(--ink-soft);margin:0 0 16px;line-height:1.5}
   .pay .amt-big{font-size:30px;font-weight:700;color:var(--ink)}
   .pay .to{font-size:13px;color:var(--ink-soft);margin:2px 0 16px}
   .pay .steps{text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 18px;font-size:13px;color:var(--ink-soft)}
@@ -381,25 +386,43 @@ function railSection(title,sub,list,kind,ctx){
     <div class="rail">${ordered.map(p=>cardHTML(p,ctx)).join("")}${railTile(kind)}</div></div>`;
 }
 function featSection(list){
-  // Featured = 20 cards priced $9.90+, randomised daily (stable for the day).
-  const pool=list.filter(p=>{const d=bestCond(p)||conds(p)[0];return d&&d.price>=9.9});
-  const picked=dailyShuffle(pool).slice(0,20);
-  if(!picked.length)return"";
-  const live=picked.filter(p=>!isSold(p)),sold=picked.filter(isSold);
-  return `<div class="sec"><div class="sec-head"><h2>&#128293; Featured</h2><span class="count">${live.length} cards</span></div>
-    <div class="grid">${live.map(p=>cardHTML(p,"best")).join("")}</div>${soldBlock(sold)}</div>`;
+  // Featured = 20 IN-STOCK cards priced $9.90+, in a stable daily order. We take
+  // the prefix of that order holding the first 20 in-stock, so cards that sell
+  // during the day still appear (as sold) within the featured window.
+  const elig=list.filter(p=>Math.max(...p.conds.map(c=>c.price))>=9.9);
+  const pool=dailyShuffle(elig);
+  const win=[];let live=0;
+  for(const p of pool){if(live>=20)break;win.push(p);if(!isSold(p))live++}
+  if(!win.length)return"";
+  const liveW=win.filter(p=>!isSold(p)),soldW=win.filter(isSold);
+  let body;
+  if(soldW.length<=3){
+    // 3 or fewer sold: grey them out in place.
+    body=`<div class="grid">${arrange(win).map(p=>cardHTML(p,"best")).join("")}</div>`;
+  }else{
+    // 4+ sold: live first, then sold at the bottom — showing an even count
+    // (~2/3) so rows stay complete, the rest collapsed.
+    let sn=Math.ceil(soldW.length*2/3);if(sn%2)sn++;
+    body=`<div class="grid">${arrange(liveW).map(p=>cardHTML(p,"best")).join("")}</div>${soldBlockN(soldW,sn)}`;
+  }
+  return `<div class="sec"><div class="sec-head"><h2>&#128293; Featured</h2><span class="count">${liveW.length} cards</span></div>${body}</div>`;
 }
-function soldBlock(sold){
-  // Sold-out cards live in their OWN 2-column grid, never mixed into the live
-  // grid — so an odd number of live cards can't push a sold card up a row.
+// Sort-aware ordering: honour the sort dropdown, else the daily shuffle.
+const sortActive=()=>$("#sort").value==="low"||$("#sort").value==="high";
+function arrange(list){return sortActive()?sortList(list):dailyShuffle(list)}
+// Sold-out cards in their OWN 2-column grid; show `showN` (kept even by callers
+// so rows stay complete), collapse the rest behind a button.
+function soldBlockN(sold,showN){
   if(!sold.length)return"";
-  let h=`<div class="soldout-head">Sold out (${sold.length})</div><div class="grid">${sold.slice(0,4).map(p=>cardHTML(p,"best")).join("")}</div>`;
-  if(sold.length>4)h+=`<button class="showmore" data-showsold>Show ${sold.length-4} more sold out</button><div class="grid" id="soldHidden" style="display:none">${sold.slice(4).map(p=>cardHTML(p,"best")).join("")}</div>`;
+  showN=Math.max(0,Math.min(showN,sold.length));
+  let h=`<div class="soldout-head">Sold out (${sold.length})</div><div class="grid">${sold.slice(0,showN).map(p=>cardHTML(p,"best")).join("")}</div>`;
+  if(sold.length>showN)h+=`<button class="showmore" data-showsold>Show ${sold.length-showN} more sold out</button><div class="grid" id="soldHidden" style="display:none">${sold.slice(showN).map(p=>cardHTML(p,"best")).join("")}</div>`;
   return h;
 }
+function soldBlock(sold){return soldBlockN(sold,4)}
 function allSection(list){
   if(!list.length)return"";
-  const live=dailyShuffle(list.filter(p=>!isSold(p)));
+  const live=arrange(list.filter(p=>!isSold(p)));
   const sold=list.filter(isSold);
   return `<div class="sec"><div class="sec-head"><h2>All cards</h2><span class="count">${live.length} in stock</span></div>
     <div class="grid">${live.map(p=>cardHTML(p,"best")).join("")}</div>${soldBlock(sold)}</div>`;
@@ -438,7 +461,7 @@ function render(){
       railSection("&#127912; Art Rares","Full-art alt prints &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="AR"),"ar","best")+
       railSection("&#127775; Baby Shinies","&ldquo;S&rdquo; rarity shinies &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="S"),"s","best")+
       railSection("&#127991;&#65039; Discounted","Played copies at a lower price &mdash; swipe &rarr;",notNew.filter(hasDeal),"disc","deal")+
-      allSection(notNew);
+      allSection(notNew.filter(p=>!(p.rarity==="SAR"||p.rarity==="AR"||p.rarity==="S"||hasDeal(p))));
   }
   wireActs(c);
 }
@@ -598,12 +621,17 @@ function gotoPay(){
   const t=totals();$("#panelTitle").textContent="Pay by PayNow";setBack(gotoDetails);
   startTimer(5*60,()=>{bump("Payment window expired");openCart()});
   $("#panelBody").innerHTML=`<div class="pay">
+    <p class="pay-head">Scan the QR code below to make payment</p>
     <div class="qr"><img src="${QR_SRC}" alt="PayNow QR"></div>
+    <p class="pay-alt">Or PayNow / Paylah to <b>8963 1819</b><br><span class="pay-small">(PayNow: CHXX YUX SHEXX RYXX &nbsp;&middot;&nbsp; Paylah: fallacytcg)</span></p>
     <div class="amt-big tag">$${t.total.toFixed(2)}</div>
-    <div class="to">PayNow to Fallacy Card Shop</div>
-    <ol class="steps"><li>Scan the QR with your banking app.</li><li>Pay the exact amount above.</li><li>Tap <b>I&rsquo;ve paid</b> &mdash; you&rsquo;ll be taken to our chat to send your screenshot.</li></ol>
-    <button class="primary" id="confirmPay">I&rsquo;ve paid &mdash; confirm order</button>
-    <p class="step-note">Confirming records your order and opens @fallacytcg to send proof.</p></div>`;
+    <ol class="steps">
+      <li><b>Step 1:</b> Screenshot your payment as proof.</li>
+      <li><b>Step 2:</b> Tap <b>Confirm order</b> below.</li>
+      <li><b>Step 3:</b> Send your screenshot to our Telegram DMs <b>@fallacytcg</b> within 24 hours.</li>
+    </ol>
+    <p class="pay-note">Your order will only be processed once we receive your screenshot and verify payment.</p>
+    <button class="primary" id="confirmPay">Confirm order</button></div>`;
   $("#confirmPay").onclick=gotoDone;
 }
 // Builds the FormSubmit order email — same field shape as the live store, so the
