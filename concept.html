@@ -1,8 +1,4 @@
-<!DOCTYPE html>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
-<title>Fallacy Card Shop</title>
+<title>Fallacy Store Concept</title>
 <style>
   :root{
     --ground:#fdf3f7;--frame:#f7dde9;--surface:#fff;--surface-2:#fff7fb;
@@ -41,15 +37,6 @@
   /* phone is a fixed-height flex column; only .content scrolls, so header + search + cart stay pinned */
   .phone{width:100%;max-width:440px;position:relative;background:var(--surface-2);flex:1 1 auto;min-height:0;display:flex;flex-direction:column;box-shadow:var(--shadow-lg);overflow:hidden}
   @media(min-width:520px){.phone{margin:0 0 16px;border-radius:24px;border:1px solid var(--frame)}}
-  /* top promo banner — collapses as you scroll down */
-  .promo-banner{flex:0 0 auto;background:linear-gradient(180deg,#fdeef4,#fbe3ee);color:var(--pink-deep);text-align:center;padding:12px 16px;font-size:13px;line-height:1.55;font-weight:600;overflow:hidden;max-height:180px;transition:max-height .3s ease,padding .3s ease,opacity .2s ease}
-  .promo-banner.collapsed{max-height:0;padding-top:0;padding-bottom:0;opacity:0}
-  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .promo-banner{background:linear-gradient(180deg,#2a1420,#25121c)}}
-  :root[data-theme="dark"] .promo-banner{background:linear-gradient(180deg,#2a1420,#25121c)}
-  .promo-banner .promo-code{display:inline-block;background:var(--surface);border:1px dashed var(--accent);border-radius:8px;padding:2px 10px;margin:0 3px;font-weight:800;letter-spacing:.03em;color:var(--pink-deep);cursor:pointer;white-space:nowrap}
-  .promo-banner .promo-code:active{transform:scale(.97)}
-  .promo-banner .promo-code.copied{background:var(--fresh-bg);border-color:var(--fresh);color:var(--fresh)}
-  .promo-banner .promo-copy-hint{display:block;font-style:italic;font-weight:500;color:var(--ink-soft);font-size:11.5px;margin-top:5px}
 
   .scroller{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;position:relative}
   .tgbar{display:flex;align-items:center;gap:10px;padding:7px 14px;background:var(--surface)}
@@ -67,10 +54,7 @@
   #q{width:100%;padding:9px 12px 9px 33px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:14px;background:var(--surface-2);color:var(--ink)}
   #q:focus{outline:2px solid var(--accent);outline-offset:1px}
   .chips{display:flex;gap:7px;margin-top:7px;overflow-x:auto;padding-bottom:1px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}
-  .chips select{flex:1 1 0;min-width:0;font:inherit;font-size:12px;color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:6px 10px;-webkit-appearance:none;appearance:none;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}
-  .chips #sort{flex:1.15 1 0}.chips #rarity{flex:.72 1 0}.chips #set{flex:1.25 1 0}
-  .clear-x{flex:0 0 auto;width:32px;height:32px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink-soft);font-size:18px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
-  .clear-x:active{background:var(--line)}
+  .chips select,.chips .toggle{flex:0 0 auto;font:inherit;font-size:12.5px;color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:6px 11px;-webkit-appearance:none;appearance:none}
   .chips .toggle{cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none}
   .chips .toggle .sw{width:26px;height:16px;border-radius:999px;background:var(--line);position:relative;transition:.15s}
   .chips .toggle .sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:.15s}
@@ -174,14 +158,12 @@
   .co-right .incart{font-size:11px;font-weight:700;color:var(--fresh);background:var(--fresh-bg);border-radius:6px;padding:2px 7px}
   .sel-dot{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);flex:0 0 auto}
   .cond-opt.sel .sel-dot{border-color:var(--accent);background:radial-gradient(var(--accent) 42%,transparent 46%)}
-  .detail-actions{display:flex;gap:10px;padding:16px 0 26px}
+  .detail-actions{display:flex;gap:10px;padding:16px 20px 26px}
   .add-order{flex:1;height:50px;border:none;border-radius:12px;background:var(--accent);color:var(--on-accent);font:inherit;font-weight:700;font-size:15px;cursor:pointer}
   .add-order:disabled{background:var(--sold-bg);color:var(--sold);cursor:not-allowed}
-  .view-cart-sm{flex:1;height:50px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--pink-deep);font:inherit;font-weight:700;font-size:15px;cursor:pointer}
+  .view-cart-sm{flex:0 0 auto;height:50px;padding:0 15px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--pink-deep);font:inherit;font-weight:600;font-size:13px;cursor:pointer}
 
   .cart-empty{padding:60px 24px;text-align:center;color:var(--ink-soft)}
-  .cart-notice{margin:12px 14px 0;padding:11px 13px;background:var(--scarce-bg);border:1px solid var(--scarce);border-radius:11px;color:var(--scarce);font-size:12.5px;line-height:1.5}
-  .cart-notice b{color:var(--scarce)}
   .cart-list{padding:6px 14px}
   .cart-item{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
   /* each row is exactly the height of the card image */
@@ -204,10 +186,9 @@
   .promo{padding:14px 18px;display:flex;gap:8px}
   .promo input{flex:1;padding:11px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:14px;background:var(--surface-2);color:var(--ink);text-transform:uppercase}
   .promo button{flex:0 0 auto;padding:0 16px;border:1px solid var(--accent);background:var(--surface);color:var(--accent);font:inherit;font-weight:600;border-radius:10px;cursor:pointer}
-  .promo-msg{font-size:12px;padding:2px 2px 8px}.promo-msg.ok{color:var(--fresh)}.promo-msg.no{color:var(--scarce)}
+  .promo-msg{font-size:12px;padding:0 18px 6px}.promo-msg.ok{color:var(--fresh)}.promo-msg.no{color:var(--scarce)}
   .step-foot{padding:14px 18px 20px;border-top:1px solid var(--line);background:var(--surface)}
   .sumrow{display:flex;justify-content:space-between;font-size:14px;margin-bottom:5px;color:var(--ink-soft)}.sumrow .tag{color:var(--ink)}
-  .sumrow.discount,.sumrow.discount .tag{color:var(--fresh);font-weight:600}
   .sumrow.tot{font-size:17px;font-weight:700;color:var(--ink);margin:8px 0 14px}
   .primary{width:100%;height:50px;border:none;border-radius:13px;background:var(--accent);color:var(--on-accent);font:inherit;font-weight:700;font-size:16px;cursor:pointer}
   .primary:disabled{background:var(--sold-bg);color:var(--sold);cursor:not-allowed}
@@ -235,32 +216,6 @@
   .pay .to{font-size:13px;color:var(--ink-soft);margin:2px 0 16px}
   .pay .steps{text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 20px 16px 38px;margin:0 0 18px;font-size:13px;color:var(--ink-soft)}
   .pay .steps li{margin-bottom:6px}
-  /* order confirmation summary */
-  .oc{padding:0 0 24px}
-  .oc-head{background:var(--surface-2);padding:22px 20px 18px;border-bottom:1px solid var(--line)}
-  .oc-head h2{margin:0;font-size:26px;color:var(--pink-deep);font-weight:800}
-  .oc-store{font-size:14px;color:var(--ink-soft);margin-top:2px}
-  .oc-id{font-size:13px;color:var(--ink-soft);margin-top:2px;font-variant-numeric:tabular-nums}
-  .oc-cust{padding:16px 20px 4px}
-  .oc-cust-name{font-size:16px;font-weight:700;color:var(--ink);margin:0}
-  .oc-cust-line{font-size:12.5px;color:var(--ink-soft);margin:2px 0 0}
-  .oc-lines{padding:8px 20px 0}
-  .oc-line{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
-  .oc-line:first-child{border-top:none}
-  .oc-name{font-size:15px;font-weight:700;color:var(--ink);margin:0}
-  .oc-x{color:var(--ink-soft);font-weight:600}
-  .oc-meta{font-size:12px;color:var(--ink-soft);margin:2px 0 0}
-  .oc-price{font-size:15px;font-weight:700;color:var(--ink);white-space:nowrap}
-  .oc-sum{padding:12px 20px 4px;border-top:1px solid var(--line);margin-top:4px}
-  .oc-sr{display:flex;justify-content:space-between;font-size:14px;color:var(--ink-soft);margin-bottom:7px}
-  .oc-sr .tag{color:var(--ink)}
-  .oc-sr.discount,.oc-sr.discount .tag{color:var(--fresh);font-weight:600}
-  .oc-total{font-size:19px;font-weight:800;color:var(--ink);margin-top:2px}
-  .oc-foot{margin:14px 20px 0;background:var(--surface-2);border-radius:14px;padding:16px}
-  .oc-foot-h{margin:0;font-weight:700;color:var(--pink-deep);font-size:15px}
-  .oc-foot-p{margin:4px 0 0;font-size:13px;color:var(--ink-soft)}
-  .oc-actions{padding:16px 20px 0}
-  .oc-verify{font-size:12px;color:var(--ink-soft);text-align:center;margin:12px 0 0;line-height:1.5}
   .done{padding:50px 24px;text-align:center}
   .done .big{width:74px;height:74px;border-radius:50%;background:var(--fresh-bg);color:var(--fresh);display:grid;place-items:center;margin:0 auto 16px;font-size:38px}
   .done h3{color:var(--ink);margin:0 0 6px}.done p{color:var(--ink-soft);font-size:14px}
@@ -285,8 +240,9 @@
   @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 
+<div class="concept">Concept preview &mdash; <b>Fallacy's Mini Store</b>. Tap a card for conditions, or add straight to cart.</div>
+
 <div class="phone">
-  <div class="promo-banner" id="promoBanner" style="display:none;"><span id="promoText"></span></div>
   <div class="scroller" id="scroller">
   <div class="tgbar">
     <div class="logo" id="logo"><img src="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/fallacyministore-logo.png" alt="Fallacy"></div>
@@ -300,10 +256,10 @@
       <input id="q" type="search" inputmode="search" placeholder="Search cards, sets…" autocomplete="off">
     </div>
     <div class="chips">
+      <label class="toggle" id="instock"><span class="sw"></span>In stock</label>
       <select id="sort"><option value="curated">Sort: Home page</option><option value="low">Price: low to high</option><option value="high">Price: high to low</option></select>
       <select id="rarity"><option value="">All rarities</option></select>
       <select id="set"><option value="">All sets</option></select>
-      <button class="clear-x" id="clearFiltersBtn" aria-label="Clear all filters" title="Clear all filters">&times;</button>
     </div>
   </div>
   <div class="content" id="content"></div>
@@ -329,8 +285,7 @@ const RANK={"Near Mint":0,"Lightly Played":1,"Moderately Played":2,"Heavily Play
 const REF_MULT={"Lightly Played":1.3,"Moderately Played":1.6,"Heavily Played":2};
 const CART_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>';
 const MAIL_FEE=3;
-let cart={};let only=null;let savedScroll=0;let appliedDiscount=null;let promoMsg="";let promoText="";
-function discountAmt(sub){if(!appliedDiscount)return 0;return appliedDiscount.type==="percent"?sub*(Number(appliedDiscount.value)||0)/100:Math.min(Number(appliedDiscount.value)||0,sub)}
+let cart={};let only=null;let savedScroll=0;let promoPct=0;let promoMsg="";
 
 const conds=p=>[...p.conds].sort((a,b)=>RANK[a.cond]-RANK[b.cond]);
 const inStock=p=>conds(p).filter(c=>c.stock>0);
@@ -350,41 +305,6 @@ const rarLabel=p=>{const r=p.rarity||"";if(!r||r==="N.A."||r==="N.A")return"";re
 const NOTIFY_EMAIL="fallacycardshop@gmail.com";
 const TG_CHAT="https://t.me/fallacytcg";
 
-// --- Telegram Mini App identity (prefill + order record); null in a browser ---
-let telegramUser=null,telegramInitData=null;
-if(window.Telegram&&window.Telegram.WebApp){const tg=window.Telegram.WebApp;try{tg.ready();tg.expand()}catch(e){}
-  telegramUser=tg.initDataUnsafe&&tg.initDataUnsafe.user?tg.initDataUnsafe.user:null;telegramInitData=tg.initData||null}
-function openTg(url){const tg=window.Telegram&&window.Telegram.WebApp;if(tg&&tg.openTelegramLink){tg.openTelegramLink(url)}else{window.open(url,"_blank")}}
-
-// --- Funnel analytics: one HINCRBY per event on the recent-sales endpoint ---
-function trackEvent(name,data){
-  try{if(typeof window.va==="function")window.va("event",{name,...(data||{})})}catch(e){}
-  try{fetch("/api/recent-sales",{method:"POST",headers:{"Content-Type":"application/json"},keepalive:true,body:JSON.stringify({event:name,...(data||{})})})}catch(e){}
-}
-
-// --- Reservation (real stock hold, TTL-expiring) ---
-const RESERVATION_KEY="fallacy_active_reservation";
-let reservationId=null;
-function newResId(){return (window.crypto&&crypto.randomUUID)?crypto.randomUUID():"res_"+Date.now()+"_"+Math.random().toString(36).slice(2)}
-function rememberReservation(id){try{if(id)localStorage.setItem(RESERVATION_KEY,id);else localStorage.removeItem(RESERVATION_KEY)}catch(e){}}
-function reserveItemList(){return Object.entries(cart).filter(([,q])=>q>0).map(([k,q])=>({key:k,quantity:q}))}
-function releaseReservation(){if(!reservationId)return;const id=reservationId;reservationId=null;rememberReservation(null);
-  try{fetch("/api/release-reservation",{method:"POST",headers:{"Content-Type":"application/json"},keepalive:true,body:JSON.stringify({reservationId:id})})}catch(e){}}
-
-// On a reserve conflict, auto-fix the cart from the server's `unavailable` list:
-// trim to what's left (keeps at least 1) or remove a fully sold-out line, and
-// return a note naming exactly what changed.
-let cartNotice="";
-function applyStockFix(list){
-  const notes=[];
-  (list||[]).forEach(u=>{const k=u.key;if(!(k in cart))return;const avail=Math.max(Number(u.available)||0,0);const name=u.name||k.split("::")[0];const cond=k.split("::")[1]||"";
-    if(avail<=0){delete cart[k];notes.push(`<b>${name}</b> (${cond}) just sold out — removed from your cart.`)}
-    else if(cart[k]>avail){cart[k]=avail;notes.push(`<b>${name}</b> (${cond}) — only ${avail} left, reduced to ${avail}.`)}
-  });
-  saveCart();updateBar();
-  return notes.join(" ");
-}
-
 // Group the flat /api/products list (one row per CardID+Condition) into cards.
 function groupProducts(list){
   const m=new Map();
@@ -403,38 +323,13 @@ function boot(){
   $("#content").innerHTML='<div class="empty">Loading the store…</div>';
   fetch("/api/products").then(r=>r.json()).then(d=>{
     CARDS=groupProducts(Array.isArray(d)?d:(d.products||[]));
-    promoText=(!Array.isArray(d)&&d&&typeof d.promoText==="string")?d.promoText:"";
-    loadCart();
     init();
   }).catch(err=>{console.error(err);$("#content").innerHTML='<div class="empty">Couldn&rsquo;t load the store. Pull to refresh.</div>'});
 }
-// Top promo banner from the admin's promoText — highlights an ALL-CAPS code as tap-to-copy.
-function renderPromoBanner(){
-  const banner=$("#promoBanner"),txt=$("#promoText");if(!banner||!txt)return;
-  if(!promoText){banner.style.display="none";txt.textContent="";return}
-  txt.textContent=promoText;   // textContent first so stray brackets can't break the page
-  txt.innerHTML=txt.innerHTML.replace(/\b([A-Z][A-Z0-9]{4,19})\b/g,'<span class="promo-code" role="button" tabindex="0" data-code="$1">$1</span>');
-  const codes=txt.querySelectorAll(".promo-code");codes.forEach(el=>el.onclick=()=>copyPromoCode(el));
-  if(codes.length&&!banner.querySelector(".promo-copy-hint")){const h=document.createElement("span");h.className="promo-copy-hint";h.textContent="Tap the code to copy it";banner.appendChild(h)}
-  banner.style.display="block";
-}
-function copyPromoCode(el){
-  if(el.classList.contains("copied"))return;       // ignore taps during the "Copied!" flash
-  const code=el.dataset.code||el.textContent;       // always the real code, never the "Copied!" label
-  const done=()=>{el.classList.add("copied");el.textContent="Copied!";setTimeout(()=>{el.classList.remove("copied");el.textContent=code},1200)};
-  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(code).then(done).catch(done)}else done();
-}
-function saveCart(){try{localStorage.setItem("fallacyCart",JSON.stringify(cart))}catch(e){}}
-function loadCart(){
-  let saved={};try{saved=JSON.parse(localStorage.getItem("fallacyCart")||"{}")}catch(e){}
-  cart={};
-  Object.entries(saved).forEach(([k,q])=>{const[cid,cond]=k.split("::");const p=byId(cid);if(!p)return;const c=p.conds.find(x=>x.cond===cond);if(c&&c.stock>0)cart[k]=Math.min(Number(q)||0,c.stock)});
-}
 function init(){
-  if(telegramUser&&telegramUser.username&&!form.user){form.user="@"+telegramUser.username;trackEvent("telegram_prefill",{username:"yes"})}
   fillSel($("#rarity"),[...new Set(CARDS.map(c=>c.rarity))].filter(Boolean).sort());
   fillSel($("#set"),[...new Set(CARDS.map(setName))].filter(Boolean).sort());
-  render();updateBar();loadTicker();renderPromoBanner();
+  render();updateBar();loadTicker();
 }
 
 // Reference ("was") price for a discounted card: in-stock NM price if we have one,
@@ -457,7 +352,7 @@ function addCart(id,cond){const c=byId(id).conds.find(x=>x.cond===cond);if(!c||c
 function setQty(id,cond,q){const c=byId(id).conds.find(x=>x.cond===cond);const v=Math.max(0,Math.min(q,c.stock));if(v<=0)delete cart[ck(id,cond)];else cart[ck(id,cond)]=v;updateBar()}
 function cartCount(){return Object.values(cart).reduce((a,b)=>a+b,0)}
 function subtotal(){let t=0;Object.entries(cart).forEach(([k,q])=>{const[id,cond]=k.split("::");t+=byId(id).conds.find(x=>x.cond===cond).price*q});return t}
-function updateBar(){saveCart();$("#cn").textContent=cartCount();$("#tot").textContent="$"+subtotal().toFixed(2)}
+function updateBar(){$("#cn").textContent=cartCount();$("#tot").textContent="$"+subtotal().toFixed(2)}
 
 function priceHTML(p,ctx){
   const dc=defaultCond(p,ctx);if(!dc)return"";
@@ -507,7 +402,7 @@ function featSection(list){
   // Featured = 20 IN-STOCK cards priced $9.90+, randomised daily. No sold-out
   // block here — as cards sell, fresh ones take their place.
   const pool=list.filter(p=>!isSold(p)&&Math.max(...p.conds.map(c=>c.price))>=9.9);
-  const picked=dailyShuffle(pool).slice(0,10);
+  const picked=dailyShuffle(pool).slice(0,20);
   if(!picked.length)return"";
   return `<div class="sec"><div class="sec-head"><h2>&#128293; Featured</h2><span class="count">${picked.length} cards</span></div>
     <div class="grid">${picked.map(p=>cardHTML(p,"best")).join("")}</div></div>`;
@@ -532,10 +427,11 @@ function allSection(list){
   return `<div class="sec"><div class="sec-head"><h2>All cards</h2><span class="count">${live.length} in stock</span></div>
     <div class="grid">${live.map(p=>cardHTML(p,"best")).join("")}</div>${soldBlock(sold)}</div>`;
 }
-function activeFilters(){return $("#q").value.trim()||$("#rarity").value||$("#set").value||only||sortActive()}
+function activeFilters(){return $("#q").value.trim()||$("#rarity").value||$("#set").value||$("#instock").classList.contains("on")||only||sortActive()}
 function matchP(p){
   const qv=$("#q").value.trim().toLowerCase();
   if(qv&&!(p.name.toLowerCase().includes(qv)||p.set.toLowerCase().includes(qv)))return false;
+  if($("#instock").classList.contains("on")&&isSold(p))return false;
   if($("#rarity").value&&p.rarity!==$("#rarity").value)return false;
   if($("#set").value&&setName(p)!==$("#set").value)return false;
   if(only==="new"&&!p.isNew)return false;
@@ -550,7 +446,7 @@ function render(){
   if(activeFilters()){
     const res=sortList(CARDS.filter(matchP));const liveR=res.filter(p=>!isSold(p)),soldR=res.filter(isSold);
     const ctx=only==="disc"?"deal":"best";
-    let label="Results";if(only==="new")label="Newly in stock &amp; restocked";else if(only==="disc")label="Discounted";else if($("#rarity").value==="SAR")label="Special Art Rares";else if($("#rarity").value==="AR")label="Art Rares";else if($("#rarity").value==="S")label="Baby Shinies";else if(!$("#q").value.trim()&&!$("#set").value)label="All cards";
+    let label="Results";if(only==="new")label="Newly in stock &amp; restocked";else if(only==="disc")label="Discounted";else if($("#rarity").value==="SAR")label="Special Art Rares";else if($("#rarity").value==="AR")label="Art Rares";else if($("#rarity").value==="S")label="Baby Shinies";else if(!$("#q").value.trim()&&!$("#set").value&&!$("#instock").classList.contains("on"))label="All cards";
     c.innerHTML=`<div class="results-head"><button class="backbtn" data-back>&#8592; Back</button><h2>${label} (${res.length})</h2></div>
       ${res.length?`<div class="grid">${liveR.map(p=>cardHTML(p,ctx)).join("")}</div>${soldBlock(soldR)}`:`<div class="empty">No cards match &mdash; try clearing a filter.</div>`}
       <div class="results-foot"><button class="backbtn" data-back>&#8592; Back to browsing</button></div>`;
@@ -585,11 +481,11 @@ function seeAll(kind){savedScroll=$("#scroller").scrollTop;
   else if(kind==="s")$("#rarity").value="S";
   else if(kind==="disc")only="disc";
   render()}
-function clearFilters(){only=null;$("#q").value="";$("#rarity").value="";$("#set").value="";$("#sort").value="curated";render();$("#scroller").scrollTop=savedScroll;savedScroll=0}
+function clearFilters(){only=null;$("#q").value="";$("#rarity").value="";$("#set").value="";$("#sort").value="curated";$("#instock").classList.remove("on");render();$("#scroller").scrollTop=savedScroll;savedScroll=0}
 
 // back-to-top
 const scrollEl=$("#scroller"),toTop=$("#totop");
-scrollEl.addEventListener("scroll",()=>{toTop.classList.toggle("show",scrollEl.scrollTop>320);$("#promoBanner").classList.toggle("collapsed",scrollEl.scrollTop>24)});
+scrollEl.addEventListener("scroll",()=>{toTop.classList.toggle("show",scrollEl.scrollTop>320)});
 toTop.onclick=()=>scrollEl.scrollTo({top:0,behavior:"smooth"});
 
 // ---------- panel plumbing ----------
@@ -645,8 +541,7 @@ function openCart(ret){
   if(ret)cartReturn=ret;
   stopTimer();setBack(cartReturn);$("#panelTitle").textContent="Your cart";
   const entries=Object.entries(cart).filter(([,q])=>q>0);
-  const noticeHTML=cartNotice?`<div class="cart-notice">${cartNotice}</div>`:"";cartNotice="";
-  if(!entries.length){$("#panelBody").innerHTML=`${noticeHTML}<div class="cart-empty"><p>Your cart is empty.</p><p style="font-size:13px">Add cards and they&rsquo;ll show up here.</p></div>`;openPanel();return}
+  if(!entries.length){$("#panelBody").innerHTML=`<div class="cart-empty"><p>Your cart is empty.</p><p style="font-size:13px">Add cards and they&rsquo;ll show up here.</p></div>`;openPanel();return}
   const items=entries.map(([k,q])=>{const[id,cond]=k.split("::");const p=byId(id);const c=p.conds.find(x=>x.cond===cond);const line=c.price*q;
     return `<div class="cart-item"><div class="th"><img src="${p.img}" alt=""><div class="wm"></div></div>
       <div class="ci-body"><div>
@@ -654,32 +549,20 @@ function openCart(ret){
         <p class="ci-meta">${rarLabel(p)?`<span class="ci-rar">${rarLabel(p)}</span> &middot; `:""}${setName(p)}</p></div>
         <div class="ci-row"><div class="qadj"><button data-cdec="${id}" data-c="${cond}">&minus;</button><span class="qn tag">${q}</span><button data-cinc="${id}" data-c="${cond}" ${q>=c.stock?"disabled":""}>+</button></div><span class="ci-line tag">$${line.toFixed(2)}</span><button class="ci-x" data-crm="${id}" data-c="${cond}" aria-label="Remove">&times;</button></div>
       </div></div>`}).join("");
-  const sub=subtotal();const disc=discountAmt(sub);
-  $("#panelBody").innerHTML=`${noticeHTML}<div class="cart-list">${items}</div>
+  const sub=subtotal();const disc=sub*promoPct;
+  $("#panelBody").innerHTML=`<div class="cart-list">${items}</div>
     <div class="cart-sticky">
-      <div class="promo"><input id="promoInput" placeholder="Promo code" value="${appliedDiscount?appliedDiscount.code:''}"><button id="promoApply">Apply</button></div>
-      ${promoMsg?`<div class="promo-msg ${appliedDiscount?'ok':'no'}">${promoMsg}</div>`:""}
+      <div class="promo"><input id="promoInput" placeholder="Promo code" value="${promoPct?'MINI10':''}"><button id="promoApply">Apply</button></div>
+      ${promoMsg?`<div class="promo-msg ${promoPct?'ok':'no'}">${promoMsg}</div>`:""}
       <div class="sumrow"><span>Subtotal</span><span class="tag">$${sub.toFixed(2)}</span></div>
-      ${appliedDiscount?`<div class="sumrow discount"><span>Discount (${appliedDiscount.code})</span><span class="tag">&minus;$${disc.toFixed(2)}</span></div>`:""}
+      ${promoPct?`<div class="sumrow"><span>Discount (MINI10)</span><span class="tag">&minus;$${disc.toFixed(2)}</span></div>`:""}
       <div class="sumrow"><span>Mailing</span><span>Calculated at checkout</span></div>
       <div class="sumrow tot"><span>Cart total</span><span class="tag">$${(sub-disc).toFixed(2)}</span></div>
       <button class="primary" id="toDetails">Checkout and Payment</button></div>`;
   $("#panelBody").querySelectorAll("[data-cinc]").forEach(b=>b.onclick=()=>{setQty(b.dataset.cinc,b.dataset.c,qtyOf(b.dataset.cinc,b.dataset.c)+1);refreshSku(b.dataset.cinc,b.dataset.c);openCart()});
   $("#panelBody").querySelectorAll("[data-cdec]").forEach(b=>b.onclick=()=>{setQty(b.dataset.cdec,b.dataset.c,qtyOf(b.dataset.cdec,b.dataset.c)-1);refreshSku(b.dataset.cdec,b.dataset.c);openCart()});
   $("#panelBody").querySelectorAll("[data-crm]").forEach(b=>b.onclick=()=>{setQty(b.dataset.crm,b.dataset.c,0);refreshSku(b.dataset.crm,b.dataset.c);openCart()});
-  $("#promoApply").onclick=async()=>{
-    const v=$("#promoInput").value.trim();if(!v){appliedDiscount=null;promoMsg="";return openCart()}
-    $("#promoApply").disabled=true;
-    try{
-      const res=await fetch("/api/validate-discount",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:v,subtotal:sub})});
-      const d=await res.json();
-      if(d.valid){appliedDiscount={code:v.toUpperCase(),type:d.type,value:d.value};promoMsg=appliedDiscount.type==="percent"?`${appliedDiscount.value}% off applied.`:`$${appliedDiscount.value} off applied.`}
-      else if(d.reason==="minimum_not_met"){appliedDiscount=null;promoMsg=`Minimum spend $${d.minimumRequired} to use a code.`}
-      else if(d.reason==="expired"){appliedDiscount=null;promoMsg="This promotion has ended."}
-      else{appliedDiscount=null;promoMsg="This code isn’t valid."}
-    }catch(e){appliedDiscount=null;promoMsg="Couldn’t check that code — try again."}
-    openCart();
-  };
+  $("#promoApply").onclick=()=>{const v=$("#promoInput").value.trim().toUpperCase();if(v==="MINI10"&&sub>=10){promoPct=0.1;promoMsg="Promo applied — 10% off."}else if(v){promoPct=0;promoMsg=sub<10?"Minimum spend $10 for a promo code.":"That code isn’t valid."}else{promoPct=0;promoMsg=""}openCart()};
   $("#toDetails").onclick=gotoDetails;
   openPanel();
 }
@@ -687,25 +570,12 @@ function openCart(ret){
 // ---------- step 2: mailing details (RESERVED, 5-min timer) ----------
 let hasPackage=false,mailMode="hold",form={user:"",name:"",phone:"",addr:"",unit:"",postal:""};
 const esc=s=>String(s||"").replace(/"/g,"&quot;");
-async function gotoDetails(){
-  const btn=$("#toDetails");if(btn){btn.disabled=true;btn.textContent="Reserving…"}
-  reservationId=newResId();
-  let r=null;try{r=await fetch("/api/reserve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reservationId,items:reserveItemList()})})}catch(e){}
-  if(btn){btn.disabled=false;btn.textContent="Checkout and Payment"}
-  if(!r||!r.ok){
-    reservationId=null;
-    if(r&&r.status===409){const d=await r.json().catch(()=>({}));cartNotice=applyStockFix(d.unavailable)||"Some items are no longer available — your cart was updated.";trackEvent("checkout_blocked",{reason:"stock_gone"});openCart();return}
-    trackEvent("checkout_blocked",{reason:"reserve_failed"});bump("Couldn’t reserve your items — please try again");return;
-  }
-  rememberReservation(reservationId);trackEvent("payment_shown",{items:cartCount()});
-  openDetailsStep();
-}
-function openDetailsStep(){
-  $("#panelTitle").textContent="Your details";setBack(()=>{releaseReservation();openCart()});
-  startTimer(5*60,()=>{releaseReservation();bump("Reservation expired");openCart()});
+function gotoDetails(){
+  $("#panelTitle").textContent="Your details";setBack(()=>openCart());
+  startTimer(5*60,()=>{bump("Reservation expired");openCart()});
   drawDetails();openPanel();
 }
-function totals(){const sub=subtotal();const disc=discountAmt(sub);const fee=hasPackage?0:MAIL_FEE;return{sub,disc,fee,total:sub-disc+fee}}
+function totals(){const sub=subtotal();const disc=sub*promoPct;const fee=hasPackage?0:MAIL_FEE;return{sub,disc,fee,total:sub-disc+fee}}
 function detailsValid(){
   if(!form.user.trim())return false;
   if(!hasPackage&&["name","phone","addr","unit","postal"].some(k=>!form[k].trim()))return false;
@@ -734,7 +604,7 @@ function drawDetails(){
     </div>
     <div class="step-foot">
       <div class="sumrow"><span>Subtotal</span><span class="tag">$${t.sub.toFixed(2)}</span></div>
-      ${appliedDiscount?`<div class="sumrow discount"><span>Discount (${appliedDiscount.code})</span><span class="tag">&minus;$${t.disc.toFixed(2)}</span></div>`:""}
+      ${promoPct?`<div class="sumrow"><span>Promo</span><span class="tag">&minus;$${t.disc.toFixed(2)}</span></div>`:""}
       <div class="sumrow"><span>Mailing fee</span><span class="tag">${t.fee?"$"+t.fee.toFixed(2):"Waived"}</span></div>
       <div class="sumrow tot"><span>Total</span><span class="tag">$${t.total.toFixed(2)}</span></div>
       <button class="primary" id="toPay">Proceed to Pay &rarr;</button>
@@ -749,8 +619,8 @@ function drawDetails(){
 
 // ---------- step 3: PayNow (5-min timer) ----------
 function gotoPay(){
-  const t=totals();$("#panelTitle").textContent="Pay by PayNow";setBack(openDetailsStep);
-  startTimer(5*60,()=>{releaseReservation();bump("Payment window expired");openCart()});
+  const t=totals();$("#panelTitle").textContent="Pay by PayNow";setBack(gotoDetails);
+  startTimer(5*60,()=>{bump("Payment window expired");openCart()});
   $("#panelBody").innerHTML=`<div class="pay">
     <p class="pay-head">Scan the QR code below to make payment</p>
     <div class="qr"><img src="${QR_SRC}" alt="PayNow QR"></div>
@@ -765,96 +635,45 @@ function gotoPay(){
     <button class="primary" id="confirmPay">Confirm order</button></div>`;
   $("#confirmPay").onclick=gotoDone;
 }
-// The full order record — posted with /api/confirm-order (authoritative backup)
-// AND to FormSubmit (email). Same field shape the admin Recent Orders parses.
-function orderRecord(orderId){
-  const t=totals();
+// Builds the FormSubmit order email — same field shape as the live store, so the
+// admin Recent Orders panel would parse it. Subject is prefixed [CONCEPT TEST].
+function orderEmailPayload(){
+  const id=Date.now();const t=totals();
   const entries=Object.entries(cart).filter(([,q])=>q>0);
-  const d=new Date(orderId);const dateStr=`${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+  const d=new Date(id);const dateStr=`${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
   const buyer=(form.user||form.name||"").trim();
-  const rawSub=t.sub,totalDisc=t.disc;
   const blockA=[],blockF=[],items=[];
   entries.forEach(([k,q])=>{const[cid,cond]=k.split("::");const p=byId(cid);const c=p.conds.find(x=>x.cond===cond);
-    const lineTotal=c.price*q;const share=rawSub>0?(lineTotal/rawSub)*totalDisc:0;const netUnit=q>0?Math.max(lineTotal-share,0)/q:c.price;
-    for(let i=0;i<q;i++){blockA.push([dateStr,cid,cond].join(" | "));blockF.push([buyer,netUnit.toFixed(2),orderId].join(" | "))}
-    items.push(`${p.name} [${cid}] (${p.rarity||""}, ${cond}) x${q} @ $${c.price.toFixed(2)} = $${lineTotal.toFixed(2)}`)});
+    for(let i=0;i<q;i++){blockA.push([dateStr,cid,cond].join(" | "));blockF.push([buyer,c.price.toFixed(2),id].join(" | "))}
+    items.push(`${p.name} [${cid}] (${p.rarity||""}, ${cond}) x${q} @ $${c.price.toFixed(2)} = $${(c.price*q).toFixed(2)}`)});
   return {
-    _subject:`New order #${orderId} — ${form.name||buyer||"buyer"} — $${t.total.toFixed(2)}`,
+    _subject:`[CONCEPT TEST] Order #${id} — ${buyer||"buyer"} — $${t.total.toFixed(2)}`,
     _template:"table",
-    Order_ID:orderId, Buyer_Name:form.name||buyer, Phone:form.phone||"",
+    _test_note:"Concept-preview test order — no stock was changed on the live store.",
+    Order_ID:id, Buyer_Name:form.name||buyer, Phone:form.phone||"",
     Address_Line:form.addr||"", Unit_Number:form.unit||"", Postal_Code:form.postal||"",
-    Telegram_Username:telegramUser&&telegramUser.username?"@"+telegramUser.username:(form.user||""),
-    Telegram_User_ID:telegramUser&&telegramUser.id?String(telegramUser.id):"",
-    Buyer_Entered_Telegram_Username:form.user||"",
+    Telegram_Username:form.user||"", Buyer_Entered_Telegram_Username:form.user||"",
     Buyer_Claims_Package_On_Hold:hasPackage?"YES — verify against hold list before confirming":"No",
     Mail_Preference:mailMode==="hold"?"Hold my package":"Mail it out now",
-    Subtotal:`$${t.sub.toFixed(2)}`, Discount_Code:appliedDiscount?appliedDiscount.code:"None",
-    Discount_Amount:appliedDiscount?`$${t.disc.toFixed(2)}`:"$0.00",
+    Subtotal:`$${t.sub.toFixed(2)}`, Discount_Code:promoPct?"MINI10":"None",
+    Discount_Amount:promoPct?`$${t.disc.toFixed(2)}`:"$0.00",
     Shipping:t.fee?`$${t.fee.toFixed(2)}`:"$0.00", Total:`$${t.total.toFixed(2)}`,
     Items_Readable:items.join("\n"),
     "PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition":blockA.join("\n"),
     "PASTE_INTO_COLUMNS_F_to_H_Buyer_Price_OrderID":blockF.join("\n")
   };
 }
-let isConfirming=false;
 async function gotoDone(){
-  if(isConfirming)return;isConfirming=true;
-  const btn=$("#confirmPay");if(btn){btn.disabled=true;btn.textContent="Confirming…"}
-  const orderId=Date.now();const record=orderRecord(orderId);
-  // 1) Confirm server-side: decrements stock + writes the authoritative order.
-  let cres=null;try{cres=await fetch("/api/confirm-order",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reservationId,record})})}catch(e){}
-  // Expiry rescue: reservation lapsed but the cards may still be there — re-hold and retry once.
-  if(cres&&cres.status===410){
-    const rid=newResId();let rr=null;try{rr=await fetch("/api/reserve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reservationId:rid,items:reserveItemList()})})}catch(e){}
-    if(rr&&rr.ok){reservationId=rid;rememberReservation(rid);trackEvent("reservation_rescued",{});
-      try{cres=await fetch("/api/confirm-order",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reservationId:rid,record})})}catch(e){}}
-    else if(rr&&rr.status===409){const d=await rr.json().catch(()=>({}));cartNotice=applyStockFix(d.unavailable)||"Some items sold out during payment — your cart was updated.";
-      trackEvent("checkout_failed",{reason:"stock_gone_at_confirm"});isConfirming=false;if(btn){btn.disabled=false;btn.textContent="Confirm order"}reservationId=null;rememberReservation(null);openCart();return}
-  }
-  if(!cres||!cres.ok){
-    const err=cres?await cres.json().catch(()=>({})):{};
-    trackEvent("checkout_failed",{reason:"confirm_failed"});
-    isConfirming=false;if(btn){btn.disabled=false;btn.textContent="Confirm order"}
-    reservationId=null;rememberReservation(null);
-    bump(err.error||"Your reservation expired — please check your cart and try again.");openCart();return;
-  }
-  // 2) Sale is real. Snapshot the order for the confirmation screen BEFORE clearing the cart.
-  stopTimer();const t=totals();
-  trackEvent("purchase",{items:cartCount(),total:t.total,discount:appliedDiscount?"yes":"no"});
-  const lines=Object.entries(cart).filter(([,q])=>q>0).map(([k,q])=>{const[cid,cond]=k.split("::");const p=byId(cid);const c=p.conds.find(x=>x.cond===cond);
-    return `<div class="oc-line"><div class="oc-l"><p class="oc-name">${p.name} <span class="oc-x">x${q}</span></p><p class="oc-meta">${cid} &middot; ${cond}</p></div><span class="oc-price tag">$${(c.price*q).toFixed(2)}</span></div>`}).join("");
-  const uname=telegramUser&&telegramUser.username?"@"+telegramUser.username:(form.user||"");
-  const nm=form.name||(telegramUser&&telegramUser.first_name?[telegramUser.first_name,telegramUser.last_name].filter(Boolean).join(" "):"");
-  const custRows=[];if(form.phone)custRows.push(form.phone);
-  const addr=[form.addr,form.unit,form.postal].filter(Boolean).join(", ");if(addr)custRows.push(addr);
-  custRows.push(hasPackage?"Package on hold — mailing fee waived":(mailMode==="hold"?"Hold my package":"Mail it out now"));
-  const dcode=appliedDiscount?appliedDiscount.code:null;
-  // send the notification email (keepalive survives navigation)
-  try{await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(NOTIFY_EMAIL)}`,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},keepalive:true,body:JSON.stringify(record)})}catch(e){console.error(e)}
-  reservationId=null;rememberReservation(null);cart={};appliedDiscount=null;promoMsg="";saveCart();updateBar();
-  // 3) Confirmation screen: order summary + customer details to verify.
-  setBack(()=>{closePanel();render()});
+  stopTimer();const btn=$("#confirmPay");if(btn){btn.disabled=true;btn.textContent="Sending…"}
+  let sent=false;
+  try{const res=await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(NOTIFY_EMAIL)}`,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify(orderEmailPayload())});sent=res.ok}catch(e){console.error(e)}
+  setBack(()=>{cart={};promoPct=0;promoMsg="";updateBar();closePanel();render()});
   $("#panelTitle").textContent="Order confirmed";
-  $("#panelBody").innerHTML=`<div class="oc">
-    <div class="oc-head"><h2>Order Confirmed!</h2><div class="oc-store">Fallacy&rsquo;s Mini Store</div><div class="oc-id">Order #${orderId}</div></div>
-    <div class="oc-cust">
-      <p class="oc-cust-name">${nm||uname||"Customer"}</p>
-      ${nm&&uname?`<p class="oc-cust-line">${uname}</p>`:""}
-      ${custRows.map(r=>`<p class="oc-cust-line">${r}</p>`).join("")}
-    </div>
-    <div class="oc-lines">${lines}</div>
-    <div class="oc-sum">
-      <div class="oc-sr"><span>Subtotal</span><span class="tag">$${t.sub.toFixed(2)}</span></div>
-      ${dcode?`<div class="oc-sr discount"><span>Discount (${dcode})</span><span class="tag">&minus;$${t.disc.toFixed(2)}</span></div>`:""}
-      <div class="oc-sr"><span>Mailing</span><span class="tag">${t.fee?"$"+t.fee.toFixed(2):"Waived"}</span></div>
-      <div class="oc-sr oc-total"><span>Total</span><span class="tag">$${t.total.toFixed(2)}</span></div>
-    </div>
-    <div class="oc-foot"><p class="oc-foot-h">Send your payment screenshot to @fallacytcg</p><p class="oc-foot-p">Your order is reserved pending payment.</p></div>
-    <div class="oc-actions"><a class="tg-link" id="tgLink" href="${TG_CHAT}" target="_blank" rel="noopener">Send proof on @fallacytcg &rarr;</a>
-      <p class="oc-verify">Please check your order &amp; details above &mdash; message us if anything needs fixing.</p></div>
-  </div>`;
-  const tl=$("#tgLink");if(tl)tl.onclick=e=>{e.preventDefault();openTg(TG_CHAT)};
-  isConfirming=false;
+  $("#panelBody").innerHTML=`<div class="done"><div class="big">&#10003;</div><h3>Thank you!</h3>
+    <p>${sent?"Your order email has been sent to Fallacy Card Shop.":"Order recorded."} Now hop over to Telegram to send your payment screenshot.</p>
+    <a class="tg-link" href="${TG_CHAT}" target="_blank" rel="noopener">Open @fallacytcg &rarr;</a>
+    <p class="step-note">Test build: this sends a real (test-marked) order email but does <b>not</b> change any stock.</p></div>`;
+  cart={};updateBar();
 }
 
 // ---------- about ----------
@@ -889,7 +708,7 @@ $("#aboutBtn").onclick=openAbout;$("#cartbar").onclick=()=>openCart(closePanel);
 
 ["#q","#sort","#set"].forEach(s=>$(s).addEventListener("input",render));
 $("#rarity").addEventListener("input",()=>{only=null;render()});
-$("#clearFiltersBtn").onclick=clearFilters;
+$("#instock").onclick=()=>{$("#instock").classList.toggle("on");render()};
 
 // Rolling banner of the last 2 days of real sales (falls back to catalogue cards).
 let ticker=[],tickI=0;
@@ -913,22 +732,5 @@ function tick(){
 tick();setInterval(tick,2600);
 let tt;function bump(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(tt);tt=setTimeout(()=>t.classList.remove("show"),1500)}
 
-// --- keep stock fresh: 60s, only while visible and browsing (not mid-checkout).
-//     Reserve/confirm are fail-closed server-side, so a briefly stale view can't oversell.
-function pruneCart(){Object.keys(cart).forEach(k=>{const[cid,cond]=k.split("::");const p=byId(cid);const c=p&&p.conds.find(x=>x.cond===cond);if(!c||c.stock<=0)delete cart[k];else if(cart[k]>c.stock)cart[k]=c.stock})}
-function refreshProducts(){
-  fetch("/api/products").then(r=>r.json()).then(d=>{
-    CARDS=groupProducts(Array.isArray(d)?d:(d.products||[]));pruneCart();
-    promoText=(!Array.isArray(d)&&d&&typeof d.promoText==="string")?d.promoText:"";renderPromoBanner();
-    if(!$("#panel").classList.contains("open")){const sc=$("#scroller").scrollTop;render();$("#scroller").scrollTop=sc}
-    updateBar();loadTicker();
-  }).catch(()=>{});
-}
-setInterval(()=>{if(document.hidden||$("#panel").classList.contains("open"))return;refreshProducts()},60000);
-document.addEventListener("visibilitychange",()=>{if(!document.hidden&&!$("#panel").classList.contains("open"))refreshProducts()});
-trackEvent("page_view",{});
 boot();
 </script>
-<!-- Vercel Web Analytics -->
-<script>window.va=window.va||function(){(window.vaq=window.vaq||[]).push(arguments)};</script>
-<script defer src="/_vercel/insights/script.js"></script>

@@ -34,13 +34,16 @@
     { "src": "api/validate-discount.js", "use": "@vercel/node" },
     { "src": "api/recent-sales.js", "use": "@vercel/node" },
     { "src": "index.html", "use": "@vercel/static" },
-    { "src": "admin.html", "use": "@vercel/static" }
+    { "src": "admin.html", "use": "@vercel/static" },
+    { "src": "concept.html", "use": "@vercel/static" }
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1.js" },
     { "src": "/backend", "dest": "/index.js" },
     { "src": "/admin", "dest": "/admin.html" },
     { "src": "/admin.html", "dest": "/admin.html" },
+    { "src": "/concept", "dest": "/concept.html" },
+    { "src": "/concept.html", "dest": "/concept.html" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
