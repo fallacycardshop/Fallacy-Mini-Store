@@ -506,7 +506,7 @@ function orderRail(list){const sold=list.filter(isSold);if(sold.length<=5)return
 function railTile(kind){return `<div class="endtile" data-see="${kind}"><div class="ic">&#9776;</div>See all &amp; filter</div>`}
 function railSection(title,sub,list,kind,ctx){
   if(!list.length)return"";
-  const railMax=kind==="new"?20:10;   // New/restocked rail carries more before "See all"
+  const railMax=20;   // every rail carries up to 20 cards before "See all"
   // The New rail keeps CSV/drip order so freshly-added cards read newest-first.
   // Every other rail is daily-shuffled (deterministic per day) so its order
   // changes each day and resurfaces cards a shopper may have scrolled past.
