@@ -68,6 +68,9 @@
   #q:focus{outline:2px solid var(--accent);outline-offset:1px}
   .chips{display:flex;gap:7px;margin-top:7px;overflow-x:auto;padding-bottom:1px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}
   .chips select{flex:1 1 0;min-width:0;font:inherit;font-size:12px;color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:6px 10px;-webkit-appearance:none;appearance:none;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}
+  .chips #sort{flex:1.15 1 0}.chips #rarity{flex:.72 1 0}.chips #set{flex:1.25 1 0}
+  .clear-x{flex:0 0 auto;width:32px;height:32px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink-soft);font-size:18px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
+  .clear-x:active{background:var(--line)}
   .chips .toggle{cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none}
   .chips .toggle .sw{width:26px;height:16px;border-radius:999px;background:var(--line);position:relative;transition:.15s}
   .chips .toggle .sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:.15s}
@@ -204,6 +207,7 @@
   .promo-msg{font-size:12px;padding:0 18px 6px}.promo-msg.ok{color:var(--fresh)}.promo-msg.no{color:var(--scarce)}
   .step-foot{padding:14px 18px 20px;border-top:1px solid var(--line);background:var(--surface)}
   .sumrow{display:flex;justify-content:space-between;font-size:14px;margin-bottom:5px;color:var(--ink-soft)}.sumrow .tag{color:var(--ink)}
+  .sumrow.discount,.sumrow.discount .tag{color:var(--fresh);font-weight:600}
   .sumrow.tot{font-size:17px;font-weight:700;color:var(--ink);margin:8px 0 14px}
   .primary{width:100%;height:50px;border:none;border-radius:13px;background:var(--accent);color:var(--on-accent);font:inherit;font-weight:700;font-size:16px;cursor:pointer}
   .primary:disabled{background:var(--sold-bg);color:var(--sold);cursor:not-allowed}
@@ -250,6 +254,7 @@
   .oc-sum{padding:12px 20px 4px;border-top:1px solid var(--line);margin-top:4px}
   .oc-sr{display:flex;justify-content:space-between;font-size:14px;color:var(--ink-soft);margin-bottom:7px}
   .oc-sr .tag{color:var(--ink)}
+  .oc-sr.discount,.oc-sr.discount .tag{color:var(--fresh);font-weight:600}
   .oc-total{font-size:19px;font-weight:800;color:var(--ink);margin-top:2px}
   .oc-foot{margin:14px 20px 0;background:var(--surface-2);border-radius:14px;padding:16px}
   .oc-foot-h{margin:0;font-weight:700;color:var(--pink-deep);font-size:15px}
@@ -298,6 +303,7 @@
       <select id="sort"><option value="curated">Sort: Home page</option><option value="low">Price: low to high</option><option value="high">Price: high to low</option></select>
       <select id="rarity"><option value="">All rarities</option></select>
       <select id="set"><option value="">All sets</option></select>
+      <button class="clear-x" id="clearFiltersBtn" aria-label="Clear all filters" title="Clear all filters">&times;</button>
     </div>
   </div>
   <div class="content" id="content"></div>
@@ -407,14 +413,15 @@ function renderPromoBanner(){
   const banner=$("#promoBanner"),txt=$("#promoText");if(!banner||!txt)return;
   if(!promoText){banner.style.display="none";txt.textContent="";return}
   txt.textContent=promoText;   // textContent first so stray brackets can't break the page
-  txt.innerHTML=txt.innerHTML.replace(/\b([A-Z][A-Z0-9]{4,19})\b/g,'<span class="promo-code" role="button" tabindex="0">$1</span>');
+  txt.innerHTML=txt.innerHTML.replace(/\b([A-Z][A-Z0-9]{4,19})\b/g,'<span class="promo-code" role="button" tabindex="0" data-code="$1">$1</span>');
   const codes=txt.querySelectorAll(".promo-code");codes.forEach(el=>el.onclick=()=>copyPromoCode(el));
   if(codes.length&&!banner.querySelector(".promo-copy-hint")){const h=document.createElement("span");h.className="promo-copy-hint";h.textContent="Tap the code to copy it";banner.appendChild(h)}
   banner.style.display="block";
 }
 function copyPromoCode(el){
-  const code=el.textContent;const orig=code;
-  const done=()=>{el.classList.add("copied");el.textContent="Copied!";setTimeout(()=>{el.classList.remove("copied");el.textContent=orig},1200)};
+  if(el.classList.contains("copied"))return;       // ignore taps during the "Copied!" flash
+  const code=el.dataset.code||el.textContent;       // always the real code, never the "Copied!" label
+  const done=()=>{el.classList.add("copied");el.textContent="Copied!";setTimeout(()=>{el.classList.remove("copied");el.textContent=code},1200)};
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(code).then(done).catch(done)}else done();
 }
 function saveCart(){try{localStorage.setItem("fallacyCart",JSON.stringify(cart))}catch(e){}}
@@ -653,7 +660,7 @@ function openCart(ret){
       <div class="promo"><input id="promoInput" placeholder="Promo code" value="${appliedDiscount?appliedDiscount.code:''}"><button id="promoApply">Apply</button></div>
       ${promoMsg?`<div class="promo-msg ${appliedDiscount?'ok':'no'}">${promoMsg}</div>`:""}
       <div class="sumrow"><span>Subtotal</span><span class="tag">$${sub.toFixed(2)}</span></div>
-      ${appliedDiscount?`<div class="sumrow"><span>Discount (${appliedDiscount.code})</span><span class="tag">&minus;$${disc.toFixed(2)}</span></div>`:""}
+      ${appliedDiscount?`<div class="sumrow discount"><span>Discount (${appliedDiscount.code})</span><span class="tag">&minus;$${disc.toFixed(2)}</span></div>`:""}
       <div class="sumrow"><span>Mailing</span><span>Calculated at checkout</span></div>
       <div class="sumrow tot"><span>Cart total</span><span class="tag">$${(sub-disc).toFixed(2)}</span></div>
       <button class="primary" id="toDetails">Checkout and Payment</button></div>`;
@@ -727,7 +734,7 @@ function drawDetails(){
     </div>
     <div class="step-foot">
       <div class="sumrow"><span>Subtotal</span><span class="tag">$${t.sub.toFixed(2)}</span></div>
-      ${appliedDiscount?`<div class="sumrow"><span>Discount (${appliedDiscount.code})</span><span class="tag">&minus;$${t.disc.toFixed(2)}</span></div>`:""}
+      ${appliedDiscount?`<div class="sumrow discount"><span>Discount (${appliedDiscount.code})</span><span class="tag">&minus;$${t.disc.toFixed(2)}</span></div>`:""}
       <div class="sumrow"><span>Mailing fee</span><span class="tag">${t.fee?"$"+t.fee.toFixed(2):"Waived"}</span></div>
       <div class="sumrow tot"><span>Total</span><span class="tag">$${t.total.toFixed(2)}</span></div>
       <button class="primary" id="toPay">Proceed to Pay &rarr;</button>
@@ -838,7 +845,7 @@ async function gotoDone(){
     <div class="oc-lines">${lines}</div>
     <div class="oc-sum">
       <div class="oc-sr"><span>Subtotal</span><span class="tag">$${t.sub.toFixed(2)}</span></div>
-      ${dcode?`<div class="oc-sr"><span>Discount (${dcode})</span><span class="tag">&minus;$${t.disc.toFixed(2)}</span></div>`:""}
+      ${dcode?`<div class="oc-sr discount"><span>Discount (${dcode})</span><span class="tag">&minus;$${t.disc.toFixed(2)}</span></div>`:""}
       <div class="oc-sr"><span>Mailing</span><span class="tag">${t.fee?"$"+t.fee.toFixed(2):"Waived"}</span></div>
       <div class="oc-sr oc-total"><span>Total</span><span class="tag">$${t.total.toFixed(2)}</span></div>
     </div>
@@ -882,6 +889,7 @@ $("#aboutBtn").onclick=openAbout;$("#cartbar").onclick=()=>openCart(closePanel);
 
 ["#q","#sort","#set"].forEach(s=>$(s).addEventListener("input",render));
 $("#rarity").addEventListener("input",()=>{only=null;render()});
+$("#clearFiltersBtn").onclick=clearFilters;
 
 // Rolling banner of the last 2 days of real sales (falls back to catalogue cards).
 let ticker=[],tickI=0;
