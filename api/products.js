@@ -10,6 +10,7 @@ import {
   normaliseCardId,
   seededShuffle,
   getTodaySeed,
+  promoTextIfActive,
 } from "./_inventory.js";
 
 const redis = Redis.fromEnv();
@@ -160,7 +161,7 @@ export default async function handler(req, res) {
       products,
       featuredTitle: settings.featuredTitle,
       newTitle: settings.newTitle,
-      promoText: settings.promoText,
+      promoText: promoTextIfActive(settings.promoText),
     });
   } catch (err) {
     console.error(err);

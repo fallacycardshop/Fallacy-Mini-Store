@@ -216,6 +216,54 @@ export const DEFAULT_FEATURED_TITLE = "\u{1F525} Popular this week";
 // Promo strip above the product grid. Empty string = hidden.
 export const DEFAULT_PROMO_TEXT = "";
 
+// The promo banner is a free-text field, but it usually advertises a discount
+// code. So the banner doesn't outlive the code, we blank it once the advertised
+// code has expired. Expiry parsing mirrors api/validate-discount.js — the two
+// must agree on how a code's end time is computed (SGT, UTC+8).
+const PROMO_TZ_OFFSET_MINUTES = 480;
+function parsePromoExpiry(raw) {
+  const text = (raw || "").trim();
+  if (!text) return null;
+  const m = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?$/);
+  if (!m) return null;
+  const [, y, mo, d, h, mi] = m;
+  const hours = h === undefined ? 23 : Number(h);
+  const minutes = mi === undefined ? 59 : Number(mi);
+  const asUtc = Date.UTC(Number(y), Number(mo) - 1, Number(d), hours, minutes, 59, 999);
+  return asUtc - PROMO_TZ_OFFSET_MINUTES * 60000;
+}
+// Returns the banner text, or "" if it advertises a code that has ended. On any
+// parse trouble it leaves the banner untouched (the banner is cosmetic, so we
+// fail toward showing rather than hiding a still-valid promo).
+export function promoTextIfActive(promoText, rawCodes = process.env.DISCOUNT_CODES) {
+  const text = String(promoText || "");
+  if (!text) return "";
+  try {
+    const codes = String(rawCodes || "")
+      .split(";")
+      .map(e => e.trim())
+      .filter(Boolean)
+      .map(e => {
+        const [code, , , ...expiry] = e.split(":");
+        return {
+          code: (code || "").trim().toUpperCase(),
+          expiresAt: parsePromoExpiry(expiry.join(":")),
+        };
+      });
+    // Same ALL-CAPS code shape the storefront highlights in the banner.
+    const tokens = text.match(/\b[A-Z][A-Z0-9]{4,19}\b/g) || [];
+    for (const tok of tokens) {
+      const match = codes.find(c => c.code === tok.toUpperCase());
+      if (match && match.expiresAt !== null && Date.now() > match.expiresAt) {
+        return "";
+      }
+    }
+  } catch (e) {
+    // leave the banner as-is
+  }
+  return text;
+}
+
 // CardIDs are compared case-insensitively and trimmed, so "abc123 " typed into
 // the admin box still matches "ABC123" in the CSV.
 export function normaliseCardId(id) {
