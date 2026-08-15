@@ -58,7 +58,7 @@
   #q{width:100%;padding:9px 12px 9px 33px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:14px;background:var(--surface-2);color:var(--ink)}
   #q:focus{outline:2px solid var(--accent);outline-offset:1px}
   .chips{display:flex;gap:7px;margin-top:7px;overflow-x:auto;padding-bottom:1px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}
-  .chips select,.chips .toggle{flex:0 0 auto;font:inherit;font-size:12.5px;color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:6px 11px;-webkit-appearance:none;appearance:none}
+  .chips select{flex:1 1 0;min-width:0;font:inherit;font-size:12px;color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:6px 10px;-webkit-appearance:none;appearance:none;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}
   .chips .toggle{cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none}
   .chips .toggle .sw{width:26px;height:16px;border-radius:999px;background:var(--line);position:relative;transition:.15s}
   .chips .toggle .sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:.15s}
@@ -165,7 +165,7 @@
   .detail-actions{display:flex;gap:10px;padding:16px 20px 26px}
   .add-order{flex:1;height:50px;border:none;border-radius:12px;background:var(--accent);color:var(--on-accent);font:inherit;font-weight:700;font-size:15px;cursor:pointer}
   .add-order:disabled{background:var(--sold-bg);color:var(--sold);cursor:not-allowed}
-  .view-cart-sm{flex:0 0 auto;height:50px;padding:0 15px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--pink-deep);font:inherit;font-weight:600;font-size:13px;cursor:pointer}
+  .view-cart-sm{flex:1;height:50px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--pink-deep);font:inherit;font-weight:700;font-size:15px;cursor:pointer}
 
   .cart-empty{padding:60px 24px;text-align:center;color:var(--ink-soft)}
   .cart-notice{margin:12px 14px 0;padding:11px 13px;background:var(--scarce-bg);border:1px solid var(--scarce);border-radius:11px;color:var(--scarce);font-size:12.5px;line-height:1.5}
@@ -222,6 +222,31 @@
   .pay .to{font-size:13px;color:var(--ink-soft);margin:2px 0 16px}
   .pay .steps{text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 20px 16px 38px;margin:0 0 18px;font-size:13px;color:var(--ink-soft)}
   .pay .steps li{margin-bottom:6px}
+  /* order confirmation summary */
+  .oc{padding:0 0 24px}
+  .oc-head{background:var(--surface-2);padding:22px 20px 18px;border-bottom:1px solid var(--line)}
+  .oc-head h2{margin:0;font-size:26px;color:var(--pink-deep);font-weight:800}
+  .oc-store{font-size:14px;color:var(--ink-soft);margin-top:2px}
+  .oc-id{font-size:13px;color:var(--ink-soft);margin-top:2px;font-variant-numeric:tabular-nums}
+  .oc-cust{padding:16px 20px 4px}
+  .oc-cust-name{font-size:16px;font-weight:700;color:var(--ink);margin:0}
+  .oc-cust-line{font-size:12.5px;color:var(--ink-soft);margin:2px 0 0}
+  .oc-lines{padding:8px 20px 0}
+  .oc-line{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+  .oc-line:first-child{border-top:none}
+  .oc-name{font-size:15px;font-weight:700;color:var(--ink);margin:0}
+  .oc-x{color:var(--ink-soft);font-weight:600}
+  .oc-meta{font-size:12px;color:var(--ink-soft);margin:2px 0 0}
+  .oc-price{font-size:15px;font-weight:700;color:var(--ink);white-space:nowrap}
+  .oc-sum{padding:12px 20px 4px;border-top:1px solid var(--line);margin-top:4px}
+  .oc-sr{display:flex;justify-content:space-between;font-size:14px;color:var(--ink-soft);margin-bottom:7px}
+  .oc-sr .tag{color:var(--ink)}
+  .oc-total{font-size:19px;font-weight:800;color:var(--ink);margin-top:2px}
+  .oc-foot{margin:14px 20px 0;background:var(--surface-2);border-radius:14px;padding:16px}
+  .oc-foot-h{margin:0;font-weight:700;color:var(--pink-deep);font-size:15px}
+  .oc-foot-p{margin:4px 0 0;font-size:13px;color:var(--ink-soft)}
+  .oc-actions{padding:16px 20px 0}
+  .oc-verify{font-size:12px;color:var(--ink-soft);text-align:center;margin:12px 0 0;line-height:1.5}
   .done{padding:50px 24px;text-align:center}
   .done .big{width:74px;height:74px;border-radius:50%;background:var(--fresh-bg);color:var(--fresh);display:grid;place-items:center;margin:0 auto 16px;font-size:38px}
   .done h3{color:var(--ink);margin:0 0 6px}.done p{color:var(--ink-soft);font-size:14px}
@@ -260,7 +285,6 @@
       <input id="q" type="search" inputmode="search" placeholder="Search cards, sets…" autocomplete="off">
     </div>
     <div class="chips">
-      <label class="toggle" id="instock"><span class="sw"></span>In stock</label>
       <select id="sort"><option value="curated">Sort: Home page</option><option value="low">Price: low to high</option><option value="high">Price: high to low</option></select>
       <select id="rarity"><option value="">All rarities</option></select>
       <select id="set"><option value="">All sets</option></select>
@@ -450,7 +474,7 @@ function featSection(list){
   // Featured = 20 IN-STOCK cards priced $9.90+, randomised daily. No sold-out
   // block here — as cards sell, fresh ones take their place.
   const pool=list.filter(p=>!isSold(p)&&Math.max(...p.conds.map(c=>c.price))>=9.9);
-  const picked=dailyShuffle(pool).slice(0,20);
+  const picked=dailyShuffle(pool).slice(0,10);
   if(!picked.length)return"";
   return `<div class="sec"><div class="sec-head"><h2>&#128293; Featured</h2><span class="count">${picked.length} cards</span></div>
     <div class="grid">${picked.map(p=>cardHTML(p,"best")).join("")}</div></div>`;
@@ -475,11 +499,10 @@ function allSection(list){
   return `<div class="sec"><div class="sec-head"><h2>All cards</h2><span class="count">${live.length} in stock</span></div>
     <div class="grid">${live.map(p=>cardHTML(p,"best")).join("")}</div>${soldBlock(sold)}</div>`;
 }
-function activeFilters(){return $("#q").value.trim()||$("#rarity").value||$("#set").value||$("#instock").classList.contains("on")||only||sortActive()}
+function activeFilters(){return $("#q").value.trim()||$("#rarity").value||$("#set").value||only||sortActive()}
 function matchP(p){
   const qv=$("#q").value.trim().toLowerCase();
   if(qv&&!(p.name.toLowerCase().includes(qv)||p.set.toLowerCase().includes(qv)))return false;
-  if($("#instock").classList.contains("on")&&isSold(p))return false;
   if($("#rarity").value&&p.rarity!==$("#rarity").value)return false;
   if($("#set").value&&setName(p)!==$("#set").value)return false;
   if(only==="new"&&!p.isNew)return false;
@@ -494,7 +517,7 @@ function render(){
   if(activeFilters()){
     const res=sortList(CARDS.filter(matchP));const liveR=res.filter(p=>!isSold(p)),soldR=res.filter(isSold);
     const ctx=only==="disc"?"deal":"best";
-    let label="Results";if(only==="new")label="Newly in stock &amp; restocked";else if(only==="disc")label="Discounted";else if($("#rarity").value==="SAR")label="Special Art Rares";else if($("#rarity").value==="AR")label="Art Rares";else if($("#rarity").value==="S")label="Baby Shinies";else if(!$("#q").value.trim()&&!$("#set").value&&!$("#instock").classList.contains("on"))label="All cards";
+    let label="Results";if(only==="new")label="Newly in stock &amp; restocked";else if(only==="disc")label="Discounted";else if($("#rarity").value==="SAR")label="Special Art Rares";else if($("#rarity").value==="AR")label="Art Rares";else if($("#rarity").value==="S")label="Baby Shinies";else if(!$("#q").value.trim()&&!$("#set").value)label="All cards";
     c.innerHTML=`<div class="results-head"><button class="backbtn" data-back>&#8592; Back</button><h2>${label} (${res.length})</h2></div>
       ${res.length?`<div class="grid">${liveR.map(p=>cardHTML(p,ctx)).join("")}</div>${soldBlock(soldR)}`:`<div class="empty">No cards match &mdash; try clearing a filter.</div>`}
       <div class="results-foot"><button class="backbtn" data-back>&#8592; Back to browsing</button></div>`;
@@ -529,7 +552,7 @@ function seeAll(kind){savedScroll=$("#scroller").scrollTop;
   else if(kind==="s")$("#rarity").value="S";
   else if(kind==="disc")only="disc";
   render()}
-function clearFilters(){only=null;$("#q").value="";$("#rarity").value="";$("#set").value="";$("#sort").value="curated";$("#instock").classList.remove("on");render();$("#scroller").scrollTop=savedScroll;savedScroll=0}
+function clearFilters(){only=null;$("#q").value="";$("#rarity").value="";$("#set").value="";$("#sort").value="curated";render();$("#scroller").scrollTop=savedScroll;savedScroll=0}
 
 // back-to-top
 const scrollEl=$("#scroller"),toTop=$("#totop");
@@ -762,17 +785,41 @@ async function gotoDone(){
     reservationId=null;rememberReservation(null);
     bump(err.error||"Your reservation expired — please check your cart and try again.");openCart();return;
   }
-  // 2) Sale is real. Track + send the notification email (keepalive survives navigation).
+  // 2) Sale is real. Snapshot the order for the confirmation screen BEFORE clearing the cart.
   stopTimer();const t=totals();
   trackEvent("purchase",{items:cartCount(),total:t.total,discount:appliedDiscount?"yes":"no"});
+  const lines=Object.entries(cart).filter(([,q])=>q>0).map(([k,q])=>{const[cid,cond]=k.split("::");const p=byId(cid);const c=p.conds.find(x=>x.cond===cond);
+    return `<div class="oc-line"><div class="oc-l"><p class="oc-name">${p.name} <span class="oc-x">x${q}</span></p><p class="oc-meta">${cid} &middot; ${cond}</p></div><span class="oc-price tag">$${(c.price*q).toFixed(2)}</span></div>`}).join("");
+  const uname=telegramUser&&telegramUser.username?"@"+telegramUser.username:(form.user||"");
+  const nm=form.name||(telegramUser&&telegramUser.first_name?[telegramUser.first_name,telegramUser.last_name].filter(Boolean).join(" "):"");
+  const custRows=[];if(form.phone)custRows.push(form.phone);
+  const addr=[form.addr,form.unit,form.postal].filter(Boolean).join(", ");if(addr)custRows.push(addr);
+  custRows.push(hasPackage?"Package on hold — mailing fee waived":(mailMode==="hold"?"Hold my package":"Mail it out now"));
+  const dcode=appliedDiscount?appliedDiscount.code:null;
+  // send the notification email (keepalive survives navigation)
   try{await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(NOTIFY_EMAIL)}`,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},keepalive:true,body:JSON.stringify(record)})}catch(e){console.error(e)}
   reservationId=null;rememberReservation(null);cart={};appliedDiscount=null;promoMsg="";saveCart();updateBar();
-  // 3) Success -> Telegram to send proof.
+  // 3) Confirmation screen: order summary + customer details to verify.
   setBack(()=>{closePanel();render()});
   $("#panelTitle").textContent="Order confirmed";
-  $("#panelBody").innerHTML=`<div class="done"><div class="big">&#10003;</div><h3>Thank you!</h3>
-    <p>Your order is in. Please send your payment screenshot to <b>@fallacytcg</b> within 24 hours to complete it.</p>
-    <a class="tg-link" id="tgLink" href="${TG_CHAT}" target="_blank" rel="noopener">Send proof on @fallacytcg &rarr;</a></div>`;
+  $("#panelBody").innerHTML=`<div class="oc">
+    <div class="oc-head"><h2>Order Confirmed!</h2><div class="oc-store">Fallacy&rsquo;s Mini Store</div><div class="oc-id">Order #${orderId}</div></div>
+    <div class="oc-cust">
+      <p class="oc-cust-name">${nm||uname||"Customer"}</p>
+      ${nm&&uname?`<p class="oc-cust-line">${uname}</p>`:""}
+      ${custRows.map(r=>`<p class="oc-cust-line">${r}</p>`).join("")}
+    </div>
+    <div class="oc-lines">${lines}</div>
+    <div class="oc-sum">
+      <div class="oc-sr"><span>Subtotal</span><span class="tag">$${t.sub.toFixed(2)}</span></div>
+      ${dcode?`<div class="oc-sr"><span>Discount (${dcode})</span><span class="tag">&minus;$${t.disc.toFixed(2)}</span></div>`:""}
+      <div class="oc-sr"><span>Mailing</span><span class="tag">${t.fee?"$"+t.fee.toFixed(2):"Waived"}</span></div>
+      <div class="oc-sr oc-total"><span>Total</span><span class="tag">$${t.total.toFixed(2)}</span></div>
+    </div>
+    <div class="oc-foot"><p class="oc-foot-h">Send your payment screenshot to @fallacytcg</p><p class="oc-foot-p">Your order is reserved pending payment.</p></div>
+    <div class="oc-actions"><a class="tg-link" id="tgLink" href="${TG_CHAT}" target="_blank" rel="noopener">Send proof on @fallacytcg &rarr;</a>
+      <p class="oc-verify">Please check your order &amp; details above &mdash; message us if anything needs fixing.</p></div>
+  </div>`;
   const tl=$("#tgLink");if(tl)tl.onclick=e=>{e.preventDefault();openTg(TG_CHAT)};
   isConfirming=false;
 }
@@ -809,7 +856,6 @@ $("#aboutBtn").onclick=openAbout;$("#cartbar").onclick=()=>openCart(closePanel);
 
 ["#q","#sort","#set"].forEach(s=>$(s).addEventListener("input",render));
 $("#rarity").addEventListener("input",()=>{only=null;render()});
-$("#instock").onclick=()=>{$("#instock").classList.toggle("on");render()};
 
 // Rolling banner of the last 2 days of real sales (falls back to catalogue cards).
 let ticker=[],tickI=0;
