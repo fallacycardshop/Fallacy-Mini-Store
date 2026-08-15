@@ -556,7 +556,7 @@ function openCart(ret){
       ${promoMsg?`<div class="promo-msg ${promoPct?'ok':'no'}">${promoMsg}</div>`:""}
       <div class="sumrow"><span>Subtotal</span><span class="tag">$${sub.toFixed(2)}</span></div>
       ${promoPct?`<div class="sumrow"><span>Discount (MINI10)</span><span class="tag">&minus;$${disc.toFixed(2)}</span></div>`:""}
-      <div class="sumrow"><span>Mailing</span><span>calculated at checkout</span></div>
+      <div class="sumrow"><span>Mailing</span><span>Calculated at checkout</span></div>
       <div class="sumrow tot"><span>Cart total</span><span class="tag">$${(sub-disc).toFixed(2)}</span></div>
       <button class="primary" id="toDetails">Checkout and Payment</button></div>`;
   $("#panelBody").querySelectorAll("[data-cinc]").forEach(b=>b.onclick=()=>{setQty(b.dataset.cinc,b.dataset.c,qtyOf(b.dataset.cinc,b.dataset.c)+1);refreshSku(b.dataset.cinc,b.dataset.c);openCart()});
