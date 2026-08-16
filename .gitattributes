@@ -1,0 +1,6 @@
+# Keep CI scripts LF so they run correctly on the Ubuntu GitHub Actions runner,
+# regardless of each contributor's core.autocrlf setting.
+*.yml text eol=lf
+*.yaml text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
