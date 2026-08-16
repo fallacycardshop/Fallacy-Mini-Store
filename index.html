@@ -350,6 +350,10 @@ const WOTC_SETS=new Set(["BAS","FOS","GYM1","GYM2","JUN","NGEN","NDES","NDIS","V
 const ESERIES_SETS=new Set(["VS","BEP","TTONM","WFTS","TLVS","SE","P","MM"]);
 const isWOTC=p=>WOTC_SETS.has(setCode(p));
 const isEseries=p=>ESERIES_SETS.has(setCode(p));
+// Escape a URL for a single-quoted JS string inside an inline onerror handler.
+// Card filenames contain apostrophes (e.g. Chuck'sRhydon…) which would close the
+// string early and blank the image — same fix as admin.html's jsAttrUrl.
+const jsAttrUrl=u=>String(u||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");
 const ck=(id,cond)=>id+"::"+cond;
 const round90=x=>{const r=Math.round(x-0.9)+0.9;return r>0?r:0.9};
 const hasDeal=p=>inStock(p).some(c=>c.cond!=="Near Mint");
@@ -492,7 +496,7 @@ function cardHTML(p,ctx){
   const nOther=inStock(p).length-1;
   const multi=(!sold&&nOther>0)?`<span class="multi">+${nOther} condition${nOther>1?"s":""}</span>`:"";
   return `<article class="card${sold?" sold":""}" data-card="${p.id}">
-    <div class="imgwrap">${badgeHTML(p,ctx)}<img loading="lazy" src="${p.img}" alt="${p.name}"><div class="wm"></div>${sold?'<div class="sold-veil"><span>Sold out</span></div>':""}</div>
+    <div class="imgwrap">${badgeHTML(p,ctx)}<img loading="lazy" src="${p.img}" alt="${p.name}" onerror="this.onerror=null;this.src='${jsAttrUrl(p.imgFull)}'"><div class="wm"></div>${sold?'<div class="sold-veil"><span>Sold out</span></div>':""}</div>
     <div class="body">
       <p class="nm">${p.name}</p>
       <div class="rs">${rarLabel(p)?`<span class="rar">${rarLabel(p)}</span> &middot; `:""}${setName(p)}</div>
@@ -679,7 +683,7 @@ function openCart(ret){
   const noticeHTML=cartNotice?`<div class="cart-notice">${cartNotice}</div>`:"";cartNotice="";
   if(!entries.length){$("#panelBody").innerHTML=`${noticeHTML}<div class="cart-empty"><p>Your cart is empty.</p><p style="font-size:13px">Add cards and they&rsquo;ll show up here.</p></div>`;openPanel();return}
   const items=entries.map(([k,q])=>{const[id,cond]=k.split("::");const p=byId(id);const c=p.conds.find(x=>x.cond===cond);const line=c.price*q;
-    return `<div class="cart-item"><div class="th"><img src="${p.img}" alt=""><div class="wm"></div></div>
+    return `<div class="cart-item"><div class="th"><img src="${p.img}" alt="" onerror="this.onerror=null;this.src='${jsAttrUrl(p.imgFull)}'"><div class="wm"></div></div>
       <div class="ci-body"><div>
         <p class="ci-name">${p.name} <span class="ci-cond">&middot; ${cond}</span></p>
         <p class="ci-meta">${rarLabel(p)?`<span class="ci-rar">${rarLabel(p)}</span> &middot; `:""}${setName(p)}</p></div>
