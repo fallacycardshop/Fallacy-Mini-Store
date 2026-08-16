@@ -3340,11 +3340,23 @@ function qtyStyle(qty) {
   return "background:#f0e2ea;color:#a8305f;";
 }
 
+// Card filenames contain apostrophes ("Sabrina'sHintSRSM9109.jpg"), which broke
+// straight out of the single-quoted src in the inline onerror handler — the
+// rest of the filename was then parsed as JavaScript, throwing a SyntaxError
+// and leaving the image blank. Escaped for both the JS string and the HTML
+// attribute that contains it.
+function jsAttrUrl(url) {
+  return String(url || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/"/g, "&quot;");
+}
+
 function pickThumbHtml(photo) {
   if (!photo) return '<span class="pick-thumb pick-thumb-none">no<br>image</span>';
   const thumb = photo.replace("/images/", "/images/thumbs/");
-  return `<img class="pick-thumb" src="${thumb}" loading="lazy" alt=""
-    onerror="this.onerror=null;this.src='${photo}';">`;
+  return `<img class="pick-thumb" src="${escapeHtml(thumb)}" loading="lazy" alt=""
+    onerror="this.onerror=null;this.src='${jsAttrUrl(photo)}';">`;
 }
 
 document.getElementById("pickDate").value = new Date(Date.now() + 8 * 3600000)
@@ -4218,8 +4230,8 @@ const dripListEl = document.getElementById("dripList");
 function dripThumbHtml(photo) {
   if (!photo) return '<span class="drip-thumb drip-thumb-none">no<br>image</span>';
   const thumb = photo.replace("/images/", "/images/thumbs/");
-  return `<img class="drip-thumb" src="${thumb}" loading="lazy" alt=""
-    onerror="this.onerror=null;this.src='${photo}';">`;
+  return `<img class="drip-thumb" src="${escapeHtml(thumb)}" loading="lazy" alt=""
+    onerror="this.onerror=null;this.src='${jsAttrUrl(photo)}';">`;
 }
 
 // A rotating palette keyed to the release DATE, so every card releasing on the
