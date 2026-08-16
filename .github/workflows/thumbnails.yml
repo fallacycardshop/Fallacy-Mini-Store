@@ -1,0 +1,50 @@
+name: Generate thumbnails
+
+# Whenever full-size card images are added to images/ (including via GitHub's
+# "Add files via upload" button), generate any missing thumbnails and commit
+# them back. The store serves thumbnails from raw.githubusercontent.com/main,
+# so they must physically live in the repo — this keeps them in step with the
+# full scans without anyone running a script by hand.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "images/**"
+      - "!images/thumbs/**" # the bot's own thumbnail commits must not retrigger
+  workflow_dispatch: {} # allow a manual run / full backfill from the Actions tab
+
+# Never let two runs race on pushing thumbnails back to the same branch.
+concurrency:
+  group: thumbnails-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # needed to commit the generated thumbnails back to main
+
+jobs:
+  thumbs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Pillow
+        run: pip install Pillow
+
+      - name: Generate missing thumbnails
+        run: python scripts/make_thumbs.py
+
+      - name: Commit new thumbnails
+        run: |
+          if [ -z "$(git status --porcelain images/thumbs)" ]; then
+            echo "No new thumbnails to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add images/thumbs
+          git commit -m "Auto-generate missing card thumbnails"
+          git push
