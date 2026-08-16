@@ -466,7 +466,7 @@ function dailyShuffle(arr){const d=new Date();const rng=mulberry32(hashSeed(`${d
 function fillSel(sel,v){v.forEach(x=>{const o=document.createElement("option");o.value=x;o.textContent=x;sel.appendChild(o)})}
 
 const qtyOf=(id,cond)=>cart[ck(id,cond)]||0;
-function addCart(id,cond){const c=byId(id).conds.find(x=>x.cond===cond);if(!c||c.stock<=0)return;if(qtyOf(id,cond)<c.stock)cart[ck(id,cond)]=qtyOf(id,cond)+1;updateBar()}
+function addCart(id,cond){const c=byId(id).conds.find(x=>x.cond===cond);if(!c||c.stock<=0)return;if(qtyOf(id,cond)<c.stock){cart[ck(id,cond)]=qtyOf(id,cond)+1;trackEvent("add_to_cart",{})}updateBar()}
 function setQty(id,cond,q){const c=byId(id).conds.find(x=>x.cond===cond);const v=Math.max(0,Math.min(q,c.stock));if(v<=0)delete cart[ck(id,cond)];else cart[ck(id,cond)]=v;updateBar()}
 function cartCount(){return Object.values(cart).reduce((a,b)=>a+b,0)}
 function subtotal(){let t=0;Object.entries(cart).forEach(([k,q])=>{const[id,cond]=k.split("::");t+=byId(id).conds.find(x=>x.cond===cond).price*q});return t}
@@ -660,7 +660,7 @@ function renderCondOpts(){
   else if(inCart>=c.stock){btn.disabled=true;btn.textContent="Max in cart"}   // whole available stock already in cart
   else{btn.disabled=false;btn.innerHTML=`Add to order &middot; $${c.price.toFixed(2)}`}
   btn.onclick=()=>{const cc=byId(detailId).conds.find(x=>x.cond===detailCond);if(!cc||cc.stock<=0||qtyOf(detailId,detailCond)>=cc.stock)return;addCart(detailId,detailCond);refreshSku(detailId,detailCond);renderCondOpts();flashAddedToCart()};
-  $("#viewCartSm").onclick=()=>openCart(()=>openDetail(detailId));
+  $("#viewCartSm").onclick=()=>{trackEvent("view_cart",{});openCart(()=>openDetail(detailId))};
 }
 // Confirmation flashes green over the condition's in-cart counter, then fades
 // back to the "N in cart" text — so it never covers the action buttons.
@@ -723,6 +723,7 @@ function openCart(ret){
 let hasPackage=false,mailMode="hold",form={user:"",name:"",phone:"",addr:"",unit:"",postal:""};
 const esc=s=>String(s||"").replace(/"/g,"&quot;");
 async function gotoDetails(){
+  trackEvent("begin_checkout",{items:cartCount()});
   const btn=$("#toDetails");if(btn){btn.disabled=true;btn.textContent="Reserving…"}
   reservationId=newResId();
   let r=null;try{r=await fetch("/api/reserve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reservationId,items:reserveItemList()})})}catch(e){}
@@ -732,7 +733,7 @@ async function gotoDetails(){
     if(r&&r.status===409){const d=await r.json().catch(()=>({}));cartNotice=applyStockFix(d.unavailable)||"Some items are no longer available — your cart was updated.";trackEvent("checkout_blocked",{reason:"stock_gone"});openCart();return}
     trackEvent("checkout_blocked",{reason:"reserve_failed"});bump("Couldn’t reserve your items — please try again");return;
   }
-  rememberReservation(reservationId);trackEvent("payment_shown",{items:cartCount()});
+  rememberReservation(reservationId);
   openDetailsStep();
 }
 function openDetailsStep(){
@@ -785,6 +786,7 @@ function drawDetails(){
 // ---------- step 3: PayNow (5-min timer) ----------
 function gotoPay(){
   const t=totals();$("#panelTitle").textContent="Pay by PayNow";setBack(openDetailsStep);
+  trackEvent("payment_shown",{items:cartCount()});
   startTimer(5*60,()=>{releaseReservation();bump("Payment window expired");openCart()});
   $("#panelBody").innerHTML=`<div class="pay">
     <p class="pay-head">Scan the QR code below to make payment</p>
@@ -855,7 +857,7 @@ async function gotoDone(){
   }
   // 2) Sale is real. Snapshot the order for the confirmation screen BEFORE clearing the cart.
   stopTimer();const t=totals();
-  trackEvent("purchase",{items:cartCount(),total:t.total,discount:appliedDiscount?"yes":"no"});
+  trackEvent("purchase",{items:cartCount(),revenue:t.total,total:t.total,discount:appliedDiscount?"yes":"no"});
   const lines=Object.entries(cart).filter(([,q])=>q>0).map(([k,q])=>{const[cid,cond]=k.split("::");const p=byId(cid);const c=p.conds.find(x=>x.cond===cond);
     return `<div class="oc-line"><div class="oc-l"><p class="oc-name">${p.name} <span class="oc-x">x${q}</span></p><p class="oc-meta">${cid} &middot; ${cond}</p></div><span class="oc-price tag">$${(c.price*q).toFixed(2)}</span></div>`}).join("");
   const uname=telegramUser&&telegramUser.username?"@"+telegramUser.username:(form.user||"");
@@ -920,7 +922,7 @@ function loadAboutStats(){
     el.innerHTML=tiles.map(([n,l])=>`<div class="stat-tile"><div class="stat-n">${n}</div><div class="stat-l">${l}</div></div>`).join("");
   }).catch(()=>{});
 }
-$("#aboutBtn").onclick=openAbout;$("#cartbar").onclick=()=>openCart(closePanel);
+$("#aboutBtn").onclick=openAbout;$("#cartbar").onclick=()=>{trackEvent("view_cart",{});openCart(closePanel)};
 
 ["#q","#sort","#set"].forEach(s=>$(s).addEventListener("input",render));
 $("#rarity").addEventListener("input",()=>{only=null;render()});
