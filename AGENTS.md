@@ -95,7 +95,11 @@ runtime:
 - `store:settings` — one JSON object: editable row headings
 - `drip:schedule` — one JSON object: drip config + groupKey → releaseAt
 - `recent_sales` — capped list for the footer ticker
-- `orders` — capped list: authoritative order backups
+- `orders` — capped list: authoritative order backups (300)
+- `funnel:counts` — hash: per-day funnel events and blocked-checkout reasons
+- `stats:lifetime` — hash: hand-entered shopfront proof figures
+- `restock:counts` — hash: how many times each listing has been restocked
+- `audit:adjustments` — hash: manual audit corrections, with a reason
 
 Note that each multi-item feature uses **one** key holding a JSON object, not
 one key per item. That is deliberate: one key per hidden card or per scheduled
@@ -108,6 +112,56 @@ keyed off this exact string. **Changing a CardID or Condition value in the
 CSV orphans that listing's sold counter**, and the card silently returns to
 full stock. If those columns change, the corresponding `sold:` keys must be
 migrated to match.
+
+## 9. Twelve serverless functions is a hard ceiling
+
+The Vercel Hobby plan allows **12 serverless functions and `vercel.json`
+registers exactly 12**. There is no room for a thirteenth. A new endpoint means
+folding it into an existing function as another method or `action` branch.
+
+This is why `api/recent-sales.js` already does triple duty:
+
+- `GET` — the recent-sales ticker
+- `POST` — funnel analytics counters, and the shopfront proof figures
+- Telegram bot webhook (`/start`, `/faq`)
+
+Before adding a function, say out loud that this ceiling exists and propose
+which existing file it should join. `api/orders.js` is currently read-only and
+is a reasonable host for order-related writes.
+
+## 10. Derive a number in ONE place
+
+The most common bug in this codebase is **two screens disagreeing about the
+same number**, and it has recurred with:
+
+- stock counts — the audit and the drip badge used different formulas
+- release quantities — `describe()` computed one figure, then a caller
+  overwrote it with a stale one
+- order totals — `currentSubtotal` is only recalculated inside `renderCart()`,
+  so any path that changed the cart without re-rendering left it stale and
+  charged the wrong amount
+
+Each time, the fix was to compute the value once and have every caller read it.
+If you find yourself writing the same arithmetic in a second place, that is the
+bug forming. In particular: after spreading a helper's output, do not reassign
+one of its fields from a different source.
+
+## 11. Displayed stock has three parts, not two
+
+`sold + on sale + off sale` must equal the CSV stock. "Off sale" covers stock
+that exists but cannot be bought:
+
+- held back by the drip, not yet released
+- hidden for an auction
+
+Omitting either makes real stock look like it has gone missing. Also note that
+`available` from the drip report is **not** hiding-aware, so a hidden card must
+have its on-sale figure forced to zero or its stock is counted twice.
+
+Counters can exceed stock. If `sold` is greater than `published` — from an
+over-counted sale, or stock lowered after sales — then `csvStock - published`
+double-counts the sold copies. Measure withheld stock against what is already
+accounted for.
 
 ---
 
@@ -125,6 +179,34 @@ Changes have been made from more than one machine. Before editing a file, fetch
 the current version from GitHub `main` and patch that. Re-uploading an older
 copy has silently destroyed a feature before.
 
+## Front-end traps that have bitten more than once
+
+**Apostrophes in filenames.** Card images include names like
+`Sabrina'sHintSRSM9109.jpg`. An inline `onerror="...this.src='${photo}'"`
+handler breaks out of its single-quoted string on that apostrophe and the rest
+of the filename is parsed as JavaScript — a `SyntaxError` and a blank image.
+Escape the URL for both the JS string and the HTML attribute.
+
+**Never rebuild a control from inside its own event handler.** Redrawing a
+checklist's markup from a checkbox's `onchange` destroys that checkbox
+mid-event; the click registers and nothing happens. Update counts and styling
+in place, and re-render only the content below.
+
+**Keys read from a DOM dataset are strings.** `Order_ID` is stored as a number,
+so a `Set` holding numbers will never match `dataset.orderId`. Normalise
+through one helper.
+
+**Thumbnails.** Product images are served at ~92px but the originals are
+~270KB. `images/thumbs/` holds ~320px copies (~38KB) and the storefront uses
+them with a fallback to the full-size original, so a missing thumbnail degrades
+rather than breaks. Replacing an image does **not** update its thumbnail — the
+only reliable check is to regenerate and compare byte-for-byte, since the file
+still exists and an existence check passes.
+
+**`raw.githubusercontent.com` is not a CDN.** It rate-limits, and the store
+depends on it for every card image. This is a known ceiling, not a bug to
+debug when images stop loading.
+
 ## Before shipping a change to `api/`
 
 - [ ] Count the Redis commands per request. Does it scale with catalogue size?
@@ -134,3 +216,19 @@ copy has silently destroyed a feature before.
 - [ ] Check the Upstash console command count after deploying.
 - [ ] Is the function registered in `vercel.json`, with `includeFiles` if it reads the CSV?
 - [ ] Did you patch the current `main` version rather than an older copy?
+- [ ] Still 12 functions?
+- [ ] Is any number you added computed in exactly one place, or did you
+      duplicate arithmetic that already exists elsewhere?
+- [ ] If it touches stock display, does `sold + on sale + off sale` still
+      reconcile against the CSV for a hidden card and a drip-scheduled one?
+
+## Verification is by reading, not running
+
+There is no test suite and no local Redis, so the functions cannot run locally.
+`node --check` proves a file parses — it does **not** prove anything still
+works, and it will happily pass a file from which whole functions have been
+deleted. After removing a block, grep for the identifiers it defined and
+confirm nothing else references them.
+
+Say plainly what was *not* verified. Real verification happens on the Vercel
+preview deploy.
