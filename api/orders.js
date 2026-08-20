@@ -122,43 +122,49 @@ export default async function handler(req, res) {
     if (action === "backfillSpend") {
       const orders = await readAllOrders();
       const paidMap = (await redis.hgetall(ORDER_PAID_KEY)) || {};
+      const spendMap = (await redis.hgetall(CUSTOMER_SPEND_KEY)) || {};
+      const countMap = (await redis.hgetall(CUSTOMER_COUNT_KEY)) || {};
 
-      const seededPaid = {};
-      const spendDelta = {}; // customerKey -> $ to add
-      const countDelta = {}; // customerKey -> orders to add
-      for (const entry of orders) {
-        const record = entry.record || entry;
-        if (!record || typeof record !== "object") continue;
-        const id = String(record.Order_ID || "");
-        // Already accounted for (has a paid entry) -> never re-credit.
-        if (id && Object.prototype.hasOwnProperty.call(paidMap, id)) continue;
-        if (id) seededPaid[id] = "1";
-        const ckey = customerKey(record);
-        spendDelta[ckey] = (spendDelta[ckey] || 0) + orderAmount(record);
-        countDelta[ckey] = (countDelta[ckey] || 0) + 1;
-      }
+      // Window view: paid orders per customer (an order with no paid entry is a
+      // pre-feature historical order, treated as paid), and the historical ids
+      // that still need an explicit "1" written.
+      const { byCustomer: windowAgg, seededPaid } = aggregateSpend(orders, paidMap);
 
-      // Write the seed flags FIRST: if a later step fails and the admin retries,
-      // these orders now carry an entry and are skipped, so no double credit.
+      // Seed the explicit paid flags for historical orders, so mark-paid can
+      // later toggle them and the reconciliation check sees them as paid.
       if (Object.keys(seededPaid).length > 0) {
         await redis.hset(ORDER_PAID_KEY, seededPaid);
       }
 
-      // Apply the credits additively. HINCRBYFLOAT has no multi-field form, so
-      // this is one command per distinct historical customer — but batched into
-      // a single pipeline (one network round trip), and run once, admin-only.
-      const customers = Object.keys(spendDelta).length;
-      if (customers > 0) {
-        const pipe = redis.pipeline();
-        for (const [k, v] of Object.entries(spendDelta)) pipe.hincrbyfloat(CUSTOMER_SPEND_KEY, k, v);
-        for (const [k, v] of Object.entries(countDelta)) pipe.hincrby(CUSTOMER_COUNT_KEY, k, v);
-        await pipe.exec();
+      // Credit the SHORTFALL between a customer's banked lifetime spend and the
+      // paid orders currently visible in the window. This seeds first-time
+      // history AND self-heals a total that was left under-credited (e.g. a
+      // Rebuild whose credit step didn't land, or a mark-paid that half-failed).
+      // It only ever ADDS the deficit, so lifetime spend from orders that have
+      // since rotated out of the window (banked total already above the window
+      // sum) is never reduced. Idempotent: once banked >= window, deficit is 0.
+      const pipe = redis.pipeline();
+      let queued = 0;
+      let customers = 0;
+      let credited = 0;
+      for (const [key, w] of windowAgg) {
+        const organicSpend = Number(spendMap[key]) || 0;
+        const organicCount = Number(countMap[key]) || 0;
+        const spendDeficit = Number((w.spend - organicSpend).toFixed(2));
+        const countDeficit = w.orders - organicCount;
+        if (spendDeficit > 0.005) {
+          pipe.hincrbyfloat(CUSTOMER_SPEND_KEY, key, spendDeficit);
+          queued += 1; customers += 1; credited += spendDeficit;
+        }
+        if (countDeficit > 0) { pipe.hincrby(CUSTOMER_COUNT_KEY, key, countDeficit); queued += 1; }
       }
+      if (queued > 0) await pipe.exec();
 
       return res.status(200).json({
         ok: true,
-        credited: Object.keys(seededPaid).length, // historical orders newly counted
-        customers,
+        customers,                              // customers whose lifetime was topped up
+        credited: Number(credited.toFixed(2)),  // dollars added this run
+        seeded: Object.keys(seededPaid).length, // historical orders given an explicit paid flag
         orders: orders.length,
       });
     }
