@@ -655,8 +655,14 @@ export function buildDripSchedule(
 
 // Redis keys used by the payment/spend feature (see api/orders.js).
 export const ORDER_PAID_KEY = "order:paid";        // hash: Order_ID -> "1" | "0"
-export const CUSTOMER_SPEND_KEY = "customer:spend"; // hash: customerKey -> dollars (float)
+export const CUSTOMER_SPEND_KEY = "customer:spend"; // hash: customerKey -> dollars (float), organic paid spend
 export const CUSTOMER_COUNT_KEY = "customer:orders";// hash: customerKey -> paid order count
+// Manual lifetime corrections live apart from organic spend so the organic
+// figure stays verifiable against the orders window (see spendReport), while the
+// displayed lifetime total is organic + adjustment. Every adjustment is logged
+// with a reason for auditability.
+export const CUSTOMER_ADJUST_KEY = "customer:spend:adjust"; // hash: customerKey -> net manual $ correction
+export const CUSTOMER_ADJUST_LOG = "customer:spend:log";    // capped list: { at, key, delta, reason }
 // Orders with neither a Telegram id nor any username land here rather than being
 // silently dropped, so the shop owner can still see the money and chase it up.
 export const UNATTRIBUTED_KEY = "(no telegram)";
@@ -692,16 +698,17 @@ export function orderAmount(record) {
   return Number.isFinite(n) ? n : 0;
 }
 
-// Rebuild per-customer spend/count/last-order/handle from the stored orders list
-// and the order:paid map. This is the ONE authoritative derivation, shared by
-// the admin Spend panel (so it reconciles with Recent Orders by construction)
-// and the backfill (so it can overwrite the cache hashes idempotently).
-//
-// paidMap is order:paid as { Order_ID: "1"|"0" }. An order with NO entry is a
-// pre-feature historical order and is treated as PAID; its id is returned in
-// `seededPaid` so the backfill can write the explicit "1" and make re-runs
-// stable. New orders always carry an explicit "0" written at confirm time, so
-// "no entry" unambiguously means "historical".
+// Sum per-customer spend/count/last-order/handle over the orders currently in
+// the (capped) orders list. This is the WINDOW view — bounded by the list — not
+// the lifetime figure. Lifetime spend is the permanent customer:spend hash,
+// credited incrementally as orders are marked paid; this window recompute is
+// used only to supply the display handle and last-order date, and as a
+// one-directional reconciliation check (lifetime organic spend must be >= the
+// paid orders still visible in the window, or an order was paid but not
+// credited). It also identifies pre-feature historical orders — those with NO
+// order:paid entry — returning them in `seededPaid` so the backfill can credit
+// each exactly once and write the explicit "1". New orders carry an explicit
+// "0" from confirm time, so "no entry" unambiguously means "historical".
 export function aggregateSpend(orderEntries, paidMap) {
   const map = paidMap || {};
   const byCustomer = new Map();

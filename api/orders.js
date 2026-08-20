@@ -3,6 +3,8 @@ import {
   ORDER_PAID_KEY,
   CUSTOMER_SPEND_KEY,
   CUSTOMER_COUNT_KEY,
+  CUSTOMER_ADJUST_KEY,
+  CUSTOMER_ADJUST_LOG,
   customerKey,
   orderAmount,
   aggregateSpend,
@@ -11,7 +13,8 @@ import {
 const redis = Redis.fromEnv();
 
 const DEFAULT_LIMIT = 25;
-const MAX_LIMIT = 300; // matches MAX_STORED_ORDERS in confirm-order.js
+const MAX_LIMIT = 1000; // matches MAX_STORED_ORDERS in confirm-order.js
+const ADJUST_LOG_MAX = 200; // audit trail of manual spend corrections
 const ORDERS_KEY = "orders";
 
 // Reads back the server-side order backup written by /api/confirm-order, and
@@ -105,63 +108,129 @@ export default async function handler(req, res) {
     }
 
     // --------------------------------------------------------- backfillSpend
-    // Rebuild the spend cache from the orders list. Idempotent: it OVERWRITES
-    // the hashes with freshly-summed totals rather than adding to them, so
-    // running it twice can't double anything. Every order with no paid-state
-    // entry (i.e. placed before payment confirmation existed) is treated as
-    // paid and gets an explicit "1" written, so subsequent runs stay stable and
-    // new unpaid orders (which carry an explicit "0") are respected.
+    // Seed LIFETIME spend from history — additive and idempotent. Spend is
+    // banked permanently in customer:spend as orders are marked paid; this
+    // one-off seed credits the pre-feature orders that predate that mechanism.
+    //
+    // It credits ONLY orders with no order:paid entry (a pre-feature historical
+    // order), marks each "1", and adds its amount to the customer's lifetime
+    // total. Orders that already carry an entry — new orders ("0"/"1") or
+    // already-seeded history ("1") — are skipped, so re-running never
+    // double-counts and, crucially, never OVERWRITES lifetime spend that has
+    // since rotated out of the capped orders list. That is what makes spend
+    // lifetime rather than a rolling window of the last N orders.
     if (action === "backfillSpend") {
       const orders = await readAllOrders();
       const paidMap = (await redis.hgetall(ORDER_PAID_KEY)) || {};
-      const { byCustomer, seededPaid } = aggregateSpend(orders, paidMap);
 
+      const seededPaid = {};
+      const spendDelta = {}; // customerKey -> $ to add
+      const countDelta = {}; // customerKey -> orders to add
+      for (const entry of orders) {
+        const record = entry.record || entry;
+        if (!record || typeof record !== "object") continue;
+        const id = String(record.Order_ID || "");
+        // Already accounted for (has a paid entry) -> never re-credit.
+        if (id && Object.prototype.hasOwnProperty.call(paidMap, id)) continue;
+        if (id) seededPaid[id] = "1";
+        const ckey = customerKey(record);
+        spendDelta[ckey] = (spendDelta[ckey] || 0) + orderAmount(record);
+        countDelta[ckey] = (countDelta[ckey] || 0) + 1;
+      }
+
+      // Write the seed flags FIRST: if a later step fails and the admin retries,
+      // these orders now carry an entry and are skipped, so no double credit.
       if (Object.keys(seededPaid).length > 0) {
         await redis.hset(ORDER_PAID_KEY, seededPaid);
       }
 
-      const spendObj = {};
-      const countObj = {};
-      for (const c of byCustomer.values()) {
-        spendObj[c.key] = Number(c.spend.toFixed(2));
-        countObj[c.key] = c.orders;
-      }
-
-      // Full rebuild, so clear then set (one HSET each — never a loop of writes).
-      await redis.del(CUSTOMER_SPEND_KEY, CUSTOMER_COUNT_KEY);
-      if (Object.keys(spendObj).length > 0) {
-        await redis.hset(CUSTOMER_SPEND_KEY, spendObj);
-        await redis.hset(CUSTOMER_COUNT_KEY, countObj);
+      // Apply the credits additively. HINCRBYFLOAT has no multi-field form, so
+      // this is one command per distinct historical customer — but batched into
+      // a single pipeline (one network round trip), and run once, admin-only.
+      const customers = Object.keys(spendDelta).length;
+      if (customers > 0) {
+        const pipe = redis.pipeline();
+        for (const [k, v] of Object.entries(spendDelta)) pipe.hincrbyfloat(CUSTOMER_SPEND_KEY, k, v);
+        for (const [k, v] of Object.entries(countDelta)) pipe.hincrby(CUSTOMER_COUNT_KEY, k, v);
+        await pipe.exec();
       }
 
       return res.status(200).json({
         ok: true,
-        customers: byCustomer.size,
-        seeded: Object.keys(seededPaid).length,
+        credited: Object.keys(seededPaid).length, // historical orders newly counted
+        customers,
         orders: orders.length,
       });
     }
 
+    // ----------------------------------------------------------- adjustSpend
+    // Manual lifetime correction. Beyond the orders window a total can't be
+    // recomputed, so this is the escape hatch: add or subtract dollars from a
+    // customer's lifetime spend, kept apart from organic spend (so the organic
+    // figure stays verifiable) and logged with a reason for audit.
+    if (action === "adjustSpend") {
+      const custKey = String((req.body || {}).custKey || "").trim();
+      const amt = Number((req.body || {}).delta);
+      const reason = String((req.body || {}).reason || "").slice(0, 200);
+      if (!custKey) return res.status(400).json({ error: "Missing customer key." });
+      if (!Number.isFinite(amt) || amt === 0) {
+        return res.status(400).json({ error: "Adjustment must be a non-zero number." });
+      }
+      await redis.hincrbyfloat(CUSTOMER_ADJUST_KEY, custKey, amt);
+      await redis.lpush(CUSTOMER_ADJUST_LOG, JSON.stringify({ at: Date.now(), key: custKey, delta: amt, reason }));
+      await redis.ltrim(CUSTOMER_ADJUST_LOG, 0, ADJUST_LOG_MAX - 1);
+      return res.status(200).json({ ok: true, key: custKey, delta: amt });
+    }
+
     // ----------------------------------------------------------- spendReport
-    // Per-customer lifetime spend for the admin Spend panel. Recomputed from
-    // the SAME orders list + paid states that Recent Orders reads, so the two
-    // screens reconcile by construction (deriving the figure in one place is
-    // the fix for this codebase's recurring "two readings disagree" bug).
+    // Per-customer LIFETIME spend for the admin Spend panel. The authoritative
+    // figure is the permanent customer:spend hash (organic) plus any manual
+    // customer:spend:adjust correction — NOT a re-sum of the capped orders list,
+    // so it is not bounded by the 1000-order window.
+    //
+    // The orders window is still recomputed, but only to supply each customer's
+    // display handle and last-order date, and as a one-directional check:
+    // organic lifetime spend must be >= the sum of that customer's paid orders
+    // still visible in the window. If it's less, an order was marked paid but
+    // not credited (a bug) — that row is flagged so it can be corrected, rather
+    // than two screens silently disagreeing.
     if (action === "spendReport") {
       const orders = await readAllOrders();
       const paidMap = (await redis.hgetall(ORDER_PAID_KEY)) || {};
-      const { byCustomer } = aggregateSpend(orders, paidMap);
+      const spendMap = (await redis.hgetall(CUSTOMER_SPEND_KEY)) || {};
+      const countMap = (await redis.hgetall(CUSTOMER_COUNT_KEY)) || {};
+      const adjustMap = (await redis.hgetall(CUSTOMER_ADJUST_KEY)) || {};
+      const { byCustomer: windowAgg } = aggregateSpend(orders, paidMap);
 
-      const rows = [...byCustomer.values()]
-        .map(c => ({
-          key: c.key,
-          handle: c.handle || c.key,
-          spend: Number(c.spend.toFixed(2)),
-          orders: c.orders,
-          aov: c.orders > 0 ? Number((c.spend / c.orders).toFixed(2)) : 0,
-          lastOrder: c.lastOrder,
-        }))
-        .sort((a, b) => b.spend - a.spend);
+      const keys = new Set([
+        ...Object.keys(spendMap),
+        ...Object.keys(countMap),
+        ...Object.keys(adjustMap),
+        ...windowAgg.keys(),
+      ]);
+
+      let flagged = 0;
+      const rows = [];
+      for (const key of keys) {
+        const organic = Number(spendMap[key]) || 0;
+        const adjust = Number(adjustMap[key]) || 0;
+        const spend = Number((organic + adjust).toFixed(2));
+        const count = Number(countMap[key]) || 0;
+        const w = windowAgg.get(key);
+        const reconciles = organic + 1e-6 >= (w ? w.spend : 0);
+        if (!reconciles) flagged += 1;
+        rows.push({
+          key,
+          handle: w ? w.handle : key,
+          spend,
+          adjust: Number(adjust.toFixed(2)),
+          orders: count,
+          aov: count > 0 ? Number((spend / count).toFixed(2)) : 0,
+          lastOrder: w ? w.lastOrder : 0,
+          reconciles,
+        });
+      }
+      rows.sort((a, b) => b.spend - a.spend);
 
       const totals = {
         customers: rows.length,
@@ -169,7 +238,7 @@ export default async function handler(req, res) {
         orders: rows.reduce((s, r) => s + r.orders, 0),
       };
 
-      return res.status(200).json({ ok: true, rows, totals, cap: MAX_LIMIT, counted: orders.length });
+      return res.status(200).json({ ok: true, rows, totals, cap: MAX_LIMIT, counted: orders.length, flagged });
     }
 
     // ------------------------------------------------------- default: read --

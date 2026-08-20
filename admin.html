@@ -700,6 +700,11 @@
   .spend-table th:hover { background: #f3e8ef; }
   .spend-table .num { text-align: right; font-variant-numeric: tabular-nums; }
   .spend-table tbody tr:hover { background: #fbfbfb; }
+  .spend-flag-banner { font-size: 12px; color: #8a2b1a; background: #fdeae4; border: 1px solid #f0b9a8; border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
+  .spend-table tr.spend-flagged td { background: #fdf3ef; }
+  .adj-note { color: #7b4bab; font-weight: 700; cursor: help; }
+  .spend-adjust { font-size: 11px; padding: 3px 8px; border: 1px solid #ccc; background: #fff; border-radius: 6px; cursor: pointer; color: #333; }
+  .spend-adjust:hover { background: #f3f3f3; }
   .order-head { font-size: 14px; font-weight: 700; }
   .order-meta { font-size: 12px; color: #777; margin: 3px 0 8px; }
   .order-block pre {
@@ -940,9 +945,12 @@
     before picking thresholds. Sorted by spend; tap a column to re-sort.
   </p>
   <p class="spend-caveat">
-    &#9888;&#65039; These are not complete lifetime figures. The order backup
-    holds the most recent <strong>300</strong> orders and only began when order
-    backup went live &mdash; any spend before that is unrecoverable.
+    Spend is <strong>lifetime</strong>: each order's amount is banked
+    permanently the moment it's marked paid, so totals are <em>not</em> limited
+    to the most recent 1,000 stored orders. To seed history the first time, run
+    &ldquo;Rebuild from orders&rdquo; once &mdash; it credits every order
+    currently stored and is safe to run again (it never double-counts). The only
+    unrecoverable gap is spend from before order backup began.
   </p>
   <input type="password" id="spendPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
   <div class="date-row">
@@ -3445,7 +3453,7 @@ document.getElementById("pickLoadButton").onclick = async () => {
       ordersRes = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, limit: 300 }),
+        body: JSON.stringify({ key, limit: 1000 }),
       });
     } catch (e) {
       resultEl.textContent = `Couldn't reach /api/orders — ${e.message || "request failed"}.`;
@@ -3700,7 +3708,7 @@ document.getElementById("restockLoadButton").onclick = async () => {
       ordersRes = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, limit: 300 }),
+        body: JSON.stringify({ key, limit: 1000 }),
       });
     } catch (e) {
       // Sale dates unavailable — velocity and recency will be blank.
@@ -3772,7 +3780,7 @@ document.getElementById("historyLoadButton").onclick = async () => {
     const res = await fetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, limit: 300 }),
+      body: JSON.stringify({ key, limit: 1000 }),
     });
     const raw = await res.text();
     let data;
@@ -4375,25 +4383,33 @@ function renderSpendTable() {
   const totalSpend = spendRows.reduce((s, r) => s + r.spend, 0);
   const totalOrders = spendRows.reduce((s, r) => s + r.orders, 0);
 
+  const flaggedCount = spendRows.filter(r => r.reconciles === false).length;
+  const banner = flaggedCount
+    ? `<div class="spend-flag-banner">⚠️ ${flaggedCount} customer(s) show less banked spend than their visible paid orders — an order was likely marked paid without its credit landing. Re-check that order's payment state, or use Adjust to correct the lifetime total.</div>`
+    : "";
+
   spendReportEl.innerHTML = `
-    <div class="spend-totals">${spendRows.length} customer(s) · ${totalOrders} paid order(s) · ${fmtMoney(totalSpend)} total</div>
+    ${banner}
+    <div class="spend-totals">${spendRows.length} customer(s) · ${totalOrders} paid order(s) · ${fmtMoney(totalSpend)} lifetime total</div>
     <div class="spend-table-wrap">
       <table class="spend-table">
         <thead><tr>
           <th data-sort="handle">Customer${arrow("handle")}</th>
-          <th data-sort="spend" class="num">Spent${arrow("spend")}</th>
+          <th data-sort="spend" class="num">Lifetime${arrow("spend")}</th>
           <th data-sort="orders" class="num">Orders${arrow("orders")}</th>
           <th data-sort="aov" class="num">Avg${arrow("aov")}</th>
           <th data-sort="lastOrder" class="num">Last order${arrow("lastOrder")}</th>
+          <th></th>
         </tr></thead>
         <tbody>
           ${sorted.map(r => `
-            <tr>
-              <td>${escapeHtml(r.handle)}</td>
-              <td class="num">${fmtMoney(r.spend)}</td>
+            <tr class="${r.reconciles === false ? "spend-flagged" : ""}">
+              <td>${escapeHtml(r.handle)}${r.adjust ? ` <span class="adj-note" title="includes a ${fmtMoney(r.adjust)} manual adjustment">±</span>` : ""}</td>
+              <td class="num">${r.reconciles === false ? "⚠️ " : ""}${fmtMoney(r.spend)}</td>
               <td class="num">${r.orders}</td>
               <td class="num">${fmtMoney(r.aov)}</td>
               <td class="num">${fmtSpendDate(r.lastOrder)}</td>
+              <td class="num"><button class="spend-adjust" data-key="${escapeHtml(r.key)}" data-handle="${escapeHtml(r.handle)}">Adjust</button></td>
             </tr>`).join("")}
         </tbody>
       </table>
@@ -4407,6 +4423,38 @@ function renderSpendTable() {
       renderSpendTable();
     };
   });
+
+  spendReportEl.querySelectorAll(".spend-adjust").forEach(btn => {
+    btn.onclick = () => adjustCustomerSpend(btn.dataset.key, btn.dataset.handle);
+  });
+}
+
+// Manual lifetime correction — the escape hatch for spend that can't be
+// recomputed (orders that have rotated out of the window). Kept apart from
+// organic spend on the server and logged with a reason.
+async function adjustCustomerSpend(custKey, handle) {
+  const amtStr = prompt(
+    `Adjust lifetime spend for ${handle}\n\nEnter a dollar amount to ADD, or a negative amount to subtract:`,
+    ""
+  );
+  if (amtStr === null) return;
+  const amt = Number(amtStr);
+  if (!Number.isFinite(amt) || amt === 0) { alert("Enter a non-zero number, e.g. 12.50 or -5."); return; }
+  const reason = prompt("Reason for this adjustment (logged for audit):", "");
+  if (reason === null) return;
+  spendResultEl.textContent = "Applying adjustment...";
+  spendResultEl.className = "";
+  try {
+    const data = await postSpend("adjustSpend", { custKey, delta: amt, reason });
+    if (!data) return;
+    spendResultEl.textContent = `Adjusted ${handle} by ${fmtMoney(amt)}.`;
+    spendResultEl.className = "success";
+    const report = await postSpend("spendReport");
+    if (report) { spendRows = report.rows || []; renderSpendTable(); }
+  } catch (e) {
+    spendResultEl.textContent = "Network error — please try again.";
+    spendResultEl.className = "error";
+  }
 }
 
 // Admin fetch helper: reads the response as text first and parses by hand, so
@@ -4451,8 +4499,11 @@ document.getElementById("spendLoadButton").onclick = async () => {
       spendResultEl.className = "success";
       return;
     }
-    spendResultEl.textContent = `${data.totals.customers} customer(s) across ${data.counted} stored order(s).`;
-    spendResultEl.className = "success";
+    spendResultEl.textContent =
+      `${data.totals.customers} customer(s) · ${fmtMoney(data.totals.spend)} lifetime` +
+      (data.flagged ? ` · ⚠️ ${data.flagged} to review` : "") +
+      `. Verify window: ${data.counted} stored order(s).`;
+    spendResultEl.className = data.flagged ? "error" : "success";
     renderSpendTable();
   } catch (e) {
     spendResultEl.textContent = "Network error — please try again.";
@@ -4462,19 +4513,19 @@ document.getElementById("spendLoadButton").onclick = async () => {
 
 document.getElementById("spendBackfillButton").onclick = async () => {
   if (!confirm(
-    "Rebuild the spend totals from the stored orders?\n\n" +
-    "Every order already in the list is treated as PAID (the shop owner has confirmed these). " +
+    "Seed lifetime spend from the stored orders?\n\n" +
+    "Every stored order that hasn't been counted yet is treated as PAID (the shop owner has confirmed these) and credited once. " +
     "Orders placed from now on stay unpaid until you mark them. " +
-    "This overwrites the cached totals rather than adding to them, so it's safe to run more than once."
+    "This is additive and idempotent — safe to run again; it never double-counts and never erases spend that has rotated out of the window."
   )) return;
-  spendResultEl.textContent = "Rebuilding...";
+  spendResultEl.textContent = "Seeding...";
   spendResultEl.className = "";
   try {
     const data = await postSpend("backfillSpend");
     if (!data) return;
-    spendResultEl.textContent =
-      `Rebuilt: ${data.customers} customer(s) from ${data.orders} order(s)` +
-      (data.seeded ? `, ${data.seeded} historical order(s) marked paid.` : ".");
+    spendResultEl.textContent = data.credited
+      ? `Seeded ${data.credited} historical order(s) across ${data.customers} customer(s).`
+      : "Nothing new to seed — every stored order is already counted.";
     spendResultEl.className = "success";
     const report = await postSpend("spendReport");
     if (report) { spendRows = report.rows || []; renderSpendTable(); }

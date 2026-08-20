@@ -4,7 +4,7 @@ import { loadInventoryGroups, ORDER_PAID_KEY } from "./_inventory.js";
 const redis = Redis.fromEnv();
 
 const MAX_RECENT_SALES = 20;
-const MAX_STORED_ORDERS = 300;
+const MAX_STORED_ORDERS = 1000;
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
