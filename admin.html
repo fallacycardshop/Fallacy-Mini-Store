@@ -4523,9 +4523,10 @@ document.getElementById("spendBackfillButton").onclick = async () => {
   try {
     const data = await postSpend("backfillSpend");
     if (!data) return;
-    spendResultEl.textContent = data.credited
-      ? `Seeded ${data.credited} historical order(s) across ${data.customers} customer(s).`
-      : "Nothing new to seed — every stored order is already counted.";
+    spendResultEl.textContent = (data.customers || data.seeded)
+      ? `Credited ${data.customers} customer(s) (+${fmtMoney(data.credited)})` +
+        (data.seeded ? `, seeded ${data.seeded} historical order(s).` : ".")
+      : "Nothing to credit — every paid order is already counted.";
     spendResultEl.className = "success";
     const report = await postSpend("spendReport");
     if (report) { spendRows = report.rows || []; renderSpendTable(); }
