@@ -642,3 +642,99 @@ export function buildDripSchedule(
     return { groupKey, releaseAt };
   });
 }
+
+// ===========================================================================
+// Loyalty / lifetime-spend helpers
+// ===========================================================================
+// These are the SINGLE place that turns a stored order record into a customer
+// identity and a dollar amount. Both the admin Spend panel and the spend
+// backfill derive their figures through here, so the two can never disagree —
+// which is the single most common bug in this codebase (two screens computing
+// the same number slightly differently). Do not re-parse Total or re-derive the
+// customer key anywhere else; call these.
+
+// Redis keys used by the payment/spend feature (see api/orders.js).
+export const ORDER_PAID_KEY = "order:paid";        // hash: Order_ID -> "1" | "0"
+export const CUSTOMER_SPEND_KEY = "customer:spend"; // hash: customerKey -> dollars (float)
+export const CUSTOMER_COUNT_KEY = "customer:orders";// hash: customerKey -> paid order count
+// Orders with neither a Telegram id nor any username land here rather than being
+// silently dropped, so the shop owner can still see the money and chase it up.
+export const UNATTRIBUTED_KEY = "(no telegram)";
+
+// Customer key for the spend hashes. Telegram_User_ID (numeric, from the Mini
+// App) is preferred; it is EMPTY when the shop was opened in a normal browser,
+// so we fall back to the normalised @username. A Telegram id is all digits and
+// a username must start with a letter, so the two identifier spaces cannot
+// collide in one hash — the "@" prefix on usernames just makes a key readable.
+export function customerKey(record) {
+  if (!record || typeof record !== "object") return UNATTRIBUTED_KEY;
+  const id = String(record.Telegram_User_ID || "").trim();
+  if (id) return id;
+  const uname = String(record.Telegram_Username || record.Buyer_Entered_Telegram_Username || "")
+    .trim().replace(/^@+/, "").toLowerCase();
+  return uname ? "@" + uname : UNATTRIBUTED_KEY;
+}
+
+// Human-readable handle for display, taken from the most recent order for a key.
+export function orderHandle(record) {
+  if (!record || typeof record !== "object") return UNATTRIBUTED_KEY;
+  const uname = String(record.Telegram_Username || record.Buyer_Entered_Telegram_Username || "").trim();
+  if (uname) return uname.startsWith("@") ? uname : "@" + uname;
+  const id = String(record.Telegram_User_ID || "").trim();
+  return id ? "TG:" + id : UNATTRIBUTED_KEY;
+}
+
+// Total is a display string like "$50.67" (occasionally with a thousands comma).
+// Parse to a number; a blank or unparseable value yields 0 so it can never
+// NaN-poison a running sum.
+export function orderAmount(record) {
+  const n = Number(String((record && record.Total) || "").replace(/[^0-9.]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+// Rebuild per-customer spend/count/last-order/handle from the stored orders list
+// and the order:paid map. This is the ONE authoritative derivation, shared by
+// the admin Spend panel (so it reconciles with Recent Orders by construction)
+// and the backfill (so it can overwrite the cache hashes idempotently).
+//
+// paidMap is order:paid as { Order_ID: "1"|"0" }. An order with NO entry is a
+// pre-feature historical order and is treated as PAID; its id is returned in
+// `seededPaid` so the backfill can write the explicit "1" and make re-runs
+// stable. New orders always carry an explicit "0" written at confirm time, so
+// "no entry" unambiguously means "historical".
+export function aggregateSpend(orderEntries, paidMap) {
+  const map = paidMap || {};
+  const byCustomer = new Map();
+  const seededPaid = {};
+  for (const entry of orderEntries || []) {
+    const record = entry && entry.record ? entry.record : entry;
+    if (!record || typeof record !== "object") continue;
+    const id = String(record.Order_ID || "");
+    let paid;
+    if (id && Object.prototype.hasOwnProperty.call(map, id)) {
+      paid = String(map[id]) === "1";
+    } else {
+      paid = true;                       // historical order = paid
+      if (id) seededPaid[id] = "1";
+    }
+    if (!paid) continue;
+    const key = customerKey(record);
+    const amt = orderAmount(record);
+    const when = Number(entry && entry.savedAt) || Number(record.Order_ID) || 0;
+    const cur = byCustomer.get(key) || { key, spend: 0, orders: 0, lastOrder: 0, handle: key };
+    cur.spend += amt;
+    cur.orders += 1;
+    if (when >= cur.lastOrder) { cur.lastOrder = when; cur.handle = orderHandle(record); }
+    byCustomer.set(key, cur);
+  }
+  return { byCustomer, seededPaid };
+}
+
+// Resolve a single order's paid state with the same "no entry = paid" rule the
+// aggregate uses, so the admin toggle and the totals never disagree.
+export function isOrderPaid(paidMap, orderId) {
+  const map = paidMap || {};
+  const id = String(orderId || "");
+  if (id && Object.prototype.hasOwnProperty.call(map, id)) return String(map[id]) === "1";
+  return true;
+}

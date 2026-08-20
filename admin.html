@@ -673,6 +673,33 @@
     border-top: 1px solid #eee;
   }
   .order-block:first-child { border-top: none; }
+  /* Payment state — unpaid orders stand out, since chasing them is the daily job. */
+  .order-block.unpaid {
+    border-left: 4px solid #d9822b;
+    padding-left: 10px;
+    background: #fff8f0;
+    border-radius: 0 8px 8px 0;
+  }
+  .pay-row { display: flex; align-items: center; gap: 10px; margin: 4px 0 6px; flex-wrap: wrap; }
+  .pay-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+  .pay-badge.paid { color: #1f7a4d; background: #e6f5ee; }
+  .pay-badge.awaiting { color: #b3521a; background: #fdecdc; }
+  .pay-toggle {
+    font-size: 12px; padding: 4px 10px; border: 1px solid #ccc; background: #fff;
+    border-radius: 6px; cursor: pointer; color: #333;
+  }
+  .pay-toggle:hover { background: #f3f3f3; }
+  .pay-toggle:disabled { opacity: .6; cursor: default; }
+  /* Customer Spend panel */
+  .spend-caveat { font-size: 12px; color: #8a5a1a; background: #fff6e9; border-radius: 8px; padding: 8px 10px; }
+  .spend-totals { font-size: 13px; font-weight: 600; margin: 8px 0; color: #444; }
+  .spend-table-wrap { overflow-x: auto; }
+  .spend-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  .spend-table th, .spend-table td { padding: 7px 10px; border-bottom: 1px solid #eee; text-align: left; }
+  .spend-table th { cursor: pointer; user-select: none; white-space: nowrap; background: #faf5f8; }
+  .spend-table th:hover { background: #f3e8ef; }
+  .spend-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .spend-table tbody tr:hover { background: #fbfbfb; }
   .order-head { font-size: 14px; font-weight: 700; }
   .order-meta { font-size: 12px; color: #777; margin: 3px 0 8px; }
   .order-block pre {
@@ -903,6 +930,27 @@
   <div id="ordersDaySummary"></div>
   <p id="ordersResultText"></p>
   <div id="ordersList"></div>
+</div>
+
+<div class="card">
+  <h1>Customer Spend</h1>
+  <p>
+    Lifetime spend per customer, counting <strong>paid orders only</strong>.
+    This is what the loyalty tiers will be set from, so read the distribution
+    before picking thresholds. Sorted by spend; tap a column to re-sort.
+  </p>
+  <p class="spend-caveat">
+    &#9888;&#65039; These are not complete lifetime figures. The order backup
+    holds the most recent <strong>300</strong> orders and only began when order
+    backup went live &mdash; any spend before that is unrecoverable.
+  </p>
+  <input type="password" id="spendPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
+  <div class="date-row">
+    <button id="spendLoadButton">Load Customer Spend</button>
+    <button id="spendBackfillButton" class="btn-neutral">Rebuild from orders</button>
+  </div>
+  <p id="spendResultText"></p>
+  <div id="spendReport"></div>
 </div>
 
 <div class="card">
@@ -1368,6 +1416,7 @@ document.addEventListener("DOMContentLoaded", () => {
     "Restocking": "Restock",
     "Sales History": "Sales history",
     "Recent Orders": "Orders",
+    "Customer Spend": "Spend",
     "Slow Release Scheduling": "Drip",
     "Featured Section Heading": "Headings",
     "Card Lookup & Auction Hiding": "Card lookup",
@@ -3811,12 +3860,26 @@ document.getElementById("ordersLoadButton").onclick = async () => {
     }
 
     window.__allOrders = data.orders;
+    // Paid-state map (Order_ID -> "1"/"0") travels with the order read, so the
+    // list can show which orders are still awaiting payment without a second
+    // round trip. Missing entries mean historical orders, treated as paid.
+    window.__orderPaid = data.paid || {};
     renderOrders();
   } catch (err) {
     ordersResultEl.textContent = "Network error — please try again.";
     ordersResultEl.className = "error";
   }
 };
+
+// Paid state as returned by /api/orders. An order with no entry is a pre-feature
+// historical order and is treated as PAID — the same rule the server uses, so
+// the toggle, the awaiting-payment count and the Spend panel all agree.
+function isOrderPaidClient(id) {
+  const map = window.__orderPaid || {};
+  const key = String(id || "");
+  if (Object.prototype.hasOwnProperty.call(map, key)) return String(map[key]) === "1";
+  return true;
+}
 
 // Orders are bucketed by SGT date so a "day" matches your trading day rather
 // than UTC.
@@ -4144,10 +4207,12 @@ function renderOrdersBody() {
   }
 
   const partial = orders.length !== dateFiltered.length;
+  const awaiting = orders.filter(e => !isOrderPaidClient(orderKey(e))).length;
   ordersResultEl.textContent =
     (wanted ? `${orders.length} order(s) on ${wanted}` : `Showing ${orders.length} order(s)`) +
-    (partial ? ` — ${dateFiltered.length - orders.length} excluded.` : ".");
-  ordersResultEl.className = "success";
+    (partial ? ` — ${dateFiltered.length - orders.length} excluded` : "") +
+    (awaiting ? ` · ${awaiting} awaiting payment` : "") + ".";
+  ordersResultEl.className = awaiting ? "error" : "success";
 
   renderDaySummary(orders, wanted);
 
@@ -4160,9 +4225,17 @@ function renderOrdersBody() {
         r["PASTE_INTO_COLUMNS_F_to_H_Buyer_Price_OrderID"] ||
         r["PASTE_INTO_COLUMNS_F_to_G_Buyer_Price"] ||
         "";
+      const oid = String(r.Order_ID || "");
+      const paid = isOrderPaidClient(oid);
       return `
-        <div class="order-block">
+        <div class="order-block${paid ? "" : " unpaid"}">
           <div class="order-head">#${escapeHtml(r.Order_ID)} — ${escapeHtml(r.Buyer_Name)} — ${escapeHtml(r.Total)}</div>
+          <div class="pay-row">
+            <span class="pay-badge ${paid ? "paid" : "awaiting"}">${paid ? "✓ Paid" : "● Awaiting payment"}</span>
+            <button class="pay-toggle" data-pay-id="${escapeHtml(oid)}" data-pay-target="${paid ? "0" : "1"}">
+              ${paid ? "Mark unpaid" : "Mark paid — credit spend"}
+            </button>
+          </div>
           <div class="order-meta">
             saved ${new Date(entry.savedAt).toLocaleString("en-SG", { dateStyle: "medium", timeStyle: "short" })}<br>
             ${escapeHtml(r.Telegram_Username)}<br>
@@ -4193,6 +4266,60 @@ function renderOrdersBody() {
         if (target) copyText(target.textContent, btn);
       };
     });
+
+    // Mark an order paid / unpaid. Marking paid credits the buyer's lifetime
+    // spend (see markPaid in api/orders.js); un-marking reverses it. The paid
+    // state persists in Redis, so it survives a reload.
+    ordersListEl.querySelectorAll(".pay-toggle").forEach(btn => {
+      btn.onclick = async () => {
+        const id = btn.dataset.payId;
+        const target = btn.dataset.payTarget === "1";
+        const key = ordersPassphraseEl.value.trim();
+        if (!key) {
+          ordersResultEl.textContent = "Enter the passphrase first, then toggle payment.";
+          ordersResultEl.className = "error";
+          return;
+        }
+        const prev = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "Saving…";
+        try {
+          const res = await fetch("/api/orders", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key, action: "markPaid", orderId: id, paid: target }),
+          });
+          const raw = await res.text();
+          let data;
+          try {
+            data = JSON.parse(raw);
+          } catch (e) {
+            ordersResultEl.textContent = raw.trim().startsWith("<")
+              ? `The /api/orders endpoint isn't deployed (HTTP ${res.status}).`
+              : `Unexpected response from the server (HTTP ${res.status}).`;
+            ordersResultEl.className = "error";
+            btn.disabled = false;
+            btn.textContent = prev;
+            return;
+          }
+          if (!res.ok) {
+            ordersResultEl.textContent = data.error || `Couldn't update payment (HTTP ${res.status}).`;
+            ordersResultEl.className = "error";
+            btn.disabled = false;
+            btn.textContent = prev;
+            return;
+          }
+          window.__orderPaid = window.__orderPaid || {};
+          window.__orderPaid[id] = target ? "1" : "0";
+          renderOrdersBody(); // redraws this order (and the awaiting count) in place
+        } catch (e) {
+          ordersResultEl.textContent = "Network error — please try again.";
+          ordersResultEl.className = "error";
+          btn.disabled = false;
+          btn.textContent = prev;
+        }
+      };
+    });
 }
 
 // Long-output panels get a sticky Hide bar as soon as they have content.
@@ -4202,6 +4329,7 @@ function renderOrdersBody() {
   ["historyReport", "Sales history"],
   ["ordersDaySummary", "Day summary"],
   ["ordersList", "Orders"],
+  ["spendReport", "Customer spend"],
   ["dripList", "Release schedule"],
   ["lookupResult", "Card lookup"],
   ["hiddenList", "Hidden cards"],
@@ -4211,6 +4339,149 @@ document.getElementById("ordersDate").onchange = renderOrders;
 document.getElementById("ordersClearDate").onclick = () => {
   document.getElementById("ordersDate").value = "";
   renderOrders();
+};
+
+// --------------------------------------------------------------------------
+// Customer Spend panel
+//
+// Lifetime spend per customer, PAID orders only. The table is recomputed on the
+// server from the same orders list + paid states the Recent Orders panel reads,
+// so the two views reconcile by construction. Sorting happens on the client
+// from the already-fetched rows — no extra round trip.
+// --------------------------------------------------------------------------
+const spendPassphraseEl = document.getElementById("spendPassphrase");
+const spendResultEl = document.getElementById("spendResultText");
+const spendReportEl = document.getElementById("spendReport");
+
+let spendRows = [];
+let spendSort = { col: "spend", dir: -1 }; // default: highest spend first
+
+function fmtMoney(n) { return "$" + (Number(n) || 0).toFixed(2); }
+function fmtSpendDate(ms) {
+  if (!ms) return "—";
+  return new Date(Number(ms)).toLocaleDateString("en-SG", { dateStyle: "medium" });
+}
+
+function renderSpendTable() {
+  if (!spendRows.length) { spendReportEl.innerHTML = ""; return; }
+  const { col, dir } = spendSort;
+  const sorted = [...spendRows].sort((a, b) => {
+    if (col === "handle") {
+      return dir * String(a.handle).toLowerCase().localeCompare(String(b.handle).toLowerCase());
+    }
+    return dir * ((Number(a[col]) || 0) - (Number(b[col]) || 0));
+  });
+  const arrow = c => (spendSort.col === c ? (spendSort.dir < 0 ? " ▼" : " ▲") : "");
+  const totalSpend = spendRows.reduce((s, r) => s + r.spend, 0);
+  const totalOrders = spendRows.reduce((s, r) => s + r.orders, 0);
+
+  spendReportEl.innerHTML = `
+    <div class="spend-totals">${spendRows.length} customer(s) · ${totalOrders} paid order(s) · ${fmtMoney(totalSpend)} total</div>
+    <div class="spend-table-wrap">
+      <table class="spend-table">
+        <thead><tr>
+          <th data-sort="handle">Customer${arrow("handle")}</th>
+          <th data-sort="spend" class="num">Spent${arrow("spend")}</th>
+          <th data-sort="orders" class="num">Orders${arrow("orders")}</th>
+          <th data-sort="aov" class="num">Avg${arrow("aov")}</th>
+          <th data-sort="lastOrder" class="num">Last order${arrow("lastOrder")}</th>
+        </tr></thead>
+        <tbody>
+          ${sorted.map(r => `
+            <tr>
+              <td>${escapeHtml(r.handle)}</td>
+              <td class="num">${fmtMoney(r.spend)}</td>
+              <td class="num">${r.orders}</td>
+              <td class="num">${fmtMoney(r.aov)}</td>
+              <td class="num">${fmtSpendDate(r.lastOrder)}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>`;
+
+  spendReportEl.querySelectorAll("th[data-sort]").forEach(th => {
+    th.onclick = () => {
+      const c = th.dataset.sort;
+      if (spendSort.col === c) spendSort.dir *= -1;
+      else spendSort = { col: c, dir: c === "handle" ? 1 : -1 };
+      renderSpendTable();
+    };
+  });
+}
+
+// Admin fetch helper: reads the response as text first and parses by hand, so
+// an unregistered endpoint reports the real cause rather than "network error".
+async function postSpend(action, extra) {
+  const key = spendPassphraseEl.value.trim();
+  if (!key) { spendResultEl.textContent = "Please enter the passphrase."; spendResultEl.className = "error"; return null; }
+  const res = await fetch("/api/orders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, action, ...(extra || {}) }),
+  });
+  const raw = await res.text();
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    spendResultEl.textContent = raw.trim().startsWith("<")
+      ? `The /api/orders endpoint isn't deployed (HTTP ${res.status}).`
+      : `Unexpected response from the server (HTTP ${res.status}).`;
+    spendResultEl.className = "error";
+    return null;
+  }
+  if (!res.ok) {
+    spendResultEl.textContent = data.error || `Something went wrong (HTTP ${res.status}).`;
+    spendResultEl.className = "error";
+    return null;
+  }
+  return data;
+}
+
+document.getElementById("spendLoadButton").onclick = async () => {
+  spendResultEl.textContent = "Loading...";
+  spendResultEl.className = "";
+  spendReportEl.innerHTML = "";
+  try {
+    const data = await postSpend("spendReport");
+    if (!data) return;
+    spendRows = data.rows || [];
+    if (!spendRows.length) {
+      spendResultEl.textContent = "No paid orders yet — nothing to total.";
+      spendResultEl.className = "success";
+      return;
+    }
+    spendResultEl.textContent = `${data.totals.customers} customer(s) across ${data.counted} stored order(s).`;
+    spendResultEl.className = "success";
+    renderSpendTable();
+  } catch (e) {
+    spendResultEl.textContent = "Network error — please try again.";
+    spendResultEl.className = "error";
+  }
+};
+
+document.getElementById("spendBackfillButton").onclick = async () => {
+  if (!confirm(
+    "Rebuild the spend totals from the stored orders?\n\n" +
+    "Every order already in the list is treated as PAID (the shop owner has confirmed these). " +
+    "Orders placed from now on stay unpaid until you mark them. " +
+    "This overwrites the cached totals rather than adding to them, so it's safe to run more than once."
+  )) return;
+  spendResultEl.textContent = "Rebuilding...";
+  spendResultEl.className = "";
+  try {
+    const data = await postSpend("backfillSpend");
+    if (!data) return;
+    spendResultEl.textContent =
+      `Rebuilt: ${data.customers} customer(s) from ${data.orders} order(s)` +
+      (data.seeded ? `, ${data.seeded} historical order(s) marked paid.` : ".");
+    spendResultEl.className = "success";
+    const report = await postSpend("spendReport");
+    if (report) { spendRows = report.rows || []; renderSpendTable(); }
+  } catch (e) {
+    spendResultEl.textContent = "Network error — please try again.";
+    spendResultEl.className = "error";
+  }
 };
 
 // --------------------------------------------------------------------------
