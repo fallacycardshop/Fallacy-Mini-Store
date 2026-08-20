@@ -1,10 +1,10 @@
 import { Redis } from "@upstash/redis";
-import { loadInventoryGroups } from "./_inventory.js";
+import { loadInventoryGroups, ORDER_PAID_KEY } from "./_inventory.js";
 
 const redis = Redis.fromEnv();
 
 const MAX_RECENT_SALES = 20;
-const MAX_STORED_ORDERS = 300;
+const MAX_STORED_ORDERS = 1000;
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -71,6 +71,16 @@ export default async function handler(req, res) {
           JSON.stringify({ savedAt: Date.now(), record })
         );
         await redis.ltrim("orders", 0, MAX_STORED_ORDERS - 1);
+
+        // A new order starts UNPAID. Payment is a manual PayNow transfer the
+        // shop owner verifies by hand; only then is the buyer's lifetime spend
+        // credited (see markPaid in api/orders.js). Writing an explicit "0" —
+        // rather than leaving the key absent — is what lets the spend backfill
+        // tell a genuinely-new unpaid order from a pre-feature historical one,
+        // which it treats as already paid. Inside the same wrapped block as the
+        // backup, so a Redis hiccup here can never void a paid order.
+        const paidId = String(record.Order_ID || "");
+        if (paidId) await redis.hset(ORDER_PAID_KEY, { [paidId]: "0" });
       } else {
         console.error("confirm-order: no order record supplied for", reservationId);
       }
