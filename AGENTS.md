@@ -179,6 +179,25 @@ Changes have been made from more than one machine. Before editing a file, fetch
 the current version from GitHub `main` and patch that. Re-uploading an older
 copy has silently destroyed a feature before.
 
+## Vercel Preview shares production Redis unless the env vars are split
+
+Preview deployments inherit whatever `UPSTASH_REDIS_REST_URL` /
+`UPSTASH_REDIS_REST_TOKEN` a project has, so by default **a preview reads and
+writes the same Upstash database as production** — completing a checkout on a
+preview really does decrement live stock, write a real order, and fire the real
+email. This bit us once (stock had to be reinstated by hand).
+
+The store is now configured with a **separate Upstash database for the Preview
+environment** (Vercel → Storage): the production DB is connected to the project
+for **Production only**, and a second DB (`fallacy-preview`) for **Preview**
+only. Same variable names, different values per environment — no prefix, because
+the code reads the fixed names via `Redis.fromEnv()`.
+
+Keep it that way. If you ever reconnect a store to "all environments" or add a
+custom prefix, previews will either fall back onto production data or fail to
+find Redis entirely. A preview DB starting "empty" (every card at full stock, no
+orders) is the *expected, healthy* sign that isolation is working — not a bug.
+
 ## Front-end traps that have bitten more than once
 
 **Apostrophes in filenames.** Card images include names like
