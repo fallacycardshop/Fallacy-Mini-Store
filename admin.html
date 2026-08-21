@@ -1129,14 +1129,14 @@
 
     <h3 style="margin-top:22px;font-size:15px;">Remove From &ldquo;Newly In Stock&rdquo;</h3>
     <p class="config-note">
-      Drops a card out of the Newly in stock row early. It stays on sale &mdash;
-      it just falls into Featured or All Cards straight away. Leave the Card ID
-      blank to clear the whole row.
+      Every card in the Newly in stock row is listed below, ticked to keep.
+      <strong>Untick the ones you want to remove</strong>, then apply in one go.
+      Removed cards stay on sale &mdash; they just drop into Featured or All Cards
+      straight away.
     </p>
-    <input type="text" id="dropCardId" placeholder="Card ID (blank = clear the whole row)" autocomplete="off">
+    <div id="dropChecklist"></div>
     <div class="button-row">
-      <button id="dropPreviewButton" class="btn-neutral">Preview</button>
-      <button id="dropFromNewButton" class="btn-danger">Remove From Newly In Stock</button>
+      <button id="dropApplyButton" class="btn-danger">Remove Unticked From Newly In Stock</button>
     </div>
 
     <h3 style="margin-top:22px;font-size:15px;">Publish Stock Now</h3>
@@ -4757,6 +4757,51 @@ function renderDripStatus(status) {
 
   dripListEl.innerHTML = sections.join("") ||
     '<div class="muted" style="margin-top:14px;">Nothing scheduled or pending.</div>';
+
+  renderDropChecklist(status.newlyIn);
+}
+
+// Checklist of every card currently in the Newly in stock row, all ticked to
+// keep. Untick the ones to remove, then "Remove Unticked" drops them all in one
+// dropFromNew call. Re-rendered from status.newlyIn each time status refreshes.
+function renderDropChecklist(newlyIn) {
+  const wrap = document.getElementById("dropChecklist");
+  if (!wrap) return;
+  const list = newlyIn || [];
+  if (!list.length) {
+    wrap.innerHTML = '<div class="muted" style="font-size:12px;">The Newly in stock row is empty right now.</div>';
+    return;
+  }
+
+  wrap.innerHTML = `
+    <div class="order-check-wrap">
+      <div class="order-check-head">
+        <span>Keep in Newly in stock (<span id="dropKeepCount">${list.length}</span> of ${list.length})</span>
+        <span>
+          <button type="button" data-drop-all>Keep all</button>
+          <button type="button" data-drop-none>Remove all</button>
+        </span>
+      </div>
+      ${list.map(r => `
+        <label class="order-check">
+          <input type="checkbox" data-drop-key="${escapeHtml(r.groupKey)}" checked>
+          <span class="oc-name">${escapeHtml(r.name || r.cardId || r.groupKey)}${r.condition ? " · " + escapeHtml(r.condition) : ""}</span>
+          <span class="oc-total">${escapeHtml(r.cardId || "")}</span>
+        </label>`).join("")}
+    </div>`;
+
+  const boxes = wrap.querySelectorAll("input[data-drop-key]");
+  // Update the count and dimming in place — never rebuild the list from inside a
+  // checkbox's own handler, which would destroy the checkbox mid-event.
+  const refreshCount = () => {
+    const kept = wrap.querySelectorAll("input[data-drop-key]:checked").length;
+    const c = document.getElementById("dropKeepCount");
+    if (c) c.textContent = kept;
+    boxes.forEach(b => b.closest(".order-check").classList.toggle("off", !b.checked));
+  };
+  boxes.forEach(b => { b.onchange = refreshCount; });
+  wrap.querySelector("[data-drop-all]").onclick = () => { boxes.forEach(b => { b.checked = true; }); refreshCount(); };
+  wrap.querySelector("[data-drop-none]").onclick = () => { boxes.forEach(b => { b.checked = false; }); refreshCount(); };
 }
 
 // Blank means "use the next daily slot". The value is a local wall-clock time
@@ -4935,53 +4980,32 @@ async function alignNewWindow(mode) {
 document.getElementById("alignEarliestButton").onclick = () => alignNewWindow("earliest");
 document.getElementById("alignLatestButton").onclick = () => alignNewWindow("latest");
 
-document.getElementById("dropPreviewButton").onclick = async () => {
-  const cardId = document.getElementById("dropCardId").value.trim();
-  dripResultEl.textContent = "Checking...";
-  dripResultEl.className = "";
+document.getElementById("dropApplyButton").onclick = async () => {
+  const wrap = document.getElementById("dropChecklist");
+  const toRemove = Array.from(wrap.querySelectorAll("input[data-drop-key]:not(:checked)"))
+    .map(b => b.dataset.dropKey);
 
-  try {
-    const data = await callDripApi("previewDropFromNew", cardId ? { cardId } : {});
-    if (!data) return;
-
-    if (!data.dropped.length) {
-      dripListEl.innerHTML = "";
-      dripResultEl.textContent = cardId
-        ? `${cardId} isn't in the Newly in stock row.`
-        : "The Newly in stock row is already empty.";
-      dripResultEl.className = "error";
-      return;
-    }
-
-    dripListEl.innerHTML =
-      `<div style="margin-top:14px;"><strong>Would remove ${data.dropped.length} listing(s):</strong></div>` +
-      data.dropped.map(d => dripRowHtml(d)).join("");
-
-    dripResultEl.textContent = "Preview only — nothing changed. Press Remove to apply.";
-    dripResultEl.className = "success";
-  } catch (err) {
-    dripResultEl.textContent = "Network error — please try again.";
+  if (!toRemove.length) {
+    dripResultEl.textContent = "Nothing unticked — untick the cards you want to remove first.";
     dripResultEl.className = "error";
+    return;
   }
-};
 
-document.getElementById("dropFromNewButton").onclick = async () => {
-  const cardId = document.getElementById("dropCardId").value.trim();
-  const confirmMsg = cardId
-    ? `Remove ${cardId} from the Newly in stock row?`
-    : "Clear the ENTIRE Newly in stock row? Every card in it drops into the normal sections.";
-  if (!confirm(confirmMsg)) return;
+  if (!confirm(
+    `Remove ${toRemove.length} card(s) from the Newly in stock row?\n\n` +
+    "They stay on sale — they just drop into Featured or All Cards straight away."
+  )) return;
 
   dripResultEl.textContent = "Working...";
   dripResultEl.className = "";
 
   try {
-    const data = await callDripApi("dropFromNew", cardId ? { cardId } : {});
+    const data = await callDripApi("dropFromNew", { groupKeys: toRemove });
     if (!data) return;
-    renderDripStatus(data.status);
+    renderDripStatus(data.status); // re-renders the checklist with the cards that remain
     dripResultEl.textContent = data.dropped.length
-      ? `Removed ${data.dropped.length} listing(s) from the Newly in stock row.`
-      : "Nothing matching was in the Newly in stock row.";
+      ? `Removed ${data.dropped.length} card(s) from the Newly in stock row.`
+      : "Nothing matching was still in the Newly in stock row.";
     dripResultEl.className = "success";
   } catch (err) {
     dripResultEl.textContent = "Network error — please try again.";
