@@ -719,6 +719,7 @@
   .spend-flag-banner { font-size: 12px; color: #8a2b1a; background: #fdeae4; border: 1px solid #f0b9a8; border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
   .spend-table tr.spend-flagged td { background: #fdf3ef; }
   .adj-note { color: #7b4bab; font-weight: 700; cursor: help; }
+  .badge-chip { display: inline-block; font-size: 11px; font-weight: 700; color: #a8305f; background: #fdeef4; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
   .spend-adjust { font-size: 11px; padding: 3px 8px; border: 1px solid #ccc; background: #fff; border-radius: 6px; cursor: pointer; color: #333; }
   .spend-adjust:hover { background: #f3f3f3; }
   .order-head { font-size: 14px; font-weight: 700; }
@@ -956,17 +957,16 @@
 <div class="card">
   <h1>Customer Spend</h1>
   <p>
-    Lifetime spend per customer, counting <strong>paid orders only</strong>.
-    This is what the loyalty tiers will be set from, so read the distribution
-    before picking thresholds. Sorted by spend; tap a column to re-sort.
+    Spend and loyalty <strong>badge</strong> per customer, counting
+    <strong>paid orders only</strong>. <strong>Badge</strong> is set by spend in
+    the rolling <strong>6-month window</strong> (from the 1st of the month six
+    months back); <strong>Total</strong> is all-time. Tap a column to re-sort.
   </p>
   <p class="spend-caveat">
-    Spend is <strong>lifetime</strong>: each order's amount is banked
-    permanently the moment it's marked paid, so totals are <em>not</em> limited
-    to the most recent 1,000 stored orders. To seed history the first time, run
-    &ldquo;Rebuild from orders&rdquo; once &mdash; it credits every order
-    currently stored and is safe to run again (it never double-counts). The only
-    unrecoverable gap is spend from before order backup began.
+    Figures are recomputed live from the stored orders (up to 5,000), so they
+    reconcile with Recent Orders exactly. The badge reflects the 6-month window,
+    so it can rise or lapse as the window moves. The only unrecoverable gap is
+    spend from before order backup began.
   </p>
   <input type="password" id="spendPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
   <div class="date-row">
@@ -4381,19 +4381,17 @@ function renderSpendTable() {
   const totalSpend = spendRows.reduce((s, r) => s + r.spend, 0);
   const totalOrders = spendRows.reduce((s, r) => s + r.orders, 0);
 
-  const flaggedCount = spendRows.filter(r => r.reconciles === false).length;
-  const banner = flaggedCount
-    ? `<div class="spend-flag-banner">⚠️ ${flaggedCount} customer(s) show less banked spend than their visible paid orders — an order was likely marked paid without its credit landing. Re-check that order's payment state, or use Adjust to correct the lifetime total.</div>`
-    : "";
+  const totalWindow = spendRows.reduce((s, r) => s + (Number(r.windowSpend) || 0), 0);
 
   spendReportEl.innerHTML = `
-    ${banner}
-    <div class="spend-totals">${spendRows.length} customer(s) · ${totalOrders} paid order(s) · ${fmtMoney(totalSpend)} lifetime total</div>
+    <div class="spend-totals">${spendRows.length} customer(s) · ${totalOrders} paid order(s) · ${fmtMoney(totalSpend)} all-time · ${fmtMoney(totalWindow)} in the 6-month window</div>
     <div class="spend-table-wrap">
       <table class="spend-table">
         <thead><tr>
           <th data-sort="handle">Customer${arrow("handle")}</th>
-          <th data-sort="spend" class="num">Lifetime${arrow("spend")}</th>
+          <th data-sort="badgeN" class="num">Badge${arrow("badgeN")}</th>
+          <th data-sort="windowSpend" class="num">6&#8209;mo${arrow("windowSpend")}</th>
+          <th data-sort="spend" class="num">Total${arrow("spend")}</th>
           <th data-sort="orders" class="num">Orders${arrow("orders")}</th>
           <th data-sort="aov" class="num">Avg${arrow("aov")}</th>
           <th data-sort="lastOrder" class="num">Last order${arrow("lastOrder")}</th>
@@ -4401,9 +4399,11 @@ function renderSpendTable() {
         </tr></thead>
         <tbody>
           ${sorted.map(r => `
-            <tr class="${r.reconciles === false ? "spend-flagged" : ""}">
+            <tr>
               <td>${escapeHtml(r.handle)}${r.adjust ? ` <span class="adj-note" title="includes a ${fmtMoney(r.adjust)} manual adjustment">±</span>` : ""}</td>
-              <td class="num">${r.reconciles === false ? "⚠️ " : ""}${fmtMoney(r.spend)}</td>
+              <td class="num">${r.badge ? `<span class="badge-chip">${r.badge.n}&#183;${escapeHtml(r.badge.name)}</span>` : '<span class="muted">—</span>'}</td>
+              <td class="num">${fmtMoney(Number(r.windowSpend) || 0)}</td>
+              <td class="num">${fmtMoney(r.spend)}</td>
               <td class="num">${r.orders}</td>
               <td class="num">${fmtMoney(r.aov)}</td>
               <td class="num">${fmtSpendDate(r.lastOrder)}</td>
@@ -4432,20 +4432,26 @@ function renderSpendTable() {
 // organic spend on the server and logged with a reason.
 async function adjustCustomerSpend(custKey, handle) {
   const amtStr = prompt(
-    `Adjust lifetime spend for ${handle}\n\nEnter a dollar amount to ADD, or a negative amount to subtract:`,
+    `Adjust spend for ${handle}\n\nDollar amount to ADD, or a negative amount to subtract:`,
     ""
   );
   if (amtStr === null) return;
   const amt = Number(amtStr);
   if (!Number.isFinite(amt) || amt === 0) { alert("Enter a non-zero number, e.g. 12.50 or -5."); return; }
+  const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10); // SGT today
+  const dateStr = prompt(
+    `Date of this spend (YYYY-MM-DD)\n\nDecides whether it counts toward the 6-month window and badge — a date inside the window moves the badge, an older date only the all-time total. Enter = today.`,
+    today
+  );
+  if (dateStr === null) return;
   const reason = prompt("Reason for this adjustment (logged for audit):", "");
   if (reason === null) return;
   spendResultEl.textContent = "Applying adjustment...";
   spendResultEl.className = "";
   try {
-    const data = await postSpend("adjustSpend", { custKey, delta: amt, reason });
+    const data = await postSpend("adjustSpend", { custKey, delta: amt, date: dateStr.trim(), reason });
     if (!data) return;
-    spendResultEl.textContent = `Adjusted ${handle} by ${fmtMoney(amt)}.`;
+    spendResultEl.textContent = `Adjusted ${handle} by ${fmtMoney(amt)} (dated ${dateStr.trim() || today}).`;
     spendResultEl.className = "success";
     const report = await postSpend("spendReport");
     if (report) { spendRows = report.rows || []; renderSpendTable(); }
@@ -4491,17 +4497,17 @@ document.getElementById("spendLoadButton").onclick = async () => {
   try {
     const data = await postSpend("spendReport");
     if (!data) return;
-    spendRows = data.rows || [];
+    // badgeN is a sortable numeric mirror of the badge for the table's sort.
+    spendRows = (data.rows || []).map(r => ({ ...r, badgeN: r.badge ? r.badge.n : 0 }));
     if (!spendRows.length) {
       spendResultEl.textContent = "No paid orders yet — nothing to total.";
       spendResultEl.className = "success";
       return;
     }
     spendResultEl.textContent =
-      `${data.totals.customers} customer(s) · ${fmtMoney(data.totals.spend)} lifetime` +
-      (data.flagged ? ` · ⚠️ ${data.flagged} to review` : "") +
-      `. Verify window: ${data.counted} stored order(s).`;
-    spendResultEl.className = data.flagged ? "error" : "success";
+      `${data.totals.customers} customer(s) · ${fmtMoney(data.totals.spend)} all-time · ` +
+      `${fmtMoney(data.totals.windowSpend)} in the 6-month window (badge basis). ${data.counted} stored order(s).`;
+    spendResultEl.className = "success";
     renderSpendTable();
   } catch (e) {
     spendResultEl.textContent = "Network error — please try again.";
