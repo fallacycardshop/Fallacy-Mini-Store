@@ -4538,20 +4538,19 @@ document.getElementById("spendLoadButton").onclick = async () => {
 
 document.getElementById("spendBackfillButton").onclick = async () => {
   if (!confirm(
-    "Seed lifetime spend from the stored orders?\n\n" +
-    "Every stored order that hasn't been counted yet is treated as PAID (the shop owner has confirmed these) and credited once. " +
-    "Orders placed from now on stay unpaid until you mark them. " +
-    "This is additive and idempotent — safe to run again; it never double-counts and never erases spend that has rotated out of the window."
+    "Rebuild each customer's spend log from the stored orders?\n\n" +
+    "This is what the bot reads for a customer's badge status. Every stored order with no payment state yet is treated as PAID (the shop owner has confirmed these). " +
+    "It overwrites the logs rather than adding, so it's safe to run again — the panel above already recomputes live from the orders regardless."
   )) return;
-  spendResultEl.textContent = "Seeding...";
+  spendResultEl.textContent = "Rebuilding logs...";
   spendResultEl.className = "";
   try {
     const data = await postSpend("backfillSpend");
     if (!data) return;
     spendResultEl.textContent = (data.customers || data.seeded)
-      ? `Credited ${data.customers} customer(s) (+${fmtMoney(data.credited)})` +
-        (data.seeded ? `, seeded ${data.seeded} historical order(s).` : ".")
-      : "Nothing to credit — every paid order is already counted.";
+      ? `Rebuilt logs for ${data.customers} customer(s) from ${data.orders} paid order(s)` +
+        (data.seeded ? `; seeded ${data.seeded} historical order(s) as paid.` : ".")
+      : "Nothing to rebuild — no paid orders stored.";
     spendResultEl.className = "success";
     const report = await postSpend("spendReport");
     if (report) { spendRows = report.rows || []; renderSpendTable(); }

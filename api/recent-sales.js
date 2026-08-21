@@ -1,4 +1,14 @@
 import { Redis } from "@upstash/redis";
+import {
+  CUSTOMER_ADJUST_KEY,
+  spendLogKey,
+  sumSpendLog,
+  parseAdjustEntries,
+  sumAdjust,
+  windowStartMs,
+  badgeForSpend,
+  nextBadge,
+} from "./_inventory.js";
 
 const redis = Redis.fromEnv();
 
@@ -104,6 +114,54 @@ const openStoreKeyboard = {
   inline_keyboard: [[{ text: "🛒 Open the Mini Store", web_app: { url: STORE_URL } }]],
 };
 
+// Persistent reply keyboard shown above the text box — nothing to type or
+// remember. "Shop" is a web_app button that opens the Mini App directly; the
+// other two send their label as text, handled in handleTelegram. Slash commands
+// still work as a fallback, and the menu button (setMyCommands) lists them.
+const mainKeyboard = {
+  keyboard: [
+    [{ text: "🎖 My Badges" }],
+    [{ text: "🛒 Shop", web_app: { url: STORE_URL } }, { text: "❓ FAQ" }],
+  ],
+  resize_keyboard: true,
+  is_persistent: true,
+};
+
+const BOT_COMMANDS = [
+  { command: "start", description: "Open the Mini Store" },
+  { command: "mytier", description: "My badges & spend" },
+  { command: "faq", description: "Frequently asked questions" },
+];
+
+function money(n) { return "$" + (Number(n) || 0).toFixed(2); }
+
+// Read-only loyalty status for a Telegram numeric user id — the permanent
+// identity carried on every Telegram message. One HGETALL of the customer's
+// short spend log plus one HGET of their adjustments: O(1) Redis, no scan of the
+// orders list. Figures use the same window + badge helpers the admin panel does,
+// so the two agree.
+async function badgeStatusText(userId) {
+  const key = String(userId || "");
+  const windowStart = windowStartMs();
+  const log = key ? (await redis.hgetall(spendLogKey(key))) || {} : {};
+  const s = sumSpendLog(log, windowStart);
+  const adj = sumAdjust(parseAdjustEntries(key ? await redis.hget(CUSTOMER_ADJUST_KEY, key) : null), windowStart);
+  const windowSpend = s.window + adj.window;
+  const badge = badgeForSpend(windowSpend);
+  const next = nextBadge(windowSpend);
+
+  let msg = "🎖 <b>Your Badges</b>\n\n";
+  msg += badge
+    ? `Current badge: <b>${badge.name}</b> (#${badge.n})\n`
+    : "You haven't earned a badge yet.\n";
+  msg += `Spend in the last 6 months: <b>${money(windowSpend)}</b>\n`;
+  if (next && next.badge) {
+    msg += `\n${money(next.needed)} more to reach <b>${next.badge.name}</b>.`;
+  }
+  msg += "\n\n<i>Vouchers will appear here once rewards launch.</i>";
+  return msg;
+}
+
 async function handleTelegram(req, res) {
   // Telegram echoes the secret back on every call; anything else is not from
   // Telegram and is ignored.
@@ -115,32 +173,44 @@ async function handleTelegram(req, res) {
   const message = req.body.message || req.body.edited_message;
   const text = message && message.text ? message.text.trim().toLowerCase() : "";
   const chatId = message && message.chat ? message.chat.id : null;
+  // Loyalty identity is the sender's numeric user id (permanent, uneditable);
+  // in a private chat it equals chat.id, but from.id is the correct field.
+  const fromId = message && message.from ? message.from.id : chatId;
 
   // Always 200, promptly — Telegram retries anything else.
   if (!chatId) return res.status(200).json({ ok: true });
 
-  if (text.startsWith("/faq")) {
+  if (text.includes("faq")) {
     await telegramCall("sendMessage", {
       chat_id: chatId,
       text: FAQ_TEXT,
       parse_mode: "HTML",
       disable_web_page_preview: true,
-      reply_markup: openStoreKeyboard,
+      reply_markup: mainKeyboard,
+    });
+  } else if (text.includes("badge") || text.startsWith("/mytier") || text.startsWith("/mybadges")) {
+    await telegramCall("sendMessage", {
+      chat_id: chatId,
+      text: await badgeStatusText(fromId),
+      parse_mode: "HTML",
+      reply_markup: mainKeyboard,
     });
   } else if (text.startsWith("/start") || text.startsWith("/shop") || text.startsWith("/store")) {
+    // Populate the menu-button command list (idempotent, cheap) on first contact.
+    await telegramCall("setMyCommands", { commands: BOT_COMMANDS });
     await telegramCall("sendMessage", {
       chat_id: chatId,
       text:
         "Welcome to <b>Fallacy's Mini Store</b> 🎴\n\n" +
-        "Tap below to browse our Pokémon singles. Use /faq if you have questions.",
+        "Use the buttons below to shop, check your badges, or read the FAQ.",
       parse_mode: "HTML",
-      reply_markup: openStoreKeyboard,
+      reply_markup: mainKeyboard,
     });
   } else {
     await telegramCall("sendMessage", {
       chat_id: chatId,
-      text: "Try /faq for common questions, or tap below to open the store.",
-      reply_markup: openStoreKeyboard,
+      text: "Use the buttons below — Shop, My Badges, or FAQ.",
+      reply_markup: mainKeyboard,
     });
   }
 

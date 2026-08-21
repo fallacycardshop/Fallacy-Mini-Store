@@ -661,8 +661,30 @@ export const CUSTOMER_COUNT_KEY = "customer:orders";// hash: customerKey -> paid
 // figure stays verifiable against the orders window (see spendReport), while the
 // displayed lifetime total is organic + adjustment. Every adjustment is logged
 // with a reason for auditability.
-export const CUSTOMER_ADJUST_KEY = "customer:spend:adjust"; // hash: customerKey -> net manual $ correction
-export const CUSTOMER_ADJUST_LOG = "customer:spend:log";    // capped list: { at, key, delta, reason }
+export const CUSTOMER_ADJUST_KEY = "customer:spend:adjust"; // hash: customerKey -> JSON array of dated adjustments
+export const CUSTOMER_ADJUST_LOG = "customer:spend:log";    // capped list: { at, key, delta, date, reason }
+
+// Per-customer dated spend log: one small hash per customer, field = Order_ID,
+// value = "<epochMs>:<amount>". Lets the bot compute one customer's rolling
+// window in O(1) Redis calls (a single HGETALL of a short hash) without reading
+// the whole orders list. Maintained incrementally by markPaid and rebuilt by
+// the backfill; the admin panel stays authoritative by recomputing from orders.
+export const SPEND_LOG_PREFIX = "spend:";
+export function spendLogKey(custKey) { return SPEND_LOG_PREFIX + custKey; }
+
+// Sum a spend-log hash into cumulative + rolling-window figures.
+export function sumSpendLog(logHash, windowStart) {
+  let cumulative = 0, window = 0, orders = 0, windowOrders = 0, lastOrder = 0;
+  for (const v of Object.values(logHash || {})) {
+    const idx = String(v).indexOf(":");
+    const when = Number(String(v).slice(0, idx)) || 0;
+    const amt = Number(String(v).slice(idx + 1)) || 0;
+    cumulative += amt; orders += 1;
+    if (when >= windowStart) { window += amt; windowOrders += 1; }
+    if (when > lastOrder) lastOrder = when;
+  }
+  return { cumulative, window, orders, windowOrders, lastOrder };
+}
 // Orders with neither a Telegram id nor any username land here rather than being
 // silently dropped, so the shop owner can still see the money and chase it up.
 export const UNATTRIBUTED_KEY = "(no telegram)";
