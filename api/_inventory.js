@@ -709,7 +709,7 @@ export function orderAmount(record) {
 // order:paid entry — returning them in `seededPaid` so the backfill can credit
 // each exactly once and write the explicit "1". New orders carry an explicit
 // "0" from confirm time, so "no entry" unambiguously means "historical".
-export function aggregateSpend(orderEntries, paidMap) {
+export function aggregateSpend(orderEntries, paidMap, windowStart = 0) {
   const map = paidMap || {};
   const byCustomer = new Map();
   const seededPaid = {};
@@ -728,13 +728,75 @@ export function aggregateSpend(orderEntries, paidMap) {
     const key = customerKey(record);
     const amt = orderAmount(record);
     const when = Number(entry && entry.savedAt) || Number(record.Order_ID) || 0;
-    const cur = byCustomer.get(key) || { key, spend: 0, orders: 0, lastOrder: 0, handle: key };
+    const cur = byCustomer.get(key) ||
+      { key, spend: 0, orders: 0, windowSpend: 0, windowOrders: 0, lastOrder: 0, handle: key };
+    // Cumulative (all-time) figures...
     cur.spend += amt;
     cur.orders += 1;
+    // ...and the rolling-window figures that drive badge STATUS. windowStart of
+    // 0 means "no window" and every order counts (cumulative == window).
+    if (when >= windowStart) { cur.windowSpend += amt; cur.windowOrders += 1; }
     if (when >= cur.lastOrder) { cur.lastOrder = when; cur.handle = orderHandle(record); }
     byCustomer.set(key, cur);
   }
   return { byCustomer, seededPaid };
+}
+
+// ===========================================================================
+// Loyalty badges — ONE source of truth (loyalty-programme.md §2). Every screen
+// (admin panel, bot, voucher issuance) reads badge status through the helpers
+// below so they can never disagree, and thresholds/rewards can be tuned here
+// without hunting through logic.
+// ===========================================================================
+export const BADGES = [
+  { n: 1, name: "Boulder", spend: 80,   pct: 5,  cap: 8 },
+  { n: 2, name: "Cascade", spend: 200,  pct: 8,  cap: 16 },
+  { n: 3, name: "Thunder", spend: 400,  pct: 10, cap: 20 },
+  { n: 4, name: "Rainbow", spend: 600,  pct: 10, cap: 20 },
+  { n: 5, name: "Soul",    spend: 800,  pct: 10, cap: 25 },
+  { n: 6, name: "Marsh",   spend: 1000, pct: 10, cap: 25 },
+  { n: 7, name: "Volcano", spend: 1200, pct: 12, cap: 30 },
+  { n: 8, name: "Earth",   spend: 1400, pct: 12, cap: 30 },
+];
+// Beyond Earth: a fresh Champion badge every +$250, without limit.
+export const CHAMPION = { step: 250, pct: 12, cap: 30 };
+
+// The badge a spend qualifies for: null below Boulder, one of BADGES, or a
+// Champion tier ($1,650, $1,900, …). Champion tier k is badge number 8+k.
+export function badgeForSpend(spend) {
+  const s = Number(spend) || 0;
+  const earth = BADGES[BADGES.length - 1]; // Earth, $1,400
+  if (s >= earth.spend + CHAMPION.step) {
+    const tier = Math.floor((s - earth.spend) / CHAMPION.step); // 1, 2, 3, …
+    return {
+      n: earth.n + tier,
+      name: tier === 1 ? "Champion" : `Champion ×${tier}`,
+      spend: earth.spend + tier * CHAMPION.step,
+      pct: CHAMPION.pct, cap: CHAMPION.cap, champion: true, tier,
+    };
+  }
+  let earned = null;
+  for (const b of BADGES) { if (s >= b.spend) earned = b; }
+  return earned; // Boulder..Earth, or null below Boulder
+}
+
+// The next badge up and the spend still needed for it — for "progress to next"
+// on the bot and lapse messages. Champion always has a next (never maxed out).
+export function nextBadge(spend) {
+  const s = Number(spend) || 0;
+  const earth = BADGES[BADGES.length - 1];
+  for (const b of BADGES) { if (s < b.spend) return { badge: b, needed: Number((b.spend - s).toFixed(2)) }; }
+  // At/above Earth: next Champion tier.
+  const nextAt = earth.spend + (Math.floor((s - earth.spend) / CHAMPION.step) + 1) * CHAMPION.step;
+  return { badge: { name: "Champion", spend: nextAt, pct: CHAMPION.pct, cap: CHAMPION.cap, champion: true }, needed: Number((nextAt - s).toFixed(2)) };
+}
+
+// Start of the rolling 6-month window: 00:00 on the 1st of the month six months
+// back, in SGT (UTC+8). Spend on/after this instant counts toward badge STATUS.
+export function windowStartMs(now = Date.now(), tzOffsetMin = 480) {
+  const local = new Date(now + tzOffsetMin * 60000);
+  const startLocalMidnight = Date.UTC(local.getUTCFullYear(), local.getUTCMonth() - 6, 1, 0, 0, 0, 0);
+  return startLocalMidnight - tzOffsetMin * 60000; // SGT wall-clock midnight -> real epoch
 }
 
 // Resolve a single order's paid state with the same "no entry = paid" rule the

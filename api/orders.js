@@ -8,12 +8,14 @@ import {
   customerKey,
   orderAmount,
   aggregateSpend,
+  badgeForSpend,
+  windowStartMs,
 } from "./_inventory.js";
 
 const redis = Redis.fromEnv();
 
 const DEFAULT_LIMIT = 25;
-const MAX_LIMIT = 1000; // matches MAX_STORED_ORDERS in confirm-order.js
+const MAX_LIMIT = 5000; // matches MAX_STORED_ORDERS in confirm-order.js
 const ADJUST_LOG_MAX = 200; // audit trail of manual spend corrections
 const ORDERS_KEY = "orders";
 
@@ -203,37 +205,36 @@ export default async function handler(req, res) {
     if (action === "spendReport") {
       const orders = await readAllOrders();
       const paidMap = (await redis.hgetall(ORDER_PAID_KEY)) || {};
-      const spendMap = (await redis.hgetall(CUSTOMER_SPEND_KEY)) || {};
-      const countMap = (await redis.hgetall(CUSTOMER_COUNT_KEY)) || {};
       const adjustMap = (await redis.hgetall(CUSTOMER_ADJUST_KEY)) || {};
-      const { byCustomer: windowAgg } = aggregateSpend(orders, paidMap);
+      const windowStart = windowStartMs();
 
-      const keys = new Set([
-        ...Object.keys(spendMap),
-        ...Object.keys(countMap),
-        ...Object.keys(adjustMap),
-        ...windowAgg.keys(),
-      ]);
+      // Recompute from the SAME orders + paid states Recent Orders reads, so the
+      // panel reconciles with it by construction. One pass yields both the
+      // cumulative (all-time) total and the rolling 6-month window figure that
+      // sets badge status. This is the ONE place spend and badge are derived.
+      const { byCustomer } = aggregateSpend(orders, paidMap, windowStart);
 
-      let flagged = 0;
+      const keys = new Set([...byCustomer.keys(), ...Object.keys(adjustMap)]);
       const rows = [];
       for (const key of keys) {
-        const organic = Number(spendMap[key]) || 0;
+        const c = byCustomer.get(key);
         const adjust = Number(adjustMap[key]) || 0;
-        const spend = Number((organic + adjust).toFixed(2));
-        const count = Number(countMap[key]) || 0;
-        const w = windowAgg.get(key);
-        const reconciles = organic + 1e-6 >= (w ? w.spend : 0);
-        if (!reconciles) flagged += 1;
+        // Manual corrections apply to the cumulative total (they aren't dated,
+        // so they don't move the rolling window / badge status).
+        const cumulative = Number(((c ? c.spend : 0) + adjust).toFixed(2));
+        const windowSpend = Number((c ? c.windowSpend : 0).toFixed(2));
+        const orderCount = c ? c.orders : 0;
+        const badge = badgeForSpend(windowSpend);
         rows.push({
           key,
-          handle: w ? w.handle : key,
-          spend,
+          handle: c ? c.handle : key,
+          spend: cumulative,        // cumulative all-time (incl. adjustment)
+          windowSpend,              // rolling 6-month spend -> badge
+          badge: badge ? { name: badge.name, n: badge.n } : null,
           adjust: Number(adjust.toFixed(2)),
-          orders: count,
-          aov: count > 0 ? Number((spend / count).toFixed(2)) : 0,
-          lastOrder: w ? w.lastOrder : 0,
-          reconciles,
+          orders: orderCount,
+          aov: orderCount > 0 ? Number((cumulative / orderCount).toFixed(2)) : 0,
+          lastOrder: c ? c.lastOrder : 0,
         });
       }
       rows.sort((a, b) => b.spend - a.spend);
@@ -241,10 +242,11 @@ export default async function handler(req, res) {
       const totals = {
         customers: rows.length,
         spend: Number(rows.reduce((s, r) => s + r.spend, 0).toFixed(2)),
+        windowSpend: Number(rows.reduce((s, r) => s + r.windowSpend, 0).toFixed(2)),
         orders: rows.reduce((s, r) => s + r.orders, 0),
       };
 
-      return res.status(200).json({ ok: true, rows, totals, cap: MAX_LIMIT, counted: orders.length, flagged });
+      return res.status(200).json({ ok: true, rows, totals, cap: MAX_LIMIT, counted: orders.length, windowStart });
     }
 
     // ------------------------------------------------------- default: read --

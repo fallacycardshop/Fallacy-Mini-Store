@@ -4,7 +4,7 @@ import { loadInventoryGroups, ORDER_PAID_KEY } from "./_inventory.js";
 const redis = Redis.fromEnv();
 
 const MAX_RECENT_SALES = 20;
-const MAX_STORED_ORDERS = 1000;
+const MAX_STORED_ORDERS = 5000; // ~13 months at 12 orders/day — headroom for the 6-month loyalty window
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
