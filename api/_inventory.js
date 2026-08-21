@@ -748,18 +748,22 @@ export function aggregateSpend(orderEntries, paidMap, windowStart = 0) {
 // below so they can never disagree, and thresholds/rewards can be tuned here
 // without hunting through logic.
 // ===========================================================================
+// Each badge carries a distinct display colour, kept here so every screen
+// (admin panel, bot, storefront) tints it identically. The icon that pairs with
+// each is an original themed pictogram (rock, drop, bolt, …) — not the game's
+// trademarked badge art — defined where they're rendered.
 export const BADGES = [
-  { n: 1, name: "Boulder", spend: 80,   pct: 5,  cap: 8 },
-  { n: 2, name: "Cascade", spend: 200,  pct: 8,  cap: 16 },
-  { n: 3, name: "Thunder", spend: 400,  pct: 10, cap: 20 },
-  { n: 4, name: "Rainbow", spend: 600,  pct: 10, cap: 20 },
-  { n: 5, name: "Soul",    spend: 800,  pct: 10, cap: 25 },
-  { n: 6, name: "Marsh",   spend: 1000, pct: 10, cap: 25 },
-  { n: 7, name: "Volcano", spend: 1200, pct: 12, cap: 30 },
-  { n: 8, name: "Earth",   spend: 1400, pct: 12, cap: 30 },
+  { n: 1, name: "Boulder", spend: 80,   pct: 5,  cap: 8,  color: "#6b7280" },
+  { n: 2, name: "Cascade", spend: 200,  pct: 8,  cap: 16, color: "#2f7fd1" },
+  { n: 3, name: "Thunder", spend: 400,  pct: 10, cap: 20, color: "#e0a417" },
+  { n: 4, name: "Rainbow", spend: 600,  pct: 10, cap: 20, color: "#a23fb8" },
+  { n: 5, name: "Soul",    spend: 800,  pct: 10, cap: 25, color: "#d94f70" },
+  { n: 6, name: "Marsh",   spend: 1000, pct: 10, cap: 25, color: "#3f9d63" },
+  { n: 7, name: "Volcano", spend: 1200, pct: 12, cap: 30, color: "#e2622e" },
+  { n: 8, name: "Earth",   spend: 1400, pct: 12, cap: 30, color: "#9a6a3c" },
 ];
 // Beyond Earth: a fresh Champion badge every +$250, without limit.
-export const CHAMPION = { step: 250, pct: 12, cap: 30 };
+export const CHAMPION = { step: 250, pct: 12, cap: 30, color: "#caa63a" };
 
 // The badge a spend qualifies for: null below Boulder, one of BADGES, or a
 // Champion tier ($1,650, $1,900, …). Champion tier k is badge number 8+k.
@@ -772,7 +776,7 @@ export function badgeForSpend(spend) {
       n: earth.n + tier,
       name: tier === 1 ? "Champion" : `Champion ×${tier}`,
       spend: earth.spend + tier * CHAMPION.step,
-      pct: CHAMPION.pct, cap: CHAMPION.cap, champion: true, tier,
+      pct: CHAMPION.pct, cap: CHAMPION.cap, color: CHAMPION.color, champion: true, tier,
     };
   }
   let earned = null;

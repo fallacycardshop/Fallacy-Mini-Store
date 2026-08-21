@@ -719,7 +719,8 @@
   .spend-flag-banner { font-size: 12px; color: #8a2b1a; background: #fdeae4; border: 1px solid #f0b9a8; border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
   .spend-table tr.spend-flagged td { background: #fdf3ef; }
   .adj-note { color: #7b4bab; font-weight: 700; cursor: help; }
-  .badge-chip { display: inline-block; font-size: 11px; font-weight: 700; color: #a8305f; background: #fdeef4; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+  .badge-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; border-radius: 999px; padding: 2px 8px 2px 6px; white-space: nowrap; border: 1px solid transparent; }
+  .badge-chip svg { display: block; flex: 0 0 auto; }
   .spend-adjust { font-size: 11px; padding: 3px 8px; border: 1px solid #ccc; background: #fff; border-radius: 6px; cursor: pointer; color: #333; }
   .spend-adjust:hover { background: #f3f3f3; }
   .order-head { font-size: 14px; font-weight: 700; }
@@ -4368,6 +4369,26 @@ function fmtSpendDate(ms) {
   return new Date(Number(ms)).toLocaleDateString("en-SG", { dateStyle: "medium" });
 }
 
+// Original themed pictograms keyed by badge number (rock, drop, bolt, rainbow,
+// heart, leaf, volcano, globe; star for Champion) — drawn here, not the game's
+// trademarked badge art. They take the badge's colour via currentColor.
+const BADGE_ICONS = {
+  1: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M5 14l3-7 7-1 5 6-2 6H8z"/></svg>',
+  2: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 3s7 8 7 12a7 7 0 0 1-14 0c0-4 7-12 7-12z"/></svg>',
+  3: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M13 2 4 14h7l-2 8 11-13h-7z"/></svg>',
+  4: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 19a9 9 0 0 1 18 0"/><path d="M7 19a5 5 0 0 1 10 0"/></svg>',
+  5: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 21S4 13 4 8a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 5-8 13-8 13z"/></svg>',
+  6: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M5 19C5 10 12 4 20 4c0 8-7 15-15 15z"/></svg>',
+  7: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M4 20 9 9l1 2 2-4 2 4 1-2 5 11z"/></svg>',
+  8: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3.2 3 3.2 15 0 18M12 3c-3.2 3-3.2 15 0 18"/></svg>',
+  champion: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2l3 6.5 7 .5-5 4.5L18.5 21 12 17l-6.5 4L7 13.5 2 9l7-.5z"/></svg>',
+};
+function badgeChip(b) {
+  const c = b.color || "#a8305f";
+  const icon = BADGE_ICONS[b.n] || BADGE_ICONS.champion;
+  return `<span class="badge-chip" style="color:${c};background:${c}1f;border-color:${c}59">${icon}<span>${b.n}&#183;${escapeHtml(b.name)}</span></span>`;
+}
+
 function renderSpendTable() {
   if (!spendRows.length) { spendReportEl.innerHTML = ""; return; }
   const { col, dir } = spendSort;
@@ -4401,7 +4422,7 @@ function renderSpendTable() {
           ${sorted.map(r => `
             <tr>
               <td>${escapeHtml(r.handle)}${r.adjust ? ` <span class="adj-note" title="includes a ${fmtMoney(r.adjust)} manual adjustment">±</span>` : ""}</td>
-              <td class="num">${r.badge ? `<span class="badge-chip">${r.badge.n}&#183;${escapeHtml(r.badge.name)}</span>` : '<span class="muted">—</span>'}</td>
+              <td class="num">${r.badge ? badgeChip(r.badge) : '<span class="muted">—</span>'}</td>
               <td class="num">${fmtMoney(Number(r.windowSpend) || 0)}</td>
               <td class="num">${fmtMoney(r.spend)}</td>
               <td class="num">${r.orders}</td>
