@@ -4432,20 +4432,26 @@ function renderSpendTable() {
 // organic spend on the server and logged with a reason.
 async function adjustCustomerSpend(custKey, handle) {
   const amtStr = prompt(
-    `Adjust lifetime spend for ${handle}\n\nEnter a dollar amount to ADD, or a negative amount to subtract:`,
+    `Adjust spend for ${handle}\n\nDollar amount to ADD, or a negative amount to subtract:`,
     ""
   );
   if (amtStr === null) return;
   const amt = Number(amtStr);
   if (!Number.isFinite(amt) || amt === 0) { alert("Enter a non-zero number, e.g. 12.50 or -5."); return; }
+  const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10); // SGT today
+  const dateStr = prompt(
+    `Date of this spend (YYYY-MM-DD)\n\nDecides whether it counts toward the 6-month window and badge — a date inside the window moves the badge, an older date only the all-time total. Enter = today.`,
+    today
+  );
+  if (dateStr === null) return;
   const reason = prompt("Reason for this adjustment (logged for audit):", "");
   if (reason === null) return;
   spendResultEl.textContent = "Applying adjustment...";
   spendResultEl.className = "";
   try {
-    const data = await postSpend("adjustSpend", { custKey, delta: amt, reason });
+    const data = await postSpend("adjustSpend", { custKey, delta: amt, date: dateStr.trim(), reason });
     if (!data) return;
-    spendResultEl.textContent = `Adjusted ${handle} by ${fmtMoney(amt)}.`;
+    spendResultEl.textContent = `Adjusted ${handle} by ${fmtMoney(amt)} (dated ${dateStr.trim() || today}).`;
     spendResultEl.className = "success";
     const report = await postSpend("spendReport");
     if (report) { spendRows = report.rows || []; renderSpendTable(); }

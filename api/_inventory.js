@@ -799,6 +799,45 @@ export function windowStartMs(now = Date.now(), tzOffsetMin = 480) {
   return startLocalMidnight - tzOffsetMin * 60000; // SGT wall-clock midnight -> real epoch
 }
 
+// Parse "YYYY-MM-DD" as midnight SGT (UTC+8) -> epoch ms; null if malformed.
+// The date of a manual adjustment decides whether it falls inside the rolling
+// window, so it must be interpreted the same way order timestamps are.
+export function parseSgtDate(str, tzOffsetMin = 480) {
+  const m = String(str || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], 0, 0, 0, 0) - tzOffsetMin * 60000;
+}
+
+// Manual adjustments are stored per customer as a JSON array of dated entries
+// { date, amount, reason, at }. Legacy values were a bare number (one undated
+// correction) — parse those as a single undated (date 0) entry so they keep
+// counting toward the all-time total but never the window.
+export function parseAdjustEntries(raw) {
+  if (raw === null || raw === undefined) return [];
+  if (typeof raw === "number") return [{ date: 0, amount: raw }];
+  if (Array.isArray(raw)) return raw;
+  const s = String(raw);
+  try {
+    const v = JSON.parse(s);
+    if (Array.isArray(v)) return v;
+    if (typeof v === "number") return [{ date: 0, amount: v }];
+  } catch (e) { /* not JSON — fall through */ }
+  const n = Number(s);
+  return Number.isFinite(n) ? [{ date: 0, amount: n }] : [];
+}
+
+// Sum a customer's adjustments into cumulative (all) and window (dated on/after
+// windowStart) dollar figures — so a dated correction can move the badge.
+export function sumAdjust(entries, windowStart) {
+  let cumulative = 0, window = 0;
+  for (const e of entries || []) {
+    const amt = Number(e && e.amount) || 0;
+    cumulative += amt;
+    if ((Number(e && e.date) || 0) >= windowStart) window += amt;
+  }
+  return { cumulative, window };
+}
+
 // Resolve a single order's paid state with the same "no entry = paid" rule the
 // aggregate uses, so the admin toggle and the totals never disagree.
 export function isOrderPaid(paidMap, orderId) {
