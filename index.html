@@ -41,6 +41,9 @@
   /* phone is a fixed-height flex column; only .content scrolls, so header + search + cart stay pinned */
   .phone{width:100%;max-width:440px;position:relative;background:var(--surface-2);flex:1 1 auto;min-height:0;display:flex;flex-direction:column;box-shadow:var(--shadow-lg);overflow:hidden}
   @media(min-width:520px){.phone{margin:0 0 16px;border-radius:24px;border:1px solid var(--frame)}}
+  /* Tablet / iPad: use the extra width — a wider frame and a three-up grid,
+     instead of a narrow phone column stranded in the middle of the screen. */
+  @media(min-width:768px){.phone,.panel{max-width:600px}.grid{grid-template-columns:1fr 1fr 1fr}}
   /* top promo banner — collapses as you scroll down */
   .promo-banner{background:linear-gradient(180deg,#fdeef4,#fbe3ee);color:var(--pink-deep);text-align:center;padding:12px 16px;font-size:13px;line-height:1.55;font-weight:600}
   @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .promo-banner{background:linear-gradient(180deg,#2a1420,#25121c)}}
@@ -65,6 +68,10 @@
   .searchwrap{position:relative}.searchwrap>svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--ink-soft)}
   #q{width:100%;padding:9px 12px 9px 33px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:14px;background:var(--surface-2);color:var(--ink)}
   #q:focus{outline:2px solid var(--accent);outline-offset:1px}
+  /* iOS auto-zooms into any text field smaller than 16px on focus, then leaves
+     the page stuck zoomed in. Forcing 16px on phones stops the zoom entirely,
+     so there's nothing to pinch back out of. Checkboxes/selects don't zoom. */
+  @media(max-width:767px){input:not([type=checkbox]):not([type=radio]):not([type=button]),textarea{font-size:16px!important}}
   .chips{display:flex;gap:7px;margin-top:7px;overflow-x:auto;padding-bottom:1px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}
   .chips select{flex:1 1 0;min-width:0;font:inherit;font-size:12px;color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:6px 10px;-webkit-appearance:none;appearance:none;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}
   .chips #sort{flex:1.15 1 0}.chips #rarity{flex:.72 1 0}.chips #set{flex:1.25 1 0}
@@ -87,8 +94,17 @@
   .seeall{font-size:12.5px;font-weight:600;color:var(--accent);background:none;border:none;cursor:pointer;padding:0}
   .sec-sub{font-size:12px;color:var(--ink-soft);padding:0 var(--gutter) 8px;margin-top:-6px}
   .rail{display:flex;gap:12px;overflow-x:auto;padding:2px var(--gutter) 4px;scroll-snap-type:x mandatory;scroll-padding-left:var(--gutter);scrollbar-width:none;-webkit-overflow-scrolling:touch}
-  .rail::-webkit-scrollbar{display:none}.rail .card,.rail .endtile{flex:0 0 47%;scroll-snap-align:start}
+  .rail::-webkit-scrollbar{display:none}.rail .card,.rail .endtile{flex:0 0 43%;scroll-snap-align:start}
   @media(min-width:520px){.rail .card,.rail .endtile{flex:0 0 158px}}
+  /* Wrap gives the rail a right-edge fade (cueing "more to the side") and hosts
+     the desktop scroll arrows. */
+  .rail-wrap{position:relative}
+  .rail-wrap::after{content:"";position:absolute;top:0;right:0;bottom:0;width:34px;background:linear-gradient(90deg,transparent,var(--rail-bg));pointer-events:none;z-index:2}
+  .rail-arrow{display:none;position:absolute;top:44%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--pink-deep);font-size:20px;line-height:1;cursor:pointer;z-index:4;align-items:center;justify-content:center;box-shadow:var(--shadow);padding:0}
+  .rail-arrow-left{left:5px}.rail-arrow-right{right:5px}
+  .rail-arrow:hover{background:var(--surface-2)}
+  /* Arrows only on devices with a real pointer (desktop); touch users swipe. */
+  @media(hover:hover) and (pointer:fine){.rail-arrow{display:flex}}
   .rail .card{background:var(--rail-card)}
   .endtile{border:1px dashed var(--accent);border-radius:var(--radius);background:var(--rail-card);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;color:var(--accent);font-weight:600;font-size:13px;padding:12px;text-align:center;min-height:120px}
   .endtile .ic{width:38px;height:38px;border-radius:50%;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center}
@@ -519,7 +535,7 @@ function railSection(title,sub,list,kind,ctx){
   const ordered=orderRail(base).slice(0,railMax);
   return `<div class="sec railsec"><div class="sec-head"><h2>${title}</h2><div class="right"><span class="count">${list.length}</span><button class="seeall" data-see="${kind}">See all &rarr;</button></div></div>
     ${sub?`<div class="sec-sub">${sub}</div>`:""}
-    <div class="rail">${ordered.map(p=>cardHTML(p,ctx)).join("")}${railTile(kind)}</div></div>`;
+    <div class="rail-wrap"><div class="rail">${ordered.map(p=>cardHTML(p,ctx)).join("")}${railTile(kind)}</div><button class="rail-arrow rail-arrow-left" aria-label="Scroll left" tabindex="-1">&lsaquo;</button><button class="rail-arrow rail-arrow-right" aria-label="Scroll right" tabindex="-1">&rsaquo;</button></div></div>`;
 }
 function featSection(list){
   // Featured = 20 IN-STOCK cards priced $9.90+, randomised daily. No sold-out
@@ -597,6 +613,7 @@ function wireActs(scope){
   scope.querySelectorAll("[data-inc]").forEach(b=>b.onclick=e=>{e.stopPropagation();setQty(b.dataset.inc,b.dataset.c,qtyOf(b.dataset.inc,b.dataset.c)+1);refreshSku(b.dataset.inc,b.dataset.c)});
   scope.querySelectorAll("[data-dec]").forEach(b=>b.onclick=e=>{e.stopPropagation();setQty(b.dataset.dec,b.dataset.c,qtyOf(b.dataset.dec,b.dataset.c)-1);refreshSku(b.dataset.dec,b.dataset.c)});
   scope.querySelectorAll("[data-see]").forEach(b=>b.onclick=e=>{e.stopPropagation();seeAll(b.dataset.see)});
+  scope.querySelectorAll(".rail-arrow").forEach(b=>b.onclick=e=>{e.stopPropagation();const w=b.closest(".rail-wrap");const rail=w&&w.querySelector(".rail");if(!rail)return;const dx=Math.max(rail.clientWidth*0.85,180);rail.scrollBy({left:b.classList.contains("rail-arrow-left")?-dx:dx,behavior:"smooth"})});
   scope.querySelectorAll("[data-back]").forEach(b=>b.onclick=clearFilters);
   const sm=scope.querySelector("[data-showsold]");if(sm)sm.onclick=()=>{$("#soldHidden").style.display="grid";sm.remove();wireActs($("#soldHidden"))};
 }
