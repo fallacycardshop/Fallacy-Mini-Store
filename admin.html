@@ -1111,7 +1111,6 @@
 
     <h3 class="drip-step">Adjust what's already scheduled</h3>
     <div class="button-row">
-      <button id="dripRescheduleButton" class="btn-neutral">Re-spread Pending</button>
       <button id="dripReleaseNowButton" class="btn-danger">Release All Now</button>
     </div>
 
@@ -4800,13 +4799,6 @@ function renderDropChecklist(newlyIn) {
   wrap.querySelector("[data-drop-none]").onclick = () => { boxes.forEach(b => { b.checked = false; }); refreshCount(); };
 }
 
-// Blank means "use the next daily slot". The value is a local wall-clock time
-// and is interpreted as SGT server-side.
-function readDripDailyCounts() {
-  const el = document.getElementById("dripDailyCounts");
-  return el ? (el.value.trim() || null) : null;
-}
-
 function readDripStartAt() {
   return document.getElementById("dripStartAt").value || null;
 }
@@ -5057,22 +5049,6 @@ document.getElementById("dripConfirmManual").onclick = async () => {
     dripResultEl.textContent = data.scheduled
       ? `Scheduled ${data.scheduled} card(s) across ${data.drips} drip(s). First drip: ${fmtSgt(data.firstSlotAt)}.`
       : "Nothing was scheduled — those cards may no longer be awaiting a schedule.";
-    dripResultEl.className = "success";
-  } catch (err) {
-    dripResultEl.textContent = "Network error — please try again.";
-    dripResultEl.className = "error";
-  }
-};
-
-document.getElementById("dripRescheduleButton").onclick = async () => {
-  if (!confirm("Re-spread everything still pending using the current settings?")) return;
-  dripResultEl.textContent = "Rescheduling...";
-  dripResultEl.className = "";
-  try {
-    const data = await callDripApi("reschedule", { startAt: readDripStartAt(), dailyCounts: readDripDailyCounts(), config: readDripConfig() });
-    if (!data) return;
-    renderDripStatus(data.status);
-    dripResultEl.textContent = `Re-spread ${data.rescheduled} pending listing(s).`;
     dripResultEl.className = "success";
   } catch (err) {
     dripResultEl.textContent = "Network error — please try again.";
