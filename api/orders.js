@@ -246,7 +246,7 @@ export default async function handler(req, res) {
           handle: c ? c.handle : key,
           spend: cumulative,        // cumulative all-time (incl. adjustments)
           windowSpend,              // rolling 6-month spend (incl. in-window adjustments) -> badge
-          badge: badge ? { name: badge.name, n: badge.n } : null,
+          badge: badge ? { name: badge.name, n: badge.n, color: badge.color } : null,
           adjust: Number(adj.cumulative.toFixed(2)),
           orders: orderCount,
           aov: orderCount > 0 ? Number((cumulative / orderCount).toFixed(2)) : 0,
