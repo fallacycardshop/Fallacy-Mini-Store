@@ -1060,11 +1060,11 @@
   <div id="dripStatus"></div>
 
   <div id="dripControls" style="display:none;">
-    <h3 class="drip-step">Step 1 · How the release runs</h3>
+    <h3 class="drip-step">Step 1 · Set up this release</h3>
     <p class="config-note">
-      These apply to whatever you schedule next. They're used straight from this
-      form, so you don't have to save first &mdash; saving just makes them the
-      default for future visits.
+      Everything for the batch you schedule next, in one place &mdash; used
+      straight from this form, so you don't have to save first.
+      &ldquo;Save As Default&rdquo; just pre-fills these the next time you visit.
     </p>
     <div class="field-row">
       <div>
@@ -1078,6 +1078,14 @@
     </div>
     <label class="field-label">How long a card stays in &ldquo;Newly in stock!&rdquo; (hours)</label>
     <input type="number" id="dripNewWindow" min="1" max="720" value="24">
+    <label class="field-label">Start the first batch at (SGT) &mdash; blank uses the next release time</label>
+    <input type="datetime-local" id="dripStartAt">
+    <label class="field-label">
+      Different amounts per day &mdash; e.g. <strong>3,5,0,8</strong> releases 3, then 5,
+      then <strong>nothing</strong> on day three, then 8. Add as many days as you like;
+      anything left over continues at the cards-per-day rate above.
+    </label>
+    <input type="text" id="dripDailyCounts" placeholder="e.g. 3,5,0,8" autocomplete="off">
     <div class="checkbox-row">
       <input type="checkbox" id="dripHoldNew" checked>
       <label for="dripHoldNew">
@@ -1087,21 +1095,7 @@
     </div>
     <button id="dripSaveConfig" class="btn-neutral">Save As Default</button>
 
-    <h3 class="drip-step">Step 2 · Fine-tune this batch (optional)</h3>
-    <p class="config-note">
-      Leave both blank to release at the settings above, starting from the next
-      release time.
-    </p>
-    <label class="field-label">Start the first batch at (SGT)</label>
-    <input type="datetime-local" id="dripStartAt">
-    <label class="field-label">
-      Different amounts per day &mdash; e.g. <strong>3,5,0,8</strong> releases 3, then 5,
-      then <strong>nothing</strong> on day three, then 8. Add as many days as you like;
-      anything left over continues at the cards-per-day rate above.
-    </label>
-    <input type="text" id="dripDailyCounts" placeholder="e.g. 3,5,0,8" autocomplete="off">
-
-    <h3 class="drip-step">Step 3 · Schedule it</h3>
+    <h3 class="drip-step">Step 2 · Schedule it</h3>
     <p class="config-note">
       Preview first &mdash; nothing is saved until you press Confirm.
     </p>
