@@ -820,6 +820,65 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, dropped, status: buildStatus() });
     }
 
+    // ------------------------------------------------------- scheduleManual --
+    // Manual drips: the operator groups the unscheduled queue into drips (each a
+    // list of groupKeys, in drip order) and picks a single start date/time.
+    // Drip 0 releases at that moment; each later drip goes out one day later at
+    // the same time. Only the cards named in a drip are scheduled — anything
+    // left out stays awaiting a schedule. Replaces the cards/day + per-day plan.
+    if (action === "scheduleManual") {
+      const startEpoch = startAt ? parseLocalDateTime(startAt, state.config) : null;
+      if (startEpoch === null) {
+        return res.status(400).json({ error: "Pick a valid start date and time for the first drip." });
+      }
+      if (startEpoch <= now) {
+        return res.status(400).json({ error: "The first drip's start time must be in the future." });
+      }
+
+      const drips = Array.isArray(req.body.drips) ? req.body.drips : [];
+      if (!drips.some(d => Array.isArray(d) && d.length > 0)) {
+        return res.status(400).json({ error: "Define at least one drip with at least one card." });
+      }
+
+      // Only cards currently awaiting a schedule can be placed; a restock queues
+      // its increase, a brand-new listing is hidden until its moment. Same rules
+      // the auto scheduler uses.
+      const restockKeys = new Set(unscheduledRestocks.map(r => r.groupKey));
+      const schedulable = new Set([...unscheduledNew, ...restockKeys]);
+      const DAY = 86400000;
+
+      let scheduled = 0;
+      const seen = new Set();
+      drips.forEach((keys, dayIndex) => {
+        const releaseAt = startEpoch + dayIndex * DAY;
+        (Array.isArray(keys) ? keys : []).forEach(groupKey => {
+          if (seen.has(groupKey)) return;          // a card can only be in one drip
+          if (!schedulable.has(groupKey)) return;  // ignore anything not awaiting a schedule
+          const group = groups.get(groupKey);
+          if (!group) return;
+          seen.add(groupKey);
+          if (restockKeys.has(groupKey)) {
+            state.levels[groupKey].pendingStock = group.baseStock;
+            state.levels[groupKey].pendingAt = releaseAt;
+          } else {
+            state.releases[groupKey] = releaseAt;
+            state.levels[groupKey] = { published: group.baseStock, pendingStock: null, pendingAt: null };
+          }
+          scheduled += 1;
+        });
+      });
+
+      state.initialized = true;
+      await saveDripState(redis, state);
+      return res.status(200).json({
+        ok: true,
+        scheduled,
+        drips: drips.filter(d => Array.isArray(d) && d.length > 0).length,
+        firstSlotAt: startEpoch,
+        status: buildStatus(),
+      });
+    }
+
     return res.status(400).json({ error: "Unknown action." });
   } catch (err) {
     console.error("drip error:", err);
