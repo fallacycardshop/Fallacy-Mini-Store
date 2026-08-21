@@ -48,7 +48,9 @@
      stays a comfortable centred width (it's a form, set below). */
   @media(min-width:600px){
     .phone{max-width:min(94vw,1240px)}
-    .grid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+    /* .content .grid (not .grid) so this beats the base two-column rule, which
+       sits later in the file and would otherwise win on source order. */
+    .content .grid{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
   }
   /* top promo banner — collapses as you scroll down */
   .promo-banner{background:linear-gradient(180deg,#fdeef4,#fbe3ee);color:var(--pink-deep);text-align:center;padding:12px 16px;font-size:13px;line-height:1.55;font-weight:600}
