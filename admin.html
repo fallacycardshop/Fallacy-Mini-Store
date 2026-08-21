@@ -394,6 +394,22 @@
     padding: 7px 0 !important;
     border-bottom: 1px solid #f2eef1 !important;
   }
+  /* Manual drip builder */
+  .drip-build-help { font-size: 12px; color: #555; margin: 8px 0; }
+  .drip-pick-list { max-height: 340px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; }
+  .drip-pick {
+    display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+    padding: 7px 10px; border: none; border-bottom: 1px solid #f2eef1; background: #fff;
+    cursor: pointer; font: inherit; font-size: 13px; color: #333;
+  }
+  .drip-pick:last-child { border-bottom: none; }
+  .drip-pick:hover { background: #faf5f8; }
+  .drip-pick-num { flex: 0 0 auto; width: 26px; color: #999; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .drip-pick-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .drip-pick-tag { flex: 0 0 auto; font-size: 11px; font-weight: 700; }
+  .drip-build-summary { margin-top: 10px; }
+  .drip-sum-row { font-size: 13px; padding: 3px 0; }
+  .linkish { background: none; border: none; color: #a8305f; text-decoration: underline; cursor: pointer; font: inherit; font-size: 12px; padding: 0; }
   .drip-row-noimg { background: #fffaf0; }
   .drip-thumb {
     flex: 0 0 auto;
@@ -1060,32 +1076,13 @@
   <div id="dripStatus"></div>
 
   <div id="dripControls" style="display:none;">
-    <h3 class="drip-step">Step 1 · Set up this release</h3>
+    <h3 class="drip-step">Step 1 · Release settings</h3>
     <p class="config-note">
-      Everything for the batch you schedule next, in one place &mdash; used
-      straight from this form, so you don't have to save first.
+      Applies to what you schedule next, straight from this form.
       &ldquo;Save As Default&rdquo; just pre-fills these the next time you visit.
     </p>
-    <div class="field-row">
-      <div>
-        <label class="field-label">Cards per day</label>
-        <input type="number" id="dripPerDay" min="1" max="200" value="5">
-      </div>
-      <div>
-        <label class="field-label">Release time (SGT)</label>
-        <input type="time" id="dripTime" value="12:00">
-      </div>
-    </div>
     <label class="field-label">How long a card stays in &ldquo;Newly in stock!&rdquo; (hours)</label>
     <input type="number" id="dripNewWindow" min="1" max="720" value="24">
-    <label class="field-label">Start the first batch at (SGT) &mdash; blank uses the next release time</label>
-    <input type="datetime-local" id="dripStartAt">
-    <label class="field-label">
-      Different amounts per day &mdash; e.g. <strong>3,5,0,8</strong> releases 3, then 5,
-      then <strong>nothing</strong> on day three, then 8. Add as many days as you like;
-      anything left over continues at the cards-per-day rate above.
-    </label>
-    <input type="text" id="dripDailyCounts" placeholder="e.g. 3,5,0,8" autocomplete="off">
     <div class="checkbox-row">
       <input type="checkbox" id="dripHoldNew" checked>
       <label for="dripHoldNew">
@@ -1095,13 +1092,21 @@
     </div>
     <button id="dripSaveConfig" class="btn-neutral">Save As Default</button>
 
-    <h3 class="drip-step">Step 2 · Schedule it</h3>
+    <h3 class="drip-step">Step 2 · Build the drips</h3>
     <p class="config-note">
-      Preview first &mdash; nothing is saved until you press Confirm.
+      Pick when the first drip goes live, then group the cards below into drips:
+      <strong>click a card to start a drip, then click its last card</strong> (or
+      the same card again for a one-card drip). Each drip after the first goes out
+      the <strong>next day at the same time</strong>. Cards you don't put in a
+      drip stay awaiting a schedule.
     </p>
+    <label class="field-label">First drip releases at (SGT)</label>
+    <input type="datetime-local" id="dripStartAt">
+    <div id="dripBuilder"></div>
     <div class="button-row">
-      <button id="dripPreviewButton" class="btn-neutral">Preview Schedule</button>
-      <button id="dripScheduleButton">Confirm Schedule</button>
+      <button id="dripBuilderUndo" class="btn-neutral">Undo last drip</button>
+      <button id="dripBuilderClear" class="btn-neutral">Clear all</button>
+      <button id="dripConfirmManual">Confirm Schedule</button>
     </div>
 
     <h3 class="drip-step">Adjust what's already scheduled</h3>
@@ -4693,10 +4698,6 @@ function renderDripStatus(status) {
     </div>`;
 
   // Reflect saved settings into the form
-  document.getElementById("dripPerDay").value = status.config.perDay;
-  document.getElementById("dripTime").value =
-    String(status.config.releaseHour).padStart(2, "0") + ":" +
-    String(status.config.releaseMinute).padStart(2, "0");
   document.getElementById("dripNewWindow").value = status.config.newWindowHours;
   document.getElementById("dripHoldNew").checked = Boolean(status.config.holdNewListings);
 
@@ -4753,6 +4754,7 @@ function renderDripStatus(status) {
     '<div class="muted" style="margin-top:14px;">Nothing scheduled or pending.</div>';
 
   renderDropChecklist(status.newlyIn);
+  setDripUnscheduled(status.unscheduled);
 }
 
 // Checklist of every card currently in the Newly in stock row, all ticked to
@@ -4801,7 +4803,8 @@ function renderDropChecklist(newlyIn) {
 // Blank means "use the next daily slot". The value is a local wall-clock time
 // and is interpreted as SGT server-side.
 function readDripDailyCounts() {
-  return document.getElementById("dripDailyCounts").value.trim() || null;
+  const el = document.getElementById("dripDailyCounts");
+  return el ? (el.value.trim() || null) : null;
 }
 
 function readDripStartAt() {
@@ -4809,11 +4812,10 @@ function readDripStartAt() {
 }
 
 function readDripConfig() {
-  const [h, m] = (document.getElementById("dripTime").value || "10:00").split(":");
+  // Only the settings still shown here. Cards/day and release time are no longer
+  // edited on this panel — the drip builder sets an exact time per drip — so
+  // they're left at whatever's saved (used only by the legacy Re-spread tool).
   return {
-    perDay: Number(document.getElementById("dripPerDay").value) || 5,
-    releaseHour: Number(h) || 0,
-    releaseMinute: Number(m) || 0,
     newWindowHours: Number(document.getElementById("dripNewWindow").value) || 24,
     holdNewListings: document.getElementById("dripHoldNew").checked,
     tzOffsetMinutes: 480,
@@ -4870,7 +4872,7 @@ document.getElementById("dripSaveConfig").onclick = async () => {
     const data = await callDripApi("config", { config: readDripConfig() });
     if (!data) return;
     renderDripStatus(data.status);
-    dripResultEl.textContent = `Saved as default: ${data.config.perDay} cards/day at ${String(data.config.releaseHour).padStart(2, "0")}:${String(data.config.releaseMinute).padStart(2, "0")} SGT, new for ${data.config.newWindowHours}h. Use "Re-spread Pending" to apply to already-scheduled cards.`;
+    dripResultEl.textContent = `Saved. New cards stay in the "Newly in stock!" row for ${data.config.newWindowHours}h.`;
     dripResultEl.className = "success";
   } catch (err) {
     dripResultEl.textContent = "Network error — please try again.";
@@ -4878,49 +4880,184 @@ document.getElementById("dripSaveConfig").onclick = async () => {
   }
 };
 
-document.getElementById("dripPreviewButton").onclick = async () => {
-  dripResultEl.textContent = "Building preview...";
-  dripResultEl.className = "";
-  try {
-    const data = await callDripApi("preview", { startAt: readDripStartAt(), dailyCounts: readDripDailyCounts(), config: readDripConfig() });
-    if (!data) return;
+// ---------------------------------------------------------------------------
+// Manual drip builder
+//
+// The operator groups the unscheduled queue into drips by clicking a card (its
+// first) then another (its last). Drips are ordered by their position in the
+// list; drip 1 releases at the chosen start time, each later drip the next day
+// at the same time. Only the cards placed in a drip are scheduled.
+// ---------------------------------------------------------------------------
+let dripUnscheduled = [];    // ordered [{groupKey, name, cardId, condition, ...}]
+let dripBuilderDrips = [];   // [{start, end}] index ranges, in creation order
+let dripPendingStart = null; // index of a first-card click awaiting its last
+const DRIP_COLOURS = ["#c2185b", "#2c5b8f", "#2e7d5b", "#8a6100", "#7b4bab", "#0d7f88", "#b3452b"];
+const DRIP_DAY_MS = 86400000;
 
-    if (!data.proposed.length) {
-      dripResultEl.textContent = "No new CSV rows are awaiting a schedule.";
-      dripResultEl.className = "success";
-      dripListEl.innerHTML = "";
-      return;
-    }
+// Parse the datetime-local value as SGT (matching parseLocalDateTime on the
+// server), so the dates shown match what actually gets scheduled regardless of
+// the admin's own browser timezone.
+function parseSgtLocal(str) {
+  const m = String(str || "").match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) - 480 * 60000;
+}
+function fmtSgt(ts) {
+  return new Date(ts).toLocaleString("en-SG", {
+    dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Singapore",
+  });
+}
 
-    dripListEl.innerHTML =
-      `<div style="margin-top:14px;"><strong>Proposed: ${data.proposed.length} listings over ${data.days} day(s)</strong></div>` +
-      dripDayPanels(data.proposed, first => fmtDateTime(first.releaseAt));
+// Card index -> day index, for the drips defined so far (ordered by list
+// position so the top of the queue releases first).
+function dripIndexAssignment() {
+  const sorted = [...dripBuilderDrips].sort((a, b) => a.start - b.start);
+  const map = {};
+  sorted.forEach((d, dayIndex) => {
+    for (let k = d.start; k <= d.end; k++) map[k] = dayIndex;
+  });
+  return { map, sorted };
+}
 
-    dripResultEl.textContent = data.startRejected
-      ? "That start time is in the past, so the next daily release time was used instead. Preview only — nothing saved yet."
-      : "Preview only — nothing saved yet. Press Confirm Schedule to apply.";
-    dripResultEl.className = data.startRejected ? "error" : "success";
-  } catch (err) {
-    dripResultEl.textContent = "Network error — please try again.";
-    dripResultEl.className = "error";
+// Reset the builder only when the underlying unscheduled list actually changes
+// (a fresh status), so re-rendering for other reasons doesn't wipe a selection.
+function setDripUnscheduled(list) {
+  const next = (list || []).map(r => r.groupKey).join("|");
+  const cur = dripUnscheduled.map(r => r.groupKey).join("|");
+  if (next !== cur) {
+    dripUnscheduled = list || [];
+    dripBuilderDrips = [];
+    dripPendingStart = null;
   }
+  renderDripBuilder();
+}
+
+function renderDripBuilder() {
+  const wrap = document.getElementById("dripBuilder");
+  if (!wrap) return;
+  if (!dripUnscheduled.length) {
+    wrap.innerHTML = '<div class="muted" style="font-size:12px;margin-top:10px;">No new cards are awaiting a schedule. Add rows to the CSV, then press &ldquo;Load Current Status&rdquo;.</div>';
+    return;
+  }
+
+  const { map, sorted } = dripIndexAssignment();
+  const startMs = parseSgtLocal(document.getElementById("dripStartAt").value);
+
+  const help = dripPendingStart === null
+    ? "Click the <strong>first</strong> card of a drip."
+    : 'Now click the <strong>last</strong> card of this drip (or the same card for a single). <button type="button" id="dripCancelStart" class="linkish">cancel</button>';
+
+  const rows = dripUnscheduled.map((r, i) => {
+    const dayIdx = map[i];
+    const inDrip = dayIdx !== undefined;
+    const isPending = dripPendingStart === i;
+    const colour = inDrip ? DRIP_COLOURS[dayIdx % DRIP_COLOURS.length] : "";
+    const style = inDrip
+      ? `border-left:4px solid ${colour};background:${colour}14;`
+      : (isPending ? "border-left:4px solid #333;background:#eee;" : "");
+    const tag = inDrip ? `Drip ${dayIdx + 1}` : (isPending ? "start…" : "");
+    return `<button type="button" class="drip-pick" data-idx="${i}" style="${style}">
+        <span class="drip-pick-num">${i + 1}</span>
+        <span class="drip-pick-name">${escapeHtml(r.name || r.cardId || r.groupKey)}${r.condition ? " · " + escapeHtml(r.condition) : ""}</span>
+        <span class="drip-pick-tag" style="${inDrip ? `color:${colour};` : ""}">${tag}</span>
+      </button>`;
+  }).join("");
+
+  const summary = sorted.map((d, i) => {
+    const count = d.end - d.start + 1;
+    const when = startMs !== null ? fmtSgt(startMs + i * DRIP_DAY_MS) : `Day ${i + 1}`;
+    return `<div class="drip-sum-row"><span style="color:${DRIP_COLOURS[i % DRIP_COLOURS.length]};font-weight:700;">Drip ${i + 1}</span> &mdash; ${count} card(s) &mdash; ${when}</div>`;
+  }).join("");
+
+  const assigned = Object.keys(map).length;
+  const leftover = dripUnscheduled.length - assigned;
+
+  wrap.innerHTML = `
+    <div class="drip-build-help">${help}</div>
+    <div class="drip-pick-list">${rows}</div>
+    <div class="drip-build-summary">
+      ${summary || '<div class="muted" style="font-size:12px;">No drips yet.</div>'}
+      <div class="muted" style="font-size:12px;margin-top:5px;">${assigned} card(s) in ${sorted.length} drip(s) · ${leftover} left unscheduled</div>
+    </div>`;
+
+  wrap.querySelectorAll(".drip-pick").forEach(btn => {
+    btn.onclick = () => handleDripPick(Number(btn.dataset.idx));
+  });
+  const cancel = document.getElementById("dripCancelStart");
+  if (cancel) cancel.onclick = () => { dripPendingStart = null; renderDripBuilder(); };
+}
+
+function handleDripPick(i) {
+  const { map } = dripIndexAssignment();
+  // Clicking a card already in a drip removes that whole drip.
+  if (map[i] !== undefined) {
+    dripBuilderDrips = dripBuilderDrips.filter(d => !(i >= d.start && i <= d.end));
+    dripPendingStart = null;
+    renderDripBuilder();
+    return;
+  }
+  if (dripPendingStart === null) {
+    dripPendingStart = i;
+    renderDripBuilder();
+    return;
+  }
+  const start = Math.min(dripPendingStart, i);
+  const end = Math.max(dripPendingStart, i);
+  const overlaps = dripBuilderDrips.some(d => start <= d.end && end >= d.start);
+  if (overlaps) {
+    alert("That range overlaps a drip you've already made. Pick a range of un-assigned cards.");
+    dripPendingStart = null;
+    renderDripBuilder();
+    return;
+  }
+  dripBuilderDrips.push({ start, end });
+  dripPendingStart = null;
+  renderDripBuilder();
+}
+
+document.getElementById("dripStartAt").onchange = renderDripBuilder; // refresh drip dates
+document.getElementById("dripBuilderUndo").onclick = () => {
+  dripBuilderDrips.pop();
+  dripPendingStart = null;
+  renderDripBuilder();
+};
+document.getElementById("dripBuilderClear").onclick = () => {
+  dripBuilderDrips = [];
+  dripPendingStart = null;
+  renderDripBuilder();
 };
 
-document.getElementById("dripScheduleButton").onclick = async () => {
-  if (!confirm("Schedule all awaiting listings for gradual release?")) return;
+document.getElementById("dripConfirmManual").onclick = async () => {
+  const startAt = document.getElementById("dripStartAt").value;
+  if (!startAt) {
+    dripResultEl.textContent = "Pick when the first drip releases.";
+    dripResultEl.className = "error";
+    return;
+  }
+  const { sorted } = dripIndexAssignment();
+  if (!sorted.length) {
+    dripResultEl.textContent = "Make at least one drip — click a first card, then its last card.";
+    dripResultEl.className = "error";
+    return;
+  }
+  const drips = sorted.map(d => dripUnscheduled.slice(d.start, d.end + 1).map(r => r.groupKey));
+  const total = drips.reduce((s, a) => s + a.length, 0);
+  const startMs = parseSgtLocal(startAt);
+  if (!confirm(
+    `Schedule ${total} card(s) across ${drips.length} drip(s)?\n\n` +
+    `Drip 1 releases ${startMs !== null ? fmtSgt(startMs) : startAt} (SGT); each later drip goes out the next day at the same time.`
+  )) return;
+
   dripResultEl.textContent = "Scheduling...";
   dripResultEl.className = "";
   try {
-    const data = await callDripApi("schedule", { startAt: readDripStartAt(), dailyCounts: readDripDailyCounts(), config: readDripConfig() });
+    const data = await callDripApi("scheduleManual", { startAt, drips });
     if (!data) return;
-    renderDripStatus(data.status);
-    let msg = data.scheduled
-      ? `Scheduled ${data.scheduled} listing(s) for gradual release.`
-      : "Nothing was awaiting a schedule.";
-    if (data.startRejected) msg += " (Start time was in the past, so the next daily slot was used.)";
-    else if (data.firstSlotAt) msg += ` First batch: ${fmtDateTime(data.firstSlotAt)}.`;
-    dripResultEl.textContent = msg;
-    dripResultEl.className = data.startRejected ? "error" : "success";
+    renderDripStatus(data.status); // resets the builder — scheduled cards leave the unscheduled list
+    dripResultEl.textContent = data.scheduled
+      ? `Scheduled ${data.scheduled} card(s) across ${data.drips} drip(s). First drip: ${fmtSgt(data.firstSlotAt)}.`
+      : "Nothing was scheduled — those cards may no longer be awaiting a schedule.";
+    dripResultEl.className = "success";
   } catch (err) {
     dripResultEl.textContent = "Network error — please try again.";
     dripResultEl.className = "error";
