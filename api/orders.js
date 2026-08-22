@@ -13,7 +13,6 @@ import {
   parseAdjustEntries,
   sumAdjust,
   spendLogKey,
-  sumSpendLog,
   earnedBadges,
   voucherCode,
   voucherStatus,
@@ -65,16 +64,31 @@ async function notifyTelegram(chatId, text, photoUrl) {
   }
 }
 
+// A customer's AUTHORITATIVE rolling-window spend — the exact figure the admin
+// Spend panel and the launch backdate use: paid orders + dated adjustments,
+// folded through identity merges. Issuance derives the badge from THIS (not the
+// bot's spend-log cache), so a voucher is never missed because the cache hadn't
+// been backfilled, and issuance can never disagree with what the panel shows.
+async function customerWindowSpend(redis, ckey, now = Date.now()) {
+  const windowStart = windowStartMs(now);
+  const orders = await readAllOrders();
+  const paidMap = (await redis.hgetall(ORDER_PAID_KEY)) || {};
+  const aliasMap = (await redis.hgetall(CUSTOMER_ALIAS_KEY)) || {};
+  const { byCustomer } = aggregateSpend(orders, paidMap, windowStart, aliasMap);
+  const c = byCustomer.get(ckey);
+  const adj = sumAdjust(parseAdjustEntries(await redis.hget(CUSTOMER_ADJUST_KEY, ckey)), windowStart);
+  return (c ? c.windowSpend : 0) + adj.window;
+}
+
 // Issue one voucher per newly-earned badge for a customer (leapfrog + once-ever).
-// Reads the customer's window spend, walks the badges they've earned, and issues
-// any not already in their permanent issued-badge set. Returns the new vouchers.
+// Walks the badges the customer's authoritative window spend has earned and
+// issues any not already in their permanent issued-badge set. Returns the new
+// vouchers. Fires from any spend change that can cross a tier — a payment
+// (markPaid), a manual correction (adjustSpend), or a merge.
 async function issueVouchersFor(redis, ckey, handle, now = Date.now()) {
   if (!ckey || !(loyaltyLive() || loyaltyTestIds().has(ckey))) return [];
-  const windowStart = windowStartMs(now);
-  const log = (await redis.hgetall(spendLogKey(ckey))) || {};
-  const s = sumSpendLog(log, windowStart);
-  const adj = sumAdjust(parseAdjustEntries(await redis.hget(CUSTOMER_ADJUST_KEY, ckey)), windowStart);
-  const earned = earnedBadges(s.window + adj.window);
+  const windowSpend = await customerWindowSpend(redis, ckey, now);
+  const earned = earnedBadges(windowSpend);
   if (!earned.length) return [];
   const issued = new Set((await redis.smembers(issuedBadgesKey(ckey))) || []);
   const toIssue = earned.filter(b => !issued.has(String(b.n)));
@@ -306,7 +320,15 @@ export default async function handler(req, res) {
       await redis.hset(CUSTOMER_ADJUST_KEY, { [custKey]: JSON.stringify(existing) });
       await redis.lpush(CUSTOMER_ADJUST_LOG, JSON.stringify({ at: entry.at, key: custKey, delta: amt, date: dateMs, reason }));
       await redis.ltrim(CUSTOMER_ADJUST_LOG, 0, ADJUST_LOG_MAX - 1);
-      return res.status(200).json({ ok: true, key: custKey, delta: amt, date: dateMs });
+
+      // A positive correction can push a customer across one or more tiers — issue
+      // the leapfrog vouchers (and DM them) just as a payment would. Wrapped so a
+      // voucher hiccup can't fail the adjustment write.
+      let vouchers = [];
+      try { vouchers = await issueVouchersFor(redis, custKey, custKey); }
+      catch (e) { console.error("voucher issuance on adjust failed:", e); }
+
+      return res.status(200).json({ ok: true, key: custKey, delta: amt, date: dateMs, vouchers });
     }
 
     // ----------------------------------------------------------- spendReport
