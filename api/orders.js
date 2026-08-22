@@ -27,6 +27,7 @@ import {
   WELCOME_CONFIG_KEY,
   WELCOME_GRANTED_KEY,
   parseWelcomeConfig,
+  BADGE_SNAPSHOT_KEY,
 } from "./_inventory.js";
 
 // Loyalty launch gate — vouchers only auto-issue once live, or for the owner's
@@ -86,18 +87,48 @@ async function customerWindowSpend(redis, ckey, now = Date.now()) {
   return (c ? c.windowSpend : 0) + adj.window;
 }
 
+// A customer's still-valid (active) vouchers, ONE per badge, ordered by badge
+// tier — used for the "summary of your rewards" DM.
+async function activeVouchersForKey(redis, ckey, now = Date.now()) {
+  const codes = (await redis.smembers(customerVouchersKey(ckey))) || [];
+  if (!codes.length) return [];
+  const raws = await redis.hmget(VOUCHERS_KEY, ...codes);
+  const arr = Array.isArray(raws) ? raws : codes.map(c => raws && raws[c]);
+  const out = [];
+  arr.forEach(raw => {
+    if (!raw) return;
+    let v; try { v = typeof raw === "string" ? JSON.parse(raw) : raw; } catch (e) { return; }
+    if (v && voucherStatus(v, now) === "active") out.push(v);
+  });
+  out.sort((a, b) => (Number(a.badgeN) || 0) - (Number(b.badgeN) || 0));
+  const seen = new Set();
+  return out.filter(v => { const k = String(v.badgeN); if (seen.has(k)) return false; seen.add(k); return true; });
+}
+
+// One voucher line for a DM, ordered/rendered consistently everywhere.
+function voucherLine(v) {
+  return `${badgeEmoji(v.badgeN)} <b>${v.badgeName}</b> — ${v.pct}% off${v.cap ? ` (up to $${v.cap})` : ""}, expires ${fmtVoucherDate(v.expiresAt)}\nYour code: <code>${v.code}</code>`;
+}
+
 // Issue one voucher per newly-earned badge for a customer (leapfrog + once-ever).
 // Walks the badges the customer's authoritative window spend has earned and
 // issues any not already in their permanent issued-badge set. Returns the new
 // vouchers. Fires from any spend change that can cross a tier — a payment
-// (markPaid), a manual correction (adjustSpend), or a merge.
+// (markPaid), a manual correction (adjustSpend), or a merge. Also DMs a summary
+// when a customer climbs back into a tier they'd dropped out of (no new voucher,
+// but their held rewards are worth re-surfacing).
 async function issueVouchersFor(redis, ckey, handle, now = Date.now(), windowSpendOverride) {
   if (!ckey || !(loyaltyLive() || loyaltyTestIds().has(ckey))) return [];
   const windowSpend = windowSpendOverride !== undefined
     ? windowSpendOverride
     : await customerWindowSpend(redis, ckey, now);
   const earned = earnedBadges(windowSpend);
-  if (!earned.length) return [];
+  if (!earned.length) {
+    // Fell below Boulder — nothing to issue, but record the drop so climbing back
+    // into a tier later is detected as an upward crossing and re-surfaces rewards.
+    try { await redis.hset(BADGE_SNAPSHOT_KEY, { [ckey]: "0" }); } catch (e) { console.error("badge snapshot failed:", e); }
+    return [];
+  }
   const issued = new Set((await redis.smembers(issuedBadgesKey(ckey))) || []);
   // Belt-and-suspenders against duplicates: a badge the customer ALREADY HOLDS a
   // voucher for counts as issued too, so even a desynced issued-set can never
@@ -128,14 +159,33 @@ async function issueVouchersFor(redis, ckey, handle, now = Date.now(), windowSpe
     await redis.sadd(issuedBadgesKey(ckey), String(b.n));
     out.push(rec);
   }
-  // One DM summarising every voucher this payment unlocked (Mini App users only).
+  // Decide whether to DM. We track the last badge tier we saw for this customer
+  // so we can tell an UPWARD crossing (earned or re-attained) from a drop or a
+  // same-tier payment. A drop never pings; a same-tier payment never pings.
+  const cur = earned.length ? earned[earned.length - 1] : null;
+  const curTier = cur ? cur.n : 0;
+  let prevTier = null;
+  try {
+    const prevRaw = await redis.hget(BADGE_SNAPSHOT_KEY, ckey);
+    prevTier = (prevRaw === null || prevRaw === undefined) ? null : (Number(prevRaw) || 0);
+    await redis.hset(BADGE_SNAPSHOT_KEY, { [ckey]: String(curTier) });
+  } catch (e) { console.error("badge snapshot failed:", e); }
+
   if (out.length) {
-    const lines = out.map(r => `${badgeEmoji(r.badgeN)} <b>${r.badgeName}</b> — ${r.pct}% off${r.cap ? ` (up to $${r.cap})` : ""}\nYour code: <code>${r.code}</code> (expires ${fmtVoucherDate(r.expiresAt)})`);
-    // Headline the highest badge just earned with its "New badge earned!" banner.
+    // Newly-earned badge(s) — congratulate with the new codes.
     const top = out[out.length - 1];
     await notifyTelegram(ckey,
-      `Congrats! You've unlocked a new reward:\n\n${lines.join("\n\n")}\n\nTap a code to copy it, then enter it in the cart's promo box at checkout.`,
+      `Congrats! You've unlocked a new reward:\n\n${out.map(voucherLine).join("\n\n")}\n\nTap a code to copy it, then enter it in the cart's promo box at checkout.`,
       badgeBannerUrl(top.badgeN));
+  } else if (cur && prevTier !== null && curTier > prevTier) {
+    // Climbed back into a tier they'd dropped out of — no new voucher, but
+    // re-surface the rewards they already hold, in badge order.
+    const held = await activeVouchersForKey(redis, ckey, now);
+    if (held.length) {
+      await notifyTelegram(ckey,
+        `Welcome back to ${badgeEmoji(cur.n)} <b>${cur.name} Badge</b>! Here's a summary of your rewards:\n\n${held.map(voucherLine).join("\n\n")}\n\nTap a code to copy it, then use it in the cart's promo box at checkout.`,
+        badgeBannerUrl(curTier));
+    }
   }
   return out;
 }
