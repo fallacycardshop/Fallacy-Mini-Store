@@ -137,6 +137,7 @@ As you shop with us, your spend earns you Badges — and every Badge comes with 
 <b>Additional FAQ</b>
 • What if you jump several Badges in one go? Don't fret! You still get a voucher for each Badge unlocked 🎁
 • Each Badge unlocks a voucher only once (vouchers do not repeat even if you drop back down to lower Badge Tiers)
+• What if I have already spent up to a higher tier? You will immediately receive a valid voucher reward for that Tier, ready to be used!
 • How do you use the vouchers? Just pop your code in your Mini Store cart promo box at checkout (min $10 spend required!)
 
 Tap 🎖 <b>My Badges</b> button below anytime to see your Badge status, vouchers, and how close you are to the next one! 💛`;
