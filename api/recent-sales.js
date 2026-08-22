@@ -133,15 +133,15 @@ Every purchase from our Mini Store earns you Badges — and each Badge comes wit
 • Badges are yours to keep — your tier never drops
 • vouchers are valid at our Mini Store for 60 days, single-use ✨
 
-<b>Badge Tiers</b>
+<b>Badge Tiers</b> (spend adds up over your lifetime — it's the total you reach, not one order)
 🪨 Boulder — any purchase → you're in!
-💧 Cascade — $80 → 5% off (up to $8)
-⚡️ Thunder — $200 → 8% off (up to $16)
-🌈 Rainbow — $400 → 10% off (up to $20)
-💗 Soul — $600 → 10% off (up to $20)
-🟡 Marsh — $800 → 10% off (up to $25)
-🔥 Volcano — $1,000 → 10% off (up to $25)
-🍃 Earth — $1,200 → 12% off (up to $30)
+💧 Cascade — next $80 from Boulder → 5% off (up to $8)
+⚡️ Thunder — next $120 from Cascade → 8% off (up to $16)
+🌈 Rainbow — next $200 from Thunder → 10% off (up to $20)
+💗 Soul — next $200 from Rainbow → 10% off (up to $20)
+🟡 Marsh — next $200 from Soul → 10% off (up to $25)
+🔥 Volcano — next $200 from Marsh → 10% off (up to $25)
+🍃 Earth — next $200 from Volcano → 12% off (up to $30)
 👑 Champion — every +$250 past Earth → 12% off (up to $30)
 
 <b>Good to know</b>
