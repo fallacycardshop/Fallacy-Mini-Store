@@ -510,10 +510,11 @@ export default async function handler(req, res) {
     // -------------------------------------------------------- backdateVouchers
     // One-time launch step: give every existing customer ONE voucher for the
     // badge they currently hold, and mark all the badges they've earned as
-    // already issued so the lower ones never retro-pay a stack. Silent — it does
-    // NOT DM (a launch blast could be hundreds of messages); customers find the
-    // voucher in the bot's My Badges. Idempotent: a customer whose current badge
-    // is already issued is skipped, so re-running is safe. Admin-only, run once.
+    // already issued so the lower ones never retro-pay a stack. Each customer is
+    // DM'd their new voucher (Mini App / numeric ids), gated exactly like normal
+    // issuance — pre-launch only test ids are messaged, so you can preview it.
+    // Idempotent: a customer whose current badge is already issued is skipped, so
+    // re-running is safe and won't re-notify. Admin-only, run once at launch.
     if (action === "backdateVouchers") {
       const orders = await readAllOrders();
       const paidMap = (await redis.hgetall(ORDER_PAID_KEY)) || {};
@@ -533,8 +534,9 @@ export default async function handler(req, res) {
         adjustByCanon.set(canon, cur);
       }
 
+      const canDM = loyaltyLive() ? (() => true) : (k => loyaltyTestIds().has(k));
       const keys = new Set([...byCustomer.keys(), ...adjustByCanon.keys()]);
-      let customers = 0, issued = 0, skipped = 0;
+      let customers = 0, issued = 0, skipped = 0, notified = 0;
       const results = [];
       for (const key of keys) {
         const c = byCustomer.get(key);
@@ -565,9 +567,17 @@ export default async function handler(req, res) {
         await redis.sadd(customerVouchersKey(key), code);
         issued += 1;
         results.push({ key, badge: current.name, code });
+
+        // Tell the customer their reward is waiting (numeric Telegram id + gate).
+        if (/^\d+$/.test(key) && canDM(key)) {
+          await notifyTelegram(key,
+            `🎉 Your loyalty reward is ready!\n\nAs a thank-you for reaching ${badgeEmoji(current.n)} <b>${current.name} Badge</b>, here's your voucher:\nYour code: <code>${code}</code>\n${current.pct}% off${current.cap ? ` (up to $${current.cap})` : ""}, valid ${VOUCHER_DAYS} days.\n\nTap the code to copy it, then use it in the cart's promo box at checkout.`,
+            badgeBannerUrl(current.n));
+          notified += 1;
+        }
       }
 
-      return res.status(200).json({ ok: true, customers, issued, skipped, results });
+      return res.status(200).json({ ok: true, customers, issued, skipped, notified, results });
     }
 
     // ------------------------------------------------------- welcome reward --

@@ -1003,10 +1003,10 @@
     <p style="font-size:12px;color:#666;margin:0 0 6px;">
       <strong>Launch backdating</strong> — run this <em>once</em> when you go live.
       Every existing customer gets <strong>one</strong> voucher for the badge they
-      currently hold, and all their lower badges are marked issued so they never
-      pay out a stack later. Silent — no messages are sent; customers find the
-      voucher under 🎖 My Badges. Safe to re-run (already-issued customers are
-      skipped).
+      currently hold (lower badges are marked issued so they never pay out a stack
+      later), and each is <strong>DM'd</strong> that their reward is ready. Pre-launch,
+      only your test IDs are messaged, so you can preview it. Safe to re-run —
+      already-issued customers are skipped and not re-notified.
     </p>
     <button id="vouchersBackdateButton">Backdate launch vouchers</button>
   </div>
@@ -4799,7 +4799,7 @@ document.getElementById("vouchersBackdateButton").onclick = async () => {
     const data = await postVouchers("backdateVouchers");
     if (!data) return;
     vouchersResultEl.textContent =
-      `Backdated ${data.customers} customer(s) with a badge — issued ${data.issued} new voucher(s), skipped ${data.skipped} already issued.`;
+      `Backdated ${data.customers} customer(s) with a badge — issued ${data.issued} new voucher(s), notified ${data.notified || 0}, skipped ${data.skipped} already issued.`;
     vouchersResultEl.className = "success";
     const report = await postVouchers("vouchersReport");
     if (report) { voucherRows = report.rows || []; renderVouchers(); }
