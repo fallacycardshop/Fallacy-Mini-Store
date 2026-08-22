@@ -730,7 +730,7 @@ function openCart(ret){
   $("#panelBody").innerHTML=`${noticeHTML}<div class="cart-list">${items}</div>
     <div class="cart-sticky">
       ${wActive
-        ? `<div class="promo-msg ok" style="text-align:center">&#127873; Welcome reward applied &mdash; a promo code can&rsquo;t be combined with it.</div>`
+        ? `<div class="promo-msg ok" style="text-align:center">&#127873; Welcome reward applied &mdash; one&#8209;time only, valid for this purchase. A promo code can&rsquo;t be combined with it.</div>`
         : `<div class="promo"><input id="promoInput" placeholder="Promo code" value="${appliedDiscount?appliedDiscount.code:''}"><button id="promoApply">Apply</button></div>
       ${promoMsg?`<div class="promo-msg ${appliedDiscount?'ok':'no'}">${promoMsg}</div>`:""}`}
       ${wBelow?`<div class="promo-msg ok" style="text-align:center">&#127873; Spend $${(Number(welcomeInfo.minSpend)-sub).toFixed(2)} more to unlock your welcome reward &mdash; $${(Number(welcomeInfo.amount)||0).toFixed(2)} off!</div>`:""}
