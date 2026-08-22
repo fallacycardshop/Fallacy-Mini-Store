@@ -265,19 +265,18 @@ export function promoTextIfActive(promoText, rawCodes = process.env.DISCOUNT_COD
 }
 
 // ---------------------------------------------------------------------------
-// Welcome reward — a one-time first-order perk: the cheapest card in the cart is
-// free (up to a cap) on a customer's FIRST order, if it meets a minimum spend.
-// Mini App only (needs a numeric Telegram id). Config + eligibility live in
-// Redis so the perk can be switched on/off and tuned without a deploy.
+// Welcome reward — a one-time perk open to EVERY customer (new and existing):
+// the cheapest card in the cart is free (up to a cap) once the order meets a
+// minimum spend. Each customer can claim it once. Mini App only (needs a numeric
+// Telegram id). Config + eligibility live in Redis so the perk can be switched
+// on/off and tuned without a deploy.
 //
 //   welcome:config  — JSON { enabled, minSpend, maxOff }
-//   welcome:seen    — set of Telegram ids that have placed ANY order (so the
-//                     reward is strictly first-order-only). Seeded at launch
-//                     with existing customers so only brand-new buyers qualify.
-//   welcome:granted — set of Telegram ids that actually received the free card.
+//   welcome:granted — set of Telegram ids that have CLAIMED the reward (received
+//                     the free card). A customer stays eligible until they're in
+//                     this set.
 // ---------------------------------------------------------------------------
 export const WELCOME_CONFIG_KEY = "welcome:config";
-export const WELCOME_SEEN_KEY = "welcome:seen";
 export const WELCOME_GRANTED_KEY = "welcome:granted";
 export const DEFAULT_WELCOME_CONFIG = { enabled: false, minSpend: 30, maxOff: 5 };
 

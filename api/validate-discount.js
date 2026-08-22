@@ -1,15 +1,15 @@
 import { Redis } from "@upstash/redis";
 import {
   VOUCHERS_KEY, voucherStatus,
-  WELCOME_CONFIG_KEY, WELCOME_SEEN_KEY, parseWelcomeConfig,
+  WELCOME_CONFIG_KEY, WELCOME_GRANTED_KEY, parseWelcomeConfig,
 } from "./_inventory.js";
 
 const redis = Redis.fromEnv();
 
-// Welcome-reward eligibility for the Mini App cart. Returns whether the perk is
-// on and whether THIS Telegram id still qualifies (strictly first order — never
-// placed one before). Fails CLOSED: on any doubt, not eligible, so a free card
-// is never granted on an unverifiable check.
+// Welcome-reward eligibility for the Mini App cart. A one-time perk open to EVERY
+// customer (new and existing) — eligible until they've actually CLAIMED it once
+// (received the free card). Fails CLOSED: on any doubt, not eligible, so a free
+// card is never granted on an unverifiable check.
 async function handleWelcome(req, res) {
   const id = String((req.body || {}).telegramUserId || "").trim();
   let cfg;
@@ -18,10 +18,10 @@ async function handleWelcome(req, res) {
   if (!cfg.enabled || !/^\d+$/.test(id)) {
     return res.status(200).json({ enabled: cfg.enabled, eligible: false, minSpend: cfg.minSpend, maxOff: cfg.maxOff });
   }
-  let seen;
-  try { seen = await redis.sismember(WELCOME_SEEN_KEY, id); }
-  catch (e) { console.error("welcome seen check failed:", e); return res.status(500).json({ enabled: true, eligible: false }); }
-  return res.status(200).json({ enabled: true, eligible: !seen, minSpend: cfg.minSpend, maxOff: cfg.maxOff });
+  let claimed;
+  try { claimed = await redis.sismember(WELCOME_GRANTED_KEY, id); }
+  catch (e) { console.error("welcome claim check failed:", e); return res.status(500).json({ enabled: true, eligible: false }); }
+  return res.status(200).json({ enabled: true, eligible: !claimed, minSpend: cfg.minSpend, maxOff: cfg.maxOff });
 }
 
 const MINIMUM_DISCOUNT_SPEND = 10;
