@@ -934,12 +934,13 @@ export function nextBadge(spend) {
   return { badge: { name: "Champion", spend: nextAt, pct: CHAMPION.pct, cap: CHAMPION.cap, champion: true }, needed: Number((nextAt - s).toFixed(2)) };
 }
 
-// Start of the rolling 6-month window: 00:00 on the 1st of the month six months
-// back, in SGT (UTC+8). Spend on/after this instant counts toward badge STATUS.
-export function windowStartMs(now = Date.now(), tzOffsetMin = 480) {
-  const local = new Date(now + tzOffsetMin * 60000);
-  const startLocalMidnight = Date.UTC(local.getUTCFullYear(), local.getUTCMonth() - 6, 1, 0, 0, 0, 0);
-  return startLocalMidnight - tzOffsetMin * 60000; // SGT wall-clock midnight -> real epoch
+// Badges are LIFETIME: all spend counts toward a customer's tier, and tiers never
+// drop as time passes. Returning 0 (the epoch) makes every "window" figure equal
+// the cumulative all-time figure, so the same helpers keep working. (Kept as a
+// function so callers are unchanged; flip this back to a rolling cutoff to
+// re-enable a time window.)
+export function windowStartMs(/* now, tzOffsetMin */) {
+  return 0;
 }
 
 // Parse "YYYY-MM-DD" as midnight SGT (UTC+8) -> epoch ms; null if malformed.

@@ -114,14 +114,14 @@ Still stuck? Message @fallacytcg and we'll help.`;
 // Shown by the "How badges work" button / /howbadges.
 const HOW_BADGES_TEXT = `🎴 <b>How do Badges work?</b>
 
-Your very first purchase enrols you at 🪨 <b>Boulder</b> — and from there your spend earns Badges, most with a reward voucher! 🎖
+Your very first purchase enrols you with a 🪨 <b>Boulder</b> Badge — and from there your spend continues to earn you more Badges. Each Badge comes with a reward voucher! 🎖
 
-• your cumulative spend over the last 6 months helps you to hit Badge milestones
-• hitting a milestone means unlocking a new Badge voucher valid for use at our Mini Store for 60 days ✨
-• Badges reset if your 6-month spend slips below the Badge Tier, so keep them warm!
+• your cumulative spend helps you to unlock Badge vouchers
+• Badge vouchers are valid for use at our Mini Store for 60 days ✨
+• Badges earned are for a lifetime! Rewards are unlimited once you hit Champion Tier 👑
 
 <b>Badge Tiers</b>
-🪨 Boulder — any purchase → you're in! (no voucher)
+🪨 Boulder — any purchase → you're in!
 💧 Cascade — $80 → 5% off (up to $8)
 ⚡️ Thunder — $200 → 8% off (up to $16)
 🌈 Rainbow — $400 → 10% off (up to $20)
@@ -132,9 +132,8 @@ Your very first purchase enrols you at 🪨 <b>Boulder</b> — and from there yo
 👑 Champion — every +$250 past Earth → 12% off (up to $30)
 
 <b>Additional FAQ</b>
-• What if you jump several Badges in one go? Don't fret! You still get a voucher for each Badge unlocked 🎁
-• Each Badge unlocks a voucher only once (vouchers do not repeat even if you drop back down to lower Badge Tiers)
-• What if I have already spent up to a higher tier? You will immediately receive a valid voucher reward for that Tier, ready to be used!
+• What if I spend &gt;$200 and jump several Badge Tiers in one purchase? Don't fret! You still get a voucher for each Badge unlocked 🎁
+• What if I have been purchasing from the Mini Store and have already spent up to a higher tier? You will immediately receive multiple vouchers for every eligible Tier you have earned! Ready to be used on your next purchase
 • How do you use the vouchers? Just pop your code in your Mini Store cart promo box at checkout (min $10 spend required!)
 
 Tap 🎖 <b>My Badges</b> button below anytime to see your Badge status, vouchers, and how close you are to the next one! 💛`;
@@ -266,7 +265,7 @@ async function badgeStatusText(userId) {
   msg += badge
     ? `Current badge: ${emojiForBadge(badge)} <b>${badge.name}</b> (Badge Tier ${badge.n})\n`
     : "You haven't earned a badge yet.\n";
-  msg += `Spend in the last 6 months: <b>${money(windowSpend)}</b>\n`;
+  msg += `Total spend: <b>${money(windowSpend)}</b>\n`;
   if (next && next.badge) {
     const nc = Number(next.badge.cap) || 0;
     msg += `\n${money(next.needed)} to the next badge, ${emojiForBadge(next.badge)} <b>${next.badge.name}</b> — ${Number(next.badge.pct) || 0}% off${nc ? `, up to $${nc}` : ""}.`;
@@ -281,7 +280,7 @@ async function badgeStatusText(userId) {
     }
     msg += "\nTap a code to copy it, then enter it in the cart's promo box at checkout.";
   } else {
-    msg += "\n\n<i>Earn a badge to unlock a reward voucher.</i>";
+    msg += "\n\n<i>Reach the next tier to unlock your first reward voucher.</i>";
   }
   // badgeN drives the badge PHOTO; progress picks the status banner's bar fill.
   return { text: msg, badgeN: badge ? badge.n : 0, progress };

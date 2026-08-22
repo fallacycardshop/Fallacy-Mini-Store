@@ -14,6 +14,7 @@ import {
   parseAdjustEntries,
   sumAdjust,
   spendLogKey,
+  sumSpendLog,
   earnedBadges,
   voucherCode,
   voucherStatus,
@@ -73,20 +74,18 @@ async function notifyTelegram(chatId, text, photoUrl) {
   }
 }
 
-// A customer's AUTHORITATIVE rolling-window spend — the exact figure the admin
-// Spend panel and the launch backdate use: paid orders + dated adjustments,
-// folded through identity merges. Issuance derives the badge from THIS (not the
-// bot's spend-log cache), so a voucher is never missed because the cache hadn't
-// been backfilled, and issuance can never disagree with what the panel shows.
+// A customer's AUTHORITATIVE LIFETIME spend — from the durable per-customer spend
+// log (maintained incrementally by markPaid, never trimmed) plus dated
+// adjustments. This is unbounded, so it is NOT limited by the capped orders list:
+// a voucher can never be missed, and a badge can never drop, just because old
+// orders have rotated out of that list. The bot reads the same log, so all
+// screens agree. (ckey is already the canonical key; a merged customer's log is
+// physically moved onto the primary at merge time.)
 async function customerWindowSpend(redis, ckey, now = Date.now()) {
-  const windowStart = windowStartMs(now);
-  const orders = await readAllOrders();
-  const paidMap = (await redis.hgetall(ORDER_PAID_KEY)) || {};
-  const aliasMap = (await redis.hgetall(CUSTOMER_ALIAS_KEY)) || {};
-  const { byCustomer } = aggregateSpend(orders, paidMap, windowStart, aliasMap);
-  const c = byCustomer.get(ckey);
-  const adj = sumAdjust(parseAdjustEntries(await redis.hget(CUSTOMER_ADJUST_KEY, ckey)), windowStart);
-  return (c ? c.windowSpend : 0) + adj.window;
+  const log = (await redis.hgetall(spendLogKey(ckey))) || {};
+  const s = sumSpendLog(log, 0); // 0 = lifetime
+  const adj = sumAdjust(parseAdjustEntries(await redis.hget(CUSTOMER_ADJUST_KEY, ckey)), 0);
+  return s.cumulative + adj.cumulative;
 }
 
 // A customer's still-valid (active) vouchers, ONE per badge, ordered by badge
@@ -392,10 +391,9 @@ export default async function handler(req, res) {
       if (!Number.isFinite(amt) || amt === 0) {
         return res.status(400).json({ error: "Adjustment must be a non-zero number." });
       }
-      // The spend date decides whether this counts toward the 6-month window and
-      // badge. Blank means "today". Stored as a dated entry appended to the
-      // customer's adjustment array (not a flat running total), so a dated
-      // correction can move the window.
+      // Badges are lifetime, so the date is recorded for the audit trail only —
+      // the amount counts toward the badge regardless of date. Blank means "today".
+      // Stored as a dated entry appended to the customer's adjustment array.
       let dateMs = parseSgtDate(dateRaw);
       if (dateRaw && dateMs === null) {
         return res.status(400).json({ error: "Date must be in YYYY-MM-DD format." });
@@ -419,76 +417,71 @@ export default async function handler(req, res) {
     }
 
     // ----------------------------------------------------------- spendReport
-    // Per-customer LIFETIME spend for the admin Spend panel. The authoritative
-    // figure is the permanent customer:spend hash (organic) plus any manual
-    // customer:spend:adjust correction — NOT a re-sum of the capped orders list,
-    // so it is not bounded by the 1000-order window.
-    //
-    // The orders window is still recomputed, but only to supply each customer's
-    // display handle and last-order date, and as a one-directional check:
-    // organic lifetime spend must be >= the sum of that customer's paid orders
-    // still visible in the window. If it's less, an order was marked paid but
-    // not credited (a bug) — that row is flagged so it can be corrected, rather
-    // than two screens silently disagreeing.
+    // Per-customer LIFETIME spend for the admin Spend panel. Authoritative figure
+    // is the durable per-customer spend log (maintained by markPaid, never
+    // trimmed) plus dated adjustments — the SAME source issuance and the bot use,
+    // so all three agree, and it is NOT bounded by the capped orders list. The
+    // recent orders are read only to supply a display handle.
     if (action === "spendReport") {
       const orders = await readAllOrders();
       const paidMap = (await redis.hgetall(ORDER_PAID_KEY)) || {};
       const adjustMap = (await redis.hgetall(CUSTOMER_ADJUST_KEY)) || {};
       const aliasMap = (await redis.hgetall(CUSTOMER_ALIAS_KEY)) || {};
-      const windowStart = windowStartMs();
 
-      // Recompute from the SAME orders + paid states Recent Orders reads, so the
-      // panel reconciles with it by construction. One pass yields both the
-      // cumulative (all-time) total and the rolling 6-month window figure that
-      // sets badge status. This is the ONE place spend and badge are derived.
-      // aliasMap folds a merged secondary identity's orders onto its primary.
-      const { byCustomer } = aggregateSpend(orders, paidMap, windowStart, aliasMap);
+      // Display handles from the recent orders (best-effort; a customer whose
+      // orders have all rotated out of the capped list simply shows their key).
+      const { byCustomer: recent } = aggregateSpend(orders, paidMap, 0, aliasMap);
 
-      // Adjustments are physically moved onto the primary at merge time, but fold
-      // by canonical here too so a correction written before a merge still lands
-      // on the right row.
-      const adjustByCanon = new Map(); // canonKey -> { cumulative, window }
+      // Authoritative lifetime spend from the durable spend logs.
+      const prefixLen = spendLogKey("").length;
+      const logKeys = await scanKeys(redis, spendLogKey("*"));
+      const byCustomer = new Map(); // canonKey -> { spend, orders, lastOrder }
+      for (const lk of logKeys) {
+        const ckey = lk.slice(prefixLen);
+        const s = sumSpendLog((await redis.hgetall(lk)) || {}, 0);
+        byCustomer.set(ckey, { spend: s.cumulative, orders: s.orders, lastOrder: s.lastOrder });
+      }
+
+      // Adjustments folded by canonical key.
+      const adjustByCanon = new Map(); // canonKey -> cumulative $
       for (const [k, raw] of Object.entries(adjustMap)) {
         const canon = resolveCustomerKey(aliasMap, k);
-        const a = sumAdjust(parseAdjustEntries(raw), windowStart);
-        const cur = adjustByCanon.get(canon) || { cumulative: 0, window: 0 };
-        cur.cumulative += a.cumulative; cur.window += a.window;
-        adjustByCanon.set(canon, cur);
+        const a = sumAdjust(parseAdjustEntries(raw), 0);
+        adjustByCanon.set(canon, (adjustByCanon.get(canon) || 0) + a.cumulative);
       }
 
       const keys = new Set([...byCustomer.keys(), ...adjustByCanon.keys()]);
       const rows = [];
       for (const key of keys) {
         const c = byCustomer.get(key);
-        // Dated manual corrections: the all-time sum moves the cumulative total,
-        // and any entry dated inside the window moves window spend (and badge).
-        const adj = adjustByCanon.get(key) || { cumulative: 0, window: 0 };
-        const cumulative = Number(((c ? c.spend : 0) + adj.cumulative).toFixed(2));
-        const windowSpend = Number(((c ? c.windowSpend : 0) + adj.window).toFixed(2));
+        const adjCum = adjustByCanon.get(key) || 0;
+        const spend = Number(((c ? c.spend : 0) + adjCum).toFixed(2));
         const orderCount = c ? c.orders : 0;
-        const badge = badgeForSpend(windowSpend);
+        const badge = badgeForSpend(spend);
+        const rec = recent.get(key);
         rows.push({
           key,
-          handle: c ? c.handle : key,
-          spend: cumulative,        // cumulative all-time (incl. adjustments)
-          windowSpend,              // rolling 6-month spend (incl. in-window adjustments) -> badge
+          handle: rec ? rec.handle : key,
+          spend,                       // lifetime total (incl. adjustments)
+          windowSpend: spend,          // lifetime == "window" now (kept for the client)
           badge: badge ? { name: badge.name, n: badge.n, color: badge.color } : null,
-          adjust: Number(adj.cumulative.toFixed(2)),
+          adjust: Number(adjCum.toFixed(2)),
           orders: orderCount,
-          aov: orderCount > 0 ? Number((cumulative / orderCount).toFixed(2)) : 0,
-          lastOrder: c ? c.lastOrder : 0,
+          aov: orderCount > 0 ? Number((spend / orderCount).toFixed(2)) : 0,
+          lastOrder: c ? c.lastOrder : (rec ? rec.lastOrder : 0),
         });
       }
       rows.sort((a, b) => b.spend - a.spend);
 
+      const total = Number(rows.reduce((s, r) => s + r.spend, 0).toFixed(2));
       const totals = {
         customers: rows.length,
-        spend: Number(rows.reduce((s, r) => s + r.spend, 0).toFixed(2)),
-        windowSpend: Number(rows.reduce((s, r) => s + r.windowSpend, 0).toFixed(2)),
+        spend: total,
+        windowSpend: total,
         orders: rows.reduce((s, r) => s + r.orders, 0),
       };
 
-      return res.status(200).json({ ok: true, rows, totals, cap: MAX_LIMIT, counted: orders.length, windowStart });
+      return res.status(200).json({ ok: true, rows, totals, cap: MAX_LIMIT, counted: orders.length, lifetime: true });
     }
 
     // ---------------------------------------------------------- vouchersReport
