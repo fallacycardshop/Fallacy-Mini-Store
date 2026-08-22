@@ -4408,13 +4408,14 @@ function fmtSpendDate(ms) {
 // The painted badge art (images/badges/, served from raw GitHub — same scheme as
 // the card photos). One medal covers every Champion tier (badge n >= 9).
 const BADGE_IMG_BASE = "https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/badges/";
+const BADGE_IMG_V = "?v=3"; // bump with BADGE_ASSET_VERSION when the art is regenerated
 const BADGE_SLUGS = { 1: "boulder", 2: "cascade", 3: "thunder", 4: "rainbow", 5: "soul", 6: "marsh", 7: "volcano", 8: "earth" };
 function badgeSlug(n) { return Number(n) >= 9 ? "champion" : (BADGE_SLUGS[Number(n)] || ""); }
 function badgeImg(n, size) {
   const s = badgeSlug(n);
   if (!s) return "";
   const px = size || 16;
-  return `<img src="${BADGE_IMG_BASE}${s}.png" width="${px}" height="${px}" alt="" loading="lazy" style="vertical-align:middle;display:inline-block;border-radius:3px">`;
+  return `<img src="${BADGE_IMG_BASE}${s}.png${BADGE_IMG_V}" width="${px}" height="${px}" alt="" loading="lazy" style="vertical-align:middle;display:inline-block;border-radius:3px">`;
 }
 function badgeChip(b) {
   const c = b.color || "#a8305f";
