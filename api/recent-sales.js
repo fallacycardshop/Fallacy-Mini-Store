@@ -13,6 +13,9 @@ import {
   customerVouchersKey,
   voucherStatus,
   VOUCHERS_KEY,
+  scanKeys,
+  SPEND_LOG_PREFIX,
+  BADGE_SNAPSHOT_KEY,
 } from "./_inventory.js";
 
 const redis = Redis.fromEnv();
@@ -401,6 +404,84 @@ async function handleFunnel(req, res) {
 const MAX_SHOWN = 20;
 const MAX_PANEL = 20;        // expanded panel shows the same last 20
 
+// Daily loyalty maintenance, driven by a scheduler (Vercel Cron or otherwise).
+// Two idempotent jobs, both gated exactly like issuance — pre-launch, only the
+// owner's test id can receive a DM:
+//   1. Voucher expiry reminders — one nudge when a live voucher has ≤7 days
+//      left, flagged so it never repeats.
+//   2. Badge-lapse notices — when a customer's rolling-window badge drops below
+//      the last one we told them about, DM once and lower the snapshot.
+// Both loops are bounded by customer/voucher count and run once a day off the
+// hot path, so the O(1)-per-page-load rule doesn't apply here.
+async function runLoyaltyCron() {
+  const now = Date.now();
+  const windowStart = windowStartMs(now);
+  const live = loyaltyLive();
+  const testIds = loyaltyTestIds();
+  // A DM is only possible to a numeric Telegram id, and pre-launch only to a
+  // test id.
+  const canDM = id => /^\d+$/.test(String(id)) && (live || testIds.has(String(id)));
+
+  let expiryReminders = 0, lapseNotices = 0;
+
+  // 1) Expiry reminders.
+  const vraw = (await redis.hgetall(VOUCHERS_KEY)) || {};
+  const SEVEN_DAYS = 7 * 86400000;
+  const voucherUpdates = {};
+  for (const [code, val] of Object.entries(vraw)) {
+    let v;
+    try { v = typeof val === "string" ? JSON.parse(val) : val; } catch (e) { continue; }
+    if (!v || voucherStatus(v, now) !== "active") continue;
+    const exp = Number(v.expiresAt) || 0;
+    const remaining = exp - now;
+    if (remaining > 0 && remaining <= SEVEN_DAYS && !v.remind7) {
+      if (canDM(v.customer)) {
+        const days = Math.max(1, Math.ceil(remaining / 86400000));
+        await telegramCall("sendMessage", {
+          chat_id: String(v.customer), parse_mode: "HTML", disable_web_page_preview: true,
+          text: `⏳ Your reward <code>${v.code}</code> (${Number(v.pct) || 0}% off${v.cap ? ` up to ${money(v.cap)}` : ""}) expires in ${days} day${days === 1 ? "" : "s"}. Use it in the cart's promo box before it's gone!`,
+        });
+        expiryReminders += 1;
+      }
+      v.remind7 = true; // mark either way, so it's processed once
+      voucherUpdates[code] = JSON.stringify(v);
+    }
+  }
+  if (Object.keys(voucherUpdates).length) await redis.hset(VOUCHERS_KEY, voucherUpdates);
+
+  // 2) Badge-lapse notices.
+  const snap = (await redis.hgetall(BADGE_SNAPSHOT_KEY)) || {};
+  const logKeys = await scanKeys(redis, SPEND_LOG_PREFIX + "*");
+  const snapUpdates = {};
+  for (const k of logKeys) {
+    const custKey = k.slice(SPEND_LOG_PREFIX.length);
+    const log = (await redis.hgetall(k)) || {};
+    const s = sumSpendLog(log, windowStart);
+    const adj = sumAdjust(parseAdjustEntries(await redis.hget(CUSTOMER_ADJUST_KEY, custKey)), windowStart);
+    const windowSpend = s.window + adj.window;
+    const badge = badgeForSpend(windowSpend);
+    const curN = badge ? badge.n : 0;
+    const prevN = snap[custKey] === undefined ? null : (Number(snap[custKey]) || 0);
+
+    if (prevN === null) { snapUpdates[custKey] = String(curN); continue; } // first sight — no notice
+    if (curN === prevN) continue;
+
+    if (curN < prevN && canDM(custKey)) {
+      const next = nextBadge(windowSpend);
+      let text = badge
+        ? `📉 Your badge is now <b>${badge.name}</b> (Badge Tier ${badge.n}). Spend in the last 6 months: <b>${money(windowSpend)}</b>.`
+        : `📉 Your loyalty badge has lapsed — your spend in the last 6 months fell below the first badge.`;
+      if (next && next.badge) text += `\n${money(next.needed)} more to reach <b>${next.badge.name}</b>.`;
+      await telegramCall("sendMessage", { chat_id: String(custKey), parse_mode: "HTML", disable_web_page_preview: true, text });
+      lapseNotices += 1;
+    }
+    snapUpdates[custKey] = String(curN); // record the change (up or down) either way
+  }
+  if (Object.keys(snapUpdates).length) await redis.hset(BADGE_SNAPSHOT_KEY, snapUpdates);
+
+  return { expiryReminders, lapseNotices, vouchers: Object.keys(vraw).length, customers: logKeys.length };
+}
+
 export default async function handler(req, res) {
   try {
     // POST = a Telegram update or funnel tracking; GET = the sales ticker.
@@ -409,6 +490,21 @@ export default async function handler(req, res) {
         return await handleTelegram(req, res);
       }
       return await handleFunnel(req, res);
+    }
+
+    // Daily loyalty cron. Vercel Cron (or any scheduler) GETs this path; guarded
+    // by CRON_SECRET, which Vercel sends back as "Authorization: Bearer <secret>"
+    // when the env var is set. Enforced when set; if unset the job still runs but
+    // is fully idempotent (reminder flags + badge snapshot), so a stray trigger
+    // can't double-send. Set CRON_SECRET in production to lock it down.
+    if (req.query && (req.query.cron === "1" || req.query.cron === "true")) {
+      const secret = process.env.CRON_SECRET;
+      const auth = req.headers && (req.headers.authorization || req.headers.Authorization);
+      if (secret && auth !== `Bearer ${secret}`) {
+        return res.status(401).json({ ok: false, error: "unauthorized" });
+      }
+      const result = await runLoyaltyCron();
+      return res.status(200).json({ ok: true, ...result });
     }
 
     // ?full=1 adds the lifetime totals for the expanded panel. Both views show

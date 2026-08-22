@@ -37,6 +37,9 @@
     { "src": "admin.html", "use": "@vercel/static" },
     { "src": "concept.html", "use": "@vercel/static" }
   ],
+  "crons": [
+    { "path": "/api/recent-sales?cron=1", "schedule": "0 1 * * *" }
+  ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1.js" },
     { "src": "/backend", "dest": "/index.js" },
