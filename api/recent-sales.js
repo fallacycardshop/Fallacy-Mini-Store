@@ -277,7 +277,7 @@ async function badgeStatusText(userId) {
     msg += "\n\n🎟 <b>Your vouchers</b>\n";
     for (const v of vouchers) {
       const cap = Number(v.cap) || 0;
-      msg += `\n${badgeEmoji(v.badgeN)} <b>${v.badgeName}</b> — ${Number(v.pct) || 0}% off${cap ? ` (up to ${money(cap)})` : ""}\n<code>${v.code}</code> · expires ${fmtVoucherDate(v.expiresAt)}\n`;
+      msg += `\n${badgeEmoji(v.badgeN)} <b>${v.badgeName}</b> — ${Number(v.pct) || 0}% off${cap ? ` (up to $${cap})` : ""}, expires ${fmtVoucherDate(v.expiresAt)}\nYour code: <code>${v.code}</code>\n`;
     }
     msg += "\nTap a code to copy it, then enter it in the cart's promo box at checkout.";
   } else {

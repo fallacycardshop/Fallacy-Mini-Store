@@ -107,7 +107,7 @@ async function activeVouchersForKey(redis, ckey, now = Date.now()) {
 
 // One voucher line for a DM, ordered/rendered consistently everywhere.
 function voucherLine(v) {
-  return `${badgeEmoji(v.badgeN)} <b>${v.badgeName}</b> — ${v.pct}% off${v.cap ? ` (up to $${v.cap})` : ""}\nYour code: <code>${v.code}</code> (expires ${fmtVoucherDate(v.expiresAt)})`;
+  return `${badgeEmoji(v.badgeN)} <b>${v.badgeName}</b> — ${v.pct}% off${v.cap ? ` (up to $${v.cap})` : ""}, expires ${fmtVoucherDate(v.expiresAt)}\nYour code: <code>${v.code}</code>`;
 }
 
 // Issue one voucher per newly-earned badge for a customer (leapfrog + once-ever).
