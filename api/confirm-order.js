@@ -7,7 +7,9 @@ import {
 const redis = Redis.fromEnv();
 
 const MAX_RECENT_SALES = 20;
-const MAX_STORED_ORDERS = 5000; // ~13 months at 12 orders/day — headroom for the 6-month loyalty window
+const MAX_STORED_ORDERS = 5000; // "Recent Orders" backlog cap. Lifetime loyalty spend
+// lives in the durable per-customer spend log (never trimmed), not this list, so a
+// customer's badge is unaffected when their old orders rotate out of here.
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {

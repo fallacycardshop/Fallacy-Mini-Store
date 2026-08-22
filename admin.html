@@ -960,15 +960,14 @@
   <h1>Customer Spend</h1>
   <p>
     Spend and loyalty <strong>badge</strong> per customer, counting
-    <strong>paid orders only</strong>. <strong>Badge</strong> is set by spend in
-    the rolling <strong>6-month window</strong> (from the 1st of the month six
-    months back); <strong>Total</strong> is all-time. Tap a column to re-sort.
+    <strong>paid orders only</strong>. Badges are <strong>lifetime</strong> — set
+    by a customer's all-time spend, and a tier never drops. Tap a column to re-sort.
   </p>
   <p class="spend-caveat">
-    Figures are recomputed live from the stored orders (up to 5,000), so they
-    reconcile with Recent Orders exactly. The badge reflects the 6-month window,
-    so it can rise or lapse as the window moves. The only unrecoverable gap is
-    spend from before order backup began.
+    Lifetime spend comes from each customer's durable spend log (the same source
+    the bot and voucher issuance use), so it isn't limited by the 5,000-order
+    display cap. Run <strong>Backfill spend</strong> once to seed it from history;
+    after that every paid order keeps it current.
   </p>
   <input type="password" id="spendPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
   <div class="date-row">
@@ -4479,17 +4478,14 @@ function renderSpendTable() {
   const totalSpend = spendRows.reduce((s, r) => s + r.spend, 0);
   const totalOrders = spendRows.reduce((s, r) => s + r.orders, 0);
 
-  const totalWindow = spendRows.reduce((s, r) => s + (Number(r.windowSpend) || 0), 0);
-
   spendReportEl.innerHTML = `
-    <div class="spend-totals">${spendRows.length} customer(s) · ${totalOrders} paid order(s) · ${fmtMoney(totalSpend)} all-time · ${fmtMoney(totalWindow)} in the 6-month window</div>
+    <div class="spend-totals">${spendRows.length} customer(s) · ${totalOrders} paid order(s) · ${fmtMoney(totalSpend)} lifetime spend</div>
     <div class="spend-table-wrap">
       <table class="spend-table">
         <thead><tr>
           <th data-sort="handle">Customer${arrow("handle")}</th>
           <th data-sort="badgeN" class="num">Badge${arrow("badgeN")}</th>
-          <th data-sort="windowSpend" class="num">6&#8209;mo${arrow("windowSpend")}</th>
-          <th data-sort="spend" class="num">Total${arrow("spend")}</th>
+          <th data-sort="spend" class="num">Lifetime${arrow("spend")}</th>
           <th data-sort="orders" class="num">Orders${arrow("orders")}</th>
           <th data-sort="aov" class="num">Avg${arrow("aov")}</th>
           <th data-sort="lastOrder" class="num">Last order${arrow("lastOrder")}</th>
@@ -4500,7 +4496,6 @@ function renderSpendTable() {
             <tr>
               <td>${escapeHtml(r.handle)}${r.adjust ? ` <span class="adj-note" title="includes a ${fmtMoney(r.adjust)} manual adjustment">±</span>` : ""}${r.key && r.key !== r.handle ? `<div class="cust-key" title="Mini App orders are keyed by this Telegram ID; browser orders by the typed @handle">${escapeHtml(r.key)}</div>` : ""}</td>
               <td class="num">${r.badge ? badgeChip(r.badge) : '<span class="muted">—</span>'}</td>
-              <td class="num">${fmtMoney(Number(r.windowSpend) || 0)}</td>
               <td class="num">${fmtMoney(r.spend)}</td>
               <td class="num">${r.orders}</td>
               <td class="num">${fmtMoney(r.aov)}</td>
@@ -4586,7 +4581,7 @@ async function adjustCustomerSpend(custKey, handle) {
   if (!Number.isFinite(amt) || amt === 0) { alert("Enter a non-zero number, e.g. 12.50 or -5."); return; }
   const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10); // SGT today
   const dateStr = prompt(
-    `Date of this spend (YYYY-MM-DD)\n\nDecides whether it counts toward the 6-month window and badge — a date inside the window moves the badge, an older date only the all-time total. Enter = today.`,
+    `Date of this spend (YYYY-MM-DD)\n\nRecorded for your audit trail. Badges are lifetime now, so the amount counts toward the badge regardless of date. Enter = today.`,
     today
   );
   if (dateStr === null) return;
@@ -4653,8 +4648,7 @@ document.getElementById("spendLoadButton").onclick = async () => {
       return;
     }
     spendResultEl.textContent =
-      `${data.totals.customers} customer(s) · ${fmtMoney(data.totals.spend)} all-time · ` +
-      `${fmtMoney(data.totals.windowSpend)} in the 6-month window (badge basis). ${data.counted} stored order(s).`;
+      `${data.totals.customers} customer(s) · ${fmtMoney(data.totals.spend)} lifetime spend (badge basis).`;
     spendResultEl.className = "success";
     renderSpendTable();
   } catch (e) {
