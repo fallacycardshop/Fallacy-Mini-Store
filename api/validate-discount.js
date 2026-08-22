@@ -16,12 +16,12 @@ async function handleWelcome(req, res) {
   try { cfg = parseWelcomeConfig(await redis.get(WELCOME_CONFIG_KEY)); }
   catch (e) { console.error("welcome config read failed:", e); return res.status(200).json({ enabled: false, eligible: false }); }
   if (!cfg.enabled || !/^\d+$/.test(id)) {
-    return res.status(200).json({ enabled: cfg.enabled, eligible: false, minSpend: cfg.minSpend, maxOff: cfg.maxOff });
+    return res.status(200).json({ enabled: cfg.enabled, eligible: false, minSpend: cfg.minSpend, amount: cfg.amount });
   }
   let claimed;
   try { claimed = await redis.sismember(WELCOME_GRANTED_KEY, id); }
   catch (e) { console.error("welcome claim check failed:", e); return res.status(500).json({ enabled: true, eligible: false }); }
-  return res.status(200).json({ enabled: true, eligible: !claimed, minSpend: cfg.minSpend, maxOff: cfg.maxOff });
+  return res.status(200).json({ enabled: true, eligible: !claimed, minSpend: cfg.minSpend, amount: cfg.amount });
 }
 
 const MINIMUM_DISCOUNT_SPEND = 10;

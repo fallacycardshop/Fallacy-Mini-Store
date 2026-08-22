@@ -114,22 +114,22 @@ Still stuck? Message @fallacytcg and we'll help.`;
 // Shown by the "How badges work" button / /howbadges.
 const HOW_BADGES_TEXT = `🎴 <b>How do Badges work?</b>
 
-As you shop with us, your spend earns you Badges — and every Badge comes with a reward! 🎖
+Your very first purchase enrols you at 🪨 <b>Boulder</b> — and from there your spend earns Badges, most with a reward voucher! 🎖
 
 • your cumulative spend over the last 6 months helps you to hit Badge milestones
 • hitting a milestone means unlocking a new Badge voucher valid for use at our Mini Store for 60 days ✨
 • Badges reset if your 6-month spend slips below the Badge Tier, so keep them warm!
 
 <b>Badge Tiers</b>
-🪨 Boulder — $80 → 5% off (up to $8)
-💧 Cascade — $200 → 8% off (up to $16)
-⚡️ Thunder — $400 → 10% off (up to $20)
-🌈 Rainbow — $600 → 10% off (up to $20)
-💗 Soul — $800 → 10% off (up to $25)
-🟡 Marsh — $1,000 → 10% off (up to $25)
-🔥 Volcano — $1,200 → 12% off (up to $30)
-🍃 Earth — $1,400 → 12% off (up to $30)
-👑 Champion — every +$250 past earth → another 12% off
+🪨 Boulder — any purchase → you're in! (no voucher)
+💧 Cascade — $80 → 5% off (up to $8)
+⚡️ Thunder — $200 → 8% off (up to $16)
+🌈 Rainbow — $400 → 10% off (up to $20)
+💗 Soul — $600 → 10% off (up to $20)
+🟡 Marsh — $800 → 10% off (up to $25)
+🔥 Volcano — $1,000 → 10% off (up to $25)
+🍃 Earth — $1,200 → 12% off (up to $30)
+👑 Champion — every +$250 past Earth → 12% off (up to $30)
 
 <b>Additional FAQ</b>
 • What if you jump several Badges in one go? Don't fret! You still get a voucher for each Badge unlocked 🎁

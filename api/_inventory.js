@@ -265,20 +265,18 @@ export function promoTextIfActive(promoText, rawCodes = process.env.DISCOUNT_COD
 }
 
 // ---------------------------------------------------------------------------
-// Welcome reward — a one-time perk open to EVERY customer (new and existing):
-// the cheapest card in the cart is free (up to a cap) once the order meets a
-// minimum spend. Each customer can claim it once. Mini App only (needs a numeric
-// Telegram id). Config + eligibility live in Redis so the perk can be switched
-// on/off and tuned without a deploy.
+// Welcome reward — a one-time perk open to EVERY customer (new and existing): a
+// FLAT dollar discount once the order meets a minimum spend. Each customer can
+// claim it once. Mini App only (needs a numeric Telegram id). Config + eligibility
+// live in Redis so the perk can be switched on/off and tuned without a deploy.
 //
-//   welcome:config  — JSON { enabled, minSpend, maxOff }
-//   welcome:granted — set of Telegram ids that have CLAIMED the reward (received
-//                     the free card). A customer stays eligible until they're in
-//                     this set.
+//   welcome:config  — JSON { enabled, minSpend, amount }  (amount = flat $ off)
+//   welcome:granted — set of Telegram ids that have CLAIMED the reward. A customer
+//                     stays eligible until they're in this set.
 // ---------------------------------------------------------------------------
 export const WELCOME_CONFIG_KEY = "welcome:config";
 export const WELCOME_GRANTED_KEY = "welcome:granted";
-export const DEFAULT_WELCOME_CONFIG = { enabled: false, minSpend: 30, maxOff: 5 };
+export const DEFAULT_WELCOME_CONFIG = { enabled: false, minSpend: 30, amount: 3 };
 
 export function parseWelcomeConfig(raw) {
   const c = { ...DEFAULT_WELCOME_CONFIG };
@@ -288,7 +286,10 @@ export function parseWelcomeConfig(raw) {
   if (!d || typeof d !== "object") return c;
   c.enabled = Boolean(d.enabled);
   if (Number.isFinite(Number(d.minSpend))) c.minSpend = Math.max(0, Number(d.minSpend));
-  if (Number.isFinite(Number(d.maxOff))) c.maxOff = Math.max(0, Number(d.maxOff));
+  // Accept `amount` (new flat-discount field); fall back to the old `maxOff` name
+  // if that's what's stored, so an existing config keeps working after the rename.
+  const amt = d.amount !== undefined ? d.amount : d.maxOff;
+  if (Number.isFinite(Number(amt))) c.amount = Math.max(0, Number(amt));
   return c;
 }
 
@@ -837,15 +838,20 @@ export function aggregateSpend(orderEntries, paidMap, windowStart = 0, aliasMap 
 // (admin panel, bot, storefront) tints it identically. The icon that pairs with
 // each is an original themed pictogram (rock, drop, bolt, …) — not the game's
 // trademarked badge art — defined where they're rendered.
+// Boulder is the ENTRY tier — any purchase (>= 1 cent) enrols the customer, with
+// NO voucher (pct 0). Every other tier keeps the reward that has always sat at
+// its dollar threshold; only the NAMES shifted down one rung and Boulder was
+// added below, so the first voucher is now Cascade at $80. Names (n1..n8) keep
+// their icon + colour, so the art mapping is unchanged.
 export const BADGES = [
-  { n: 1, name: "Boulder", spend: 80,   pct: 5,  cap: 8,  color: "#6b7280" },
-  { n: 2, name: "Cascade", spend: 200,  pct: 8,  cap: 16, color: "#2f7fd1" },
-  { n: 3, name: "Thunder", spend: 400,  pct: 10, cap: 20, color: "#e0a417" },
-  { n: 4, name: "Rainbow", spend: 600,  pct: 10, cap: 20, color: "#a23fb8" },
-  { n: 5, name: "Soul",    spend: 800,  pct: 10, cap: 25, color: "#d94f70" },
-  { n: 6, name: "Marsh",   spend: 1000, pct: 10, cap: 25, color: "#3f9d63" },
-  { n: 7, name: "Volcano", spend: 1200, pct: 12, cap: 30, color: "#e2622e" },
-  { n: 8, name: "Earth",   spend: 1400, pct: 12, cap: 30, color: "#9a6a3c" },
+  { n: 1, name: "Boulder", spend: 0.01, pct: 0,  cap: 0,  color: "#6b7280" }, // entry — no voucher
+  { n: 2, name: "Cascade", spend: 80,   pct: 5,  cap: 8,  color: "#2f7fd1" },
+  { n: 3, name: "Thunder", spend: 200,  pct: 8,  cap: 16, color: "#e0a417" },
+  { n: 4, name: "Rainbow", spend: 400,  pct: 10, cap: 20, color: "#a23fb8" },
+  { n: 5, name: "Soul",    spend: 600,  pct: 10, cap: 20, color: "#d94f70" },
+  { n: 6, name: "Marsh",   spend: 800,  pct: 10, cap: 25, color: "#3f9d63" },
+  { n: 7, name: "Volcano", spend: 1000, pct: 10, cap: 25, color: "#e2622e" },
+  { n: 8, name: "Earth",   spend: 1200, pct: 12, cap: 30, color: "#9a6a3c" },
 ];
 // Beyond Earth: a fresh Champion badge every +$250, without limit.
 export const CHAMPION = { step: 250, pct: 12, cap: 30, color: "#caa63a" };
@@ -870,7 +876,7 @@ export const BADGE_IMAGE_BASE = "https://raw.githubusercontent.com/fallacycardsh
 // This version tag is appended to every badge URL; bump it whenever the art is
 // regenerated so clients fetch the new file. (raw GitHub ignores the query and
 // serves the file; the changed URL is what busts the cache.)
-export const BADGE_ASSET_VERSION = "3";
+export const BADGE_ASSET_VERSION = "4";
 const BADGE_V = "?v=" + BADGE_ASSET_VERSION;
 export function badgeSlug(n) {
   const k = Number(n);
@@ -897,11 +903,12 @@ export function badgeStatusBannerUrl(n, progressPercent) {
   return BADGE_IMAGE_BASE + "status/" + s + "_p" + bucket + ".png" + BADGE_V;
 }
 
-// The badge a spend qualifies for: null below Boulder, one of BADGES, or a
-// Champion tier ($1,650, $1,900, …). Champion tier k is badge number 8+k.
+// The badge a spend qualifies for: null below Boulder (i.e. no purchase yet), the
+// entry Boulder tier for any spend >= 1 cent, one of BADGES, or a Champion tier
+// ($1,450, $1,700, …). Champion tier k is badge number 8+k.
 export function badgeForSpend(spend) {
   const s = Number(spend) || 0;
-  const earth = BADGES[BADGES.length - 1]; // Earth, $1,400
+  const earth = BADGES[BADGES.length - 1]; // Earth, $1,200
   if (s >= earth.spend + CHAMPION.step) {
     const tier = Math.floor((s - earth.spend) / CHAMPION.step); // 1, 2, 3, …
     return {
@@ -985,13 +992,14 @@ export const VOUCHER_DAYS = 60;                         // 60-day expiry (§4)
 export function customerVouchersKey(k) { return "customer:vouchers:" + k; } // set of CODEs per customer
 export function issuedBadgesKey(k) { return "customer:badges:" + k; }        // set of badge numbers ever issued
 
-// All badges a spend has earned (threshold met), Boulder..Earth plus each
-// Champion tier. Issuance walks this and skips any already in the issued set,
-// so one order crossing several badges pays out one voucher per badge.
+// All VOUCHER badges a spend has earned (threshold met), Cascade..Earth plus each
+// Champion tier. Issuance walks this and skips any already in the issued set, so
+// one order crossing several badges pays out one voucher per badge. The entry
+// tier (Boulder, pct 0) is excluded here — it's a status tier with no voucher.
 export function earnedBadges(spend) {
   const s = Number(spend) || 0;
   const out = [];
-  for (const b of BADGES) { if (s >= b.spend) out.push({ n: b.n, name: b.name, pct: b.pct, cap: b.cap }); }
+  for (const b of BADGES) { if (s >= b.spend && b.pct > 0) out.push({ n: b.n, name: b.name, pct: b.pct, cap: b.cap }); }
   const earth = BADGES[BADGES.length - 1];
   if (s >= earth.spend + CHAMPION.step) {
     const tiers = Math.floor((s - earth.spend) / CHAMPION.step);
