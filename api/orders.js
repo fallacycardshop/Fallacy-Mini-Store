@@ -4,6 +4,7 @@ import {
   CUSTOMER_ADJUST_KEY,
   CUSTOMER_ADJUST_LOG,
   customerKey,
+  orderHandle,
   orderAmount,
   aggregateSpend,
   badgeForSpend,
@@ -12,7 +13,55 @@ import {
   parseAdjustEntries,
   sumAdjust,
   spendLogKey,
+  sumSpendLog,
+  earnedBadges,
+  voucherCode,
+  voucherStatus,
+  VOUCHERS_KEY,
+  VOUCHER_DAYS,
+  customerVouchersKey,
+  issuedBadgesKey,
 } from "./_inventory.js";
+
+// Loyalty launch gate — vouchers only auto-issue once live, or for the owner's
+// test ID(s) beforehand (same env vars the bot uses).
+function loyaltyLive() {
+  return ["1", "true", "yes", "on"].includes(String(process.env.LOYALTY_BOT_LIVE || "").toLowerCase());
+}
+function loyaltyTestIds() {
+  return new Set(String(process.env.LOYALTY_TEST_IDS || "").split(/[\s,;]+/).map(s => s.trim()).filter(Boolean));
+}
+
+// Issue one voucher per newly-earned badge for a customer (leapfrog + once-ever).
+// Reads the customer's window spend, walks the badges they've earned, and issues
+// any not already in their permanent issued-badge set. Returns the new vouchers.
+async function issueVouchersFor(redis, ckey, handle, now = Date.now()) {
+  if (!ckey || !(loyaltyLive() || loyaltyTestIds().has(ckey))) return [];
+  const windowStart = windowStartMs(now);
+  const log = (await redis.hgetall(spendLogKey(ckey))) || {};
+  const s = sumSpendLog(log, windowStart);
+  const adj = sumAdjust(parseAdjustEntries(await redis.hget(CUSTOMER_ADJUST_KEY, ckey)), windowStart);
+  const earned = earnedBadges(s.window + adj.window);
+  if (!earned.length) return [];
+  const issued = new Set((await redis.smembers(issuedBadgesKey(ckey))) || []);
+  const toIssue = earned.filter(b => !issued.has(String(b.n)));
+  const out = [];
+  for (const b of toIssue) {
+    let code = voucherCode(b.name);
+    for (let t = 0; t < 5 && (await redis.hexists(VOUCHERS_KEY, code)); t++) code = voucherCode(b.name);
+    const rec = {
+      code, customer: ckey, handle: handle || ckey,
+      badgeN: b.n, badgeName: b.name, pct: b.pct, cap: b.cap,
+      issuedAt: now, expiresAt: now + VOUCHER_DAYS * 86400000,
+      status: "active", usedAt: null, usedOrderId: null,
+    };
+    await redis.hset(VOUCHERS_KEY, { [code]: JSON.stringify(rec) });
+    await redis.sadd(customerVouchersKey(ckey), code);
+    await redis.sadd(issuedBadgesKey(ckey), String(b.n));
+    out.push(rec);
+  }
+  return out;
+}
 
 const redis = Redis.fromEnv();
 
@@ -104,10 +153,20 @@ export default async function handler(req, res) {
       // The admin panel recomputes authoritatively from the orders list, so a
       // log drift can never mislead the shop owner and a backfill re-syncs it.
       const when = Number(entry.savedAt) || Number(record.Order_ID) || Date.now();
-      if (target) await redis.hset(spendLogKey(ckey), { [id]: `${when}:${amt}` });
-      else await redis.hdel(spendLogKey(ckey), id);
+      let vouchers = [];
+      if (target) {
+        await redis.hset(spendLogKey(ckey), { [id]: `${when}:${amt}` });
+        // Paying may cross new badge thresholds — issue their vouchers (leapfrog,
+        // once-ever). Wrapped so a voucher hiccup can't fail the payment toggle.
+        try { vouchers = await issueVouchersFor(redis, ckey, orderHandle(record)); }
+        catch (e) { console.error("voucher issuance failed:", e); }
+      } else {
+        // Un-paying drops window spend (badge status can fall) but never revokes
+        // a voucher already issued — vouchers pay out once, ever.
+        await redis.hdel(spendLogKey(ckey), id);
+      }
 
-      return res.status(200).json({ ok: true, orderId: id, paid: target, changed: true });
+      return res.status(200).json({ ok: true, orderId: id, paid: target, changed: true, vouchers });
     }
 
     // --------------------------------------------------------- backfillSpend
@@ -257,6 +316,61 @@ export default async function handler(req, res) {
       };
 
       return res.status(200).json({ ok: true, rows, totals, cap: MAX_LIMIT, counted: orders.length, windowStart });
+    }
+
+    // ---------------------------------------------------------- vouchersReport
+    // Every voucher for the admin Vouchers panel, with live status computed.
+    if (action === "vouchersReport") {
+      const raw = (await redis.hgetall(VOUCHERS_KEY)) || {};
+      const now = Date.now();
+      const rows = Object.values(raw)
+        .map(v => { try { return typeof v === "string" ? JSON.parse(v) : v; } catch (e) { return null; } })
+        .filter(Boolean)
+        .map(v => ({ ...v, statusNow: voucherStatus(v, now) }))
+        .sort((a, b) => (b.issuedAt || 0) - (a.issuedAt || 0));
+      const counts = { active: 0, used: 0, expired: 0 };
+      rows.forEach(r => { counts[r.statusNow] = (counts[r.statusNow] || 0) + 1; });
+      return res.status(200).json({ ok: true, rows, counts, total: rows.length });
+    }
+
+    // ---------------------------------------------------------- reissueVoucher
+    // Goodwill re-issue: a fresh 60-day code for the same badge/customer. The old
+    // code stays on record; the new one is added to the customer's voucher set.
+    if (action === "reissueVoucher") {
+      const code = String((req.body || {}).code || "").trim();
+      if (!code) return res.status(400).json({ error: "Missing voucher code." });
+      const raw = await redis.hget(VOUCHERS_KEY, code);
+      if (!raw) return res.status(404).json({ error: "Voucher not found." });
+      let old;
+      try { old = typeof raw === "string" ? JSON.parse(raw) : raw; } catch (e) { return res.status(500).json({ error: "Corrupt voucher record." }); }
+      const now = Date.now();
+      let newCode = voucherCode(old.badgeName);
+      for (let t = 0; t < 5 && (await redis.hexists(VOUCHERS_KEY, newCode)); t++) newCode = voucherCode(old.badgeName);
+      const rec = {
+        ...old, code: newCode, issuedAt: now, expiresAt: now + VOUCHER_DAYS * 86400000,
+        status: "active", usedAt: null, usedOrderId: null, reissuedFrom: code,
+      };
+      await redis.hset(VOUCHERS_KEY, { [newCode]: JSON.stringify(rec) });
+      if (old.customer) await redis.sadd(customerVouchersKey(old.customer), newCode);
+      return res.status(200).json({ ok: true, code: newCode, badge: old.badgeName });
+    }
+
+    // ------------------------------------------------------------- voidVoucher
+    // Undo a mistaken issue: remove the voucher and free its badge so it can be
+    // earned again. (Corrections only — normal expiry is automatic.)
+    if (action === "voidVoucher") {
+      const code = String((req.body || {}).code || "").trim();
+      if (!code) return res.status(400).json({ error: "Missing voucher code." });
+      const raw = await redis.hget(VOUCHERS_KEY, code);
+      if (!raw) return res.status(404).json({ error: "Voucher not found." });
+      let v = null;
+      try { v = typeof raw === "string" ? JSON.parse(raw) : raw; } catch (e) { v = null; }
+      await redis.hdel(VOUCHERS_KEY, code);
+      if (v && v.customer) {
+        await redis.srem(customerVouchersKey(v.customer), code);
+        if (v.badgeN !== undefined && v.badgeN !== null) await redis.srem(issuedBadgesKey(v.customer), String(v.badgeN));
+      }
+      return res.status(200).json({ ok: true, code });
     }
 
     // ------------------------------------------------------- default: read --

@@ -980,6 +980,28 @@
 </div>
 
 <div class="card">
+  <h1>Vouchers</h1>
+  <p>
+    Every loyalty voucher issued, with live status. <strong>Active</strong> can
+    be redeemed; <strong>Used</strong> was burned on an order;
+    <strong>Expired</strong> is past its 60 days. Re-issue an expired one as
+    goodwill, or void a mistake (frees the badge to be earned again).
+  </p>
+  <input type="password" id="vouchersPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
+  <div class="date-row">
+    <button id="vouchersLoadButton">Load Vouchers</button>
+    <select id="vouchersFilter">
+      <option value="all">All statuses</option>
+      <option value="active">Active only</option>
+      <option value="used">Used only</option>
+      <option value="expired">Expired only</option>
+    </select>
+  </div>
+  <p id="vouchersResultText"></p>
+  <div id="vouchersReport"></div>
+</div>
+
+<div class="card">
   <h1>Auction Promo Image</h1>
   <p>
     For cards that aren&rsquo;t in the store inventory. Upload the card photos to
@@ -1425,6 +1447,7 @@ document.addEventListener("DOMContentLoaded", () => {
     "Sales History": "Sales history",
     "Recent Orders": "Orders",
     "Customer Spend": "Spend",
+    "Vouchers": "Vouchers",
     "Slow Release Scheduling": "Drip",
     "Featured Section Heading": "Headings",
     "Card Lookup & Auction Hiding": "Card lookup",
@@ -4338,6 +4361,7 @@ function renderOrdersBody() {
   ["ordersDaySummary", "Day summary"],
   ["ordersList", "Orders"],
   ["spendReport", "Customer spend"],
+  ["vouchersReport", "Vouchers"],
   ["dripList", "Release schedule"],
   ["lookupResult", "Card lookup"],
   ["hiddenList", "Hidden cards"],
@@ -4560,6 +4584,117 @@ document.getElementById("spendBackfillButton").onclick = async () => {
     spendResultEl.className = "error";
   }
 };
+
+// --------------------------------------------------------------------------
+// Vouchers panel
+// --------------------------------------------------------------------------
+const vouchersPassphraseEl = document.getElementById("vouchersPassphrase");
+const vouchersResultEl = document.getElementById("vouchersResultText");
+const vouchersReportEl = document.getElementById("vouchersReport");
+let voucherRows = [];
+
+async function postVouchers(action, extra) {
+  const key = vouchersPassphraseEl.value.trim();
+  if (!key) { vouchersResultEl.textContent = "Please enter the passphrase."; vouchersResultEl.className = "error"; return null; }
+  const res = await fetch("/api/orders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, action, ...(extra || {}) }),
+  });
+  const raw = await res.text();
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    vouchersResultEl.textContent = raw.trim().startsWith("<")
+      ? `The /api/orders endpoint isn't deployed (HTTP ${res.status}).`
+      : `Unexpected response from the server (HTTP ${res.status}).`;
+    vouchersResultEl.className = "error";
+    return null;
+  }
+  if (!res.ok) { vouchersResultEl.textContent = data.error || `Something went wrong (HTTP ${res.status}).`; vouchersResultEl.className = "error"; return null; }
+  return data;
+}
+
+function voucherStatusChip(s) {
+  const map = { active: ["#1f7a4d", "#e6f5ee", "🟢 Active"], used: ["#666", "#eee", "⚪ Used"], expired: ["#b3521a", "#fdecdc", "🔴 Expired"] };
+  const [c, bg, label] = map[s] || ["#666", "#eee", s];
+  return `<span style="color:${c};background:${bg};font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap">${label}</span>`;
+}
+
+function renderVouchers() {
+  if (!voucherRows.length) { vouchersReportEl.innerHTML = ""; return; }
+  const filter = document.getElementById("vouchersFilter").value;
+  const rows = filter === "all" ? voucherRows : voucherRows.filter(r => r.statusNow === filter);
+  if (!rows.length) { vouchersReportEl.innerHTML = '<div class="muted" style="font-size:12px;margin-top:8px;">None with that status.</div>'; return; }
+  vouchersReportEl.innerHTML = `
+    <div class="spend-table-wrap">
+      <table class="spend-table">
+        <thead><tr>
+          <th>Customer</th><th>Badge</th><th>Code</th><th class="num">Value</th>
+          <th class="num">Issued</th><th class="num">Expires / used</th><th>Status</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${rows.map(r => {
+            const usedInfo = r.statusNow === "used"
+              ? `used ${fmtSpendDate(r.usedAt)}${r.usedOrderId ? ` · #${escapeHtml(String(r.usedOrderId))}` : ""}`
+              : fmtSpendDate(r.expiresAt);
+            const actions =
+              (r.statusNow === "expired" ? `<button class="spend-adjust" data-reissue="${escapeHtml(r.code)}">Re-issue</button> ` : "") +
+              `<button class="spend-adjust" data-void="${escapeHtml(r.code)}">Void</button>`;
+            return `<tr>
+              <td>${escapeHtml(r.handle || r.customer)}</td>
+              <td>${r.badgeN ? r.badgeN + "·" : ""}${escapeHtml(r.badgeName || "")}</td>
+              <td><code>${escapeHtml(r.code)}</code></td>
+              <td class="num">${r.pct}% · $${Number(r.cap).toFixed(0)}</td>
+              <td class="num">${fmtSpendDate(r.issuedAt)}</td>
+              <td class="num">${usedInfo}</td>
+              <td>${voucherStatusChip(r.statusNow)}</td>
+              <td class="num">${actions}</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>`;
+  vouchersReportEl.querySelectorAll("[data-reissue]").forEach(b => {
+    b.onclick = () => voucherAction("reissueVoucher", b.dataset.reissue, "Re-issue a fresh 60-day voucher for this badge (goodwill)?");
+  });
+  vouchersReportEl.querySelectorAll("[data-void]").forEach(b => {
+    b.onclick = () => voucherAction("voidVoucher", b.dataset.void, "Void this voucher? It's removed and the badge can be earned again.");
+  });
+}
+
+async function voucherAction(action, code, confirmMsg) {
+  if (!confirm(confirmMsg)) return;
+  vouchersResultEl.textContent = "Working...";
+  vouchersResultEl.className = "";
+  const data = await postVouchers(action, { code });
+  if (!data) return;
+  vouchersResultEl.textContent = action === "reissueVoucher" ? `Re-issued as ${data.code}.` : `Voided ${data.code}.`;
+  vouchersResultEl.className = "success";
+  const report = await postVouchers("vouchersReport");
+  if (report) { voucherRows = report.rows || []; renderVouchers(); }
+}
+
+document.getElementById("vouchersLoadButton").onclick = async () => {
+  vouchersResultEl.textContent = "Loading...";
+  vouchersResultEl.className = "";
+  vouchersReportEl.innerHTML = "";
+  try {
+    const data = await postVouchers("vouchersReport");
+    if (!data) return;
+    voucherRows = data.rows || [];
+    vouchersResultEl.textContent = voucherRows.length
+      ? `${data.total} voucher(s) — ${data.counts.active} active, ${data.counts.used} used, ${data.counts.expired} expired.`
+      : "No vouchers issued yet.";
+    vouchersResultEl.className = "success";
+    renderVouchers();
+  } catch (e) {
+    vouchersResultEl.textContent = "Network error — please try again.";
+    vouchersResultEl.className = "error";
+  }
+};
+document.getElementById("vouchersFilter").onchange = renderVouchers;
 
 // --------------------------------------------------------------------------
 // Slow release (drip) scheduling
