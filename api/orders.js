@@ -29,6 +29,7 @@ import {
   WELCOME_GRANTED_KEY,
   parseWelcomeConfig,
   BADGE_SNAPSHOT_KEY,
+  scanKeys,
 } from "./_inventory.js";
 
 // Loyalty launch gate — vouchers only auto-issue once live, or for the owner's
@@ -723,6 +724,25 @@ export default async function handler(req, res) {
         if (badges.size) await redis.sadd(issuedBadgesKey(customer), ...badges);
       }
       return res.status(200).json({ ok: true, removed, customers: keptByCustomer.size });
+    }
+
+    // ----------------------------------------------------------- resetLoyalty
+    // Wipe ONLY the loyalty voucher/badge artifacts, for a clean launch after
+    // testing. Deletes: the vouchers hash, every per-customer voucher set and
+    // issued-badge set, the badge snapshot, and the welcome-claim set. Does NOT
+    // touch orders, paid state, sold counters, spend logs, spend adjustments, or
+    // identity aliases — real sales/spend data is untouched, so Backfill + Backdate
+    // can rebuild loyalty state fresh under the current ladder.
+    if (action === "resetLoyalty") {
+      const vsets = await scanKeys(redis, customerVouchersKey("*"));
+      const bsets = await scanKeys(redis, issuedBadgesKey("*"));
+      const keys = [VOUCHERS_KEY, BADGE_SNAPSHOT_KEY, WELCOME_GRANTED_KEY, ...vsets, ...bsets];
+      let deleted = 0;
+      for (let i = 0; i < keys.length; i += 100) {
+        const chunk = keys.slice(i, i + 100);
+        if (chunk.length) { await redis.del(...chunk); deleted += chunk.length; }
+      }
+      return res.status(200).json({ ok: true, deletedKeys: deleted, voucherSets: vsets.length, badgeSets: bsets.length });
     }
 
     // ------------------------------------------------------- default: read --

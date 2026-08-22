@@ -1019,6 +1019,16 @@
     </p>
     <button id="vouchersDedupeButton">Remove duplicate vouchers</button>
   </div>
+  <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0caca;">
+    <p style="font-size:12px;color:#a33;margin:0 0 6px;">
+      <strong>Reset loyalty data</strong> — clears <em>all</em> vouchers, issued-badge
+      records, the badge snapshot and welcome claims, for every customer. Use once
+      before going live to wipe test data. Orders, spend and merges are NOT touched,
+      so <strong>Backfill spend</strong> + <strong>Backdate</strong> rebuild everything
+      cleanly. Cannot be undone.
+    </p>
+    <button id="vouchersResetButton" style="border-color:#c0392b;color:#c0392b;">Reset loyalty data</button>
+  </div>
 </div>
 
 <div class="card">
@@ -4822,6 +4832,26 @@ document.getElementById("vouchersDedupeButton").onclick = async () => {
     vouchersResultEl.className = "success";
     const report = await postVouchers("vouchersReport");
     if (report) { voucherRows = report.rows || []; renderVouchers(); }
+  } catch (e) {
+    vouchersResultEl.textContent = "Network error — please try again.";
+    vouchersResultEl.className = "error";
+  }
+};
+
+document.getElementById("vouchersResetButton").onclick = async () => {
+  if (!confirm("RESET all loyalty data?\n\nPermanently deletes EVERY voucher, issued-badge record, the badge snapshot and welcome claims — for all customers. Orders, spend and merges are NOT touched. Use once before launch to clear test data.")) return;
+  if (!confirm("Are you absolutely sure? This cannot be undone.")) return;
+  vouchersResultEl.textContent = "Resetting loyalty data…";
+  vouchersResultEl.className = "";
+  try {
+    const data = await postVouchers("resetLoyalty");
+    if (!data) return;
+    vouchersResultEl.textContent = `Loyalty data reset — cleared ${data.deletedKeys} key(s) (${data.voucherSets} voucher set(s), ${data.badgeSets} badge set(s)). Run Backfill + Backdate to rebuild.`;
+    vouchersResultEl.className = "success";
+    voucherRows = [];
+    const report = await postVouchers("vouchersReport");
+    if (report) { voucherRows = report.rows || []; }
+    renderVouchers();
   } catch (e) {
     vouchersResultEl.textContent = "Network error — please try again.";
     vouchersResultEl.className = "error";
