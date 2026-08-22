@@ -846,11 +846,20 @@ export function badgeImageUrl(n) {
   const s = badgeSlug(n);
   return s ? BADGE_IMAGE_BASE + s + ".png" : "";
 }
-// A wider composed banner (art + name + phrase) used as the bot's My Badges
-// photo. The bare badgeImageUrl icon is kept for the small admin chips.
+// The EARN banner ("NEW BADGE EARNED!") — sent in the earn-moment DM when a
+// badge is first unlocked. The bare badgeImageUrl icon is kept for admin chips.
 export function badgeBannerUrl(n) {
   const s = badgeSlug(n);
   return s ? BADGE_IMAGE_BASE + "banner_" + s + ".png" : "";
+}
+// The STATUS banner ("BADGE UNLOCKED" + a progress bar toward the next badge) —
+// the bot's My Badges photo. The bar can't be drawn at request time, so it is
+// pre-rendered at 10% steps and the closest bucket is chosen from live progress.
+export function badgeStatusBannerUrl(n, progressPercent) {
+  const s = badgeSlug(n);
+  if (!s) return "";
+  const bucket = Math.max(0, Math.min(100, Math.round((Number(progressPercent) || 0) / 10) * 10));
+  return BADGE_IMAGE_BASE + "status/" + s + "_p" + bucket + ".png";
 }
 
 // The badge a spend qualifies for: null below Boulder, one of BADGES, or a

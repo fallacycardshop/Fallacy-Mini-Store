@@ -17,7 +17,7 @@ import {
   SPEND_LOG_PREFIX,
   BADGE_SNAPSHOT_KEY,
   badgeEmoji,
-  badgeBannerUrl,
+  badgeStatusBannerUrl,
 } from "./_inventory.js";
 
 // Emoji for a badge object from either helper: badgeForSpend gives a numbered
@@ -247,6 +247,15 @@ async function badgeStatusText(userId) {
   const badge = badgeForSpend(windowSpend);
   const next = nextBadge(windowSpend);
 
+  // Fraction of the way from the current badge's threshold to the next one —
+  // drives the progress bar on the status banner. Champion always has a next.
+  let progress = 0;
+  if (badge && next && next.badge) {
+    const span = Number(next.badge.spend) - Number(badge.spend);
+    progress = span > 0 ? (windowSpend - Number(badge.spend)) / span : 0;
+    progress = Math.max(0, Math.min(1, progress));
+  }
+
   let msg = "🎖 <b>Your Badges</b>\n\n";
   msg += badge
     ? `Current badge: ${emojiForBadge(badge)} <b>${badge.name}</b> (Badge Tier ${badge.n})\n`
@@ -268,8 +277,8 @@ async function badgeStatusText(userId) {
   } else {
     msg += "\n\n<i>Earn a badge to unlock a reward voucher.</i>";
   }
-  // badgeN drives the badge PHOTO the bot sends above this text (0 = no badge yet).
-  return { text: msg, badgeN: badge ? badge.n : 0 };
+  // badgeN drives the badge PHOTO; progress picks the status banner's bar fill.
+  return { text: msg, badgeN: badge ? badge.n : 0, progress };
 }
 
 async function handleTelegram(req, res) {
@@ -311,8 +320,8 @@ async function handleTelegram(req, res) {
     if (!canSeeBadges) {
       await telegramCall("sendMessage", { chat_id: chatId, text: comingSoon, reply_markup: kb });
     } else {
-      const { text: statusText, badgeN } = await badgeStatusText(fromId);
-      const img = badgeN ? badgeBannerUrl(badgeN) : "";
+      const { text: statusText, badgeN, progress } = await badgeStatusText(fromId);
+      const img = badgeN ? badgeStatusBannerUrl(badgeN, Math.round((progress || 0) * 100)) : "";
       // Show the current badge as a picture above the status. Telegram photo
       // captions cap at 1024 chars, so if the voucher list makes it longer, send
       // the badge with a short caption and the details as a follow-up message.
