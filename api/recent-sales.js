@@ -15,6 +15,7 @@ import {
   VOUCHERS_KEY,
   badgeEmoji,
   badgeStatusBannerUrl,
+  badgeCollectionUrl,
   WELCOME_CONFIG_KEY,
   WELCOME_GRANTED_KEY,
   parseWelcomeConfig,
@@ -302,9 +303,10 @@ async function badgeStatusText(userId) {
   return { text: msg, badgeN: badge ? badge.n : 0, progress };
 }
 
-// A "trophy case" view of every badge, showing which the customer has collected
-// (✅) versus still locked (🔒), with progress — to nudge the collector instinct.
-async function badgeCollectionText(userId) {
+// A "trophy case" photo of every badge — collected ones in colour, locked ones
+// greyed — with a caption showing progress and what's next. Taps the collector
+// instinct. The grid image is one of 10 pre-rendered states (0..9 collected).
+async function badgeCollection(userId) {
   const aliasMap = (await redis.hgetall(CUSTOMER_ALIAS_KEY)) || {};
   const key = resolveCustomerKey(aliasMap, String(userId || ""));
   const log = key ? (await redis.hgetall(spendLogKey(key))) || {} : {};
@@ -318,21 +320,17 @@ async function badgeCollectionText(userId) {
   slots.push({ n: earth.n + 1, name: "Champion", spend: champSpend, got: spend >= champSpend });
 
   const got = slots.filter(x => x.got).length;
-  let msg = `🏅 <b>Your Badge Collection</b>\nYou've collected <b>${got} of ${slots.length}</b> badges!\n\n`;
-  for (const x of slots) {
-    msg += `${badgeEmoji(x.n)} ${x.name} ${x.got ? "✅" : "🔒"}\n`;
-  }
-
+  let caption = `🏅 <b>Your Badge Collection</b> — <b>${got} of ${slots.length}</b> collected!\n`;
   const nextLocked = slots.find(x => !x.got);
   if (!nextLocked) {
-    msg += `\n<i>You've collected them all — legendary! 👑</i>`;
+    caption += `\nYou've collected them all — legendary! 👑`;
   } else if (nextLocked.n === BADGES[0].n) {
-    msg += `\n<i>Make your first purchase to start your collection with ${badgeEmoji(nextLocked.n)} Boulder!</i>`;
+    caption += `\nMake your first purchase to start your collection with ${badgeEmoji(nextLocked.n)} <b>Boulder</b>!`;
   } else {
-    msg += `\n<i>Next to collect: ${badgeEmoji(nextLocked.n)} ${nextLocked.name} — ${money(Math.max(0, nextLocked.spend - spend))} to go!</i>`;
+    caption += `\nNext to collect: ${badgeEmoji(nextLocked.n)} <b>${nextLocked.name}</b> — ${money(Math.max(0, nextLocked.spend - spend))} to go!`;
   }
-  msg += "\nEvery badge is yours for life 💛";
-  return msg;
+  caption += `\nEvery badge is yours for life 💛`;
+  return { url: badgeCollectionUrl(got), caption };
 }
 
 async function handleTelegram(req, res) {
@@ -371,13 +369,12 @@ async function handleTelegram(req, res) {
       reply_markup: kb,
     });
   } else if (text.includes("collection") || text.startsWith("/mycollection")) {
-    await telegramCall("sendMessage", {
-      chat_id: chatId,
-      text: canSeeBadges ? await badgeCollectionText(fromId) : comingSoon,
-      parse_mode: "HTML",
-      disable_web_page_preview: true,
-      reply_markup: kb,
-    });
+    if (!canSeeBadges) {
+      await telegramCall("sendMessage", { chat_id: chatId, text: comingSoon, reply_markup: kb });
+    } else {
+      const { url, caption } = await badgeCollection(fromId);
+      await telegramCall("sendPhoto", { chat_id: chatId, photo: url, caption, parse_mode: "HTML", reply_markup: kb });
+    }
   } else if (text.includes("badge") || text.startsWith("/mytier") || text.startsWith("/mybadges")) {
     if (!canSeeBadges) {
       await telegramCall("sendMessage", { chat_id: chatId, text: comingSoon, reply_markup: kb });

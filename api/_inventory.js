@@ -902,6 +902,13 @@ export function badgeStatusBannerUrl(n, progressPercent) {
   const bucket = Math.max(0, Math.min(100, Math.round((Number(progressPercent) || 0) / 10) * 10));
   return BADGE_IMAGE_BASE + "status/" + s + "_p" + bucket + ".png" + BADGE_V;
 }
+// The "trophy case" grid card for the bot's My Collection photo. Because badge
+// thresholds are monotonic, a collection is always the first k badges, so there
+// are just 10 pre-rendered states (0..9 collected).
+export function badgeCollectionUrl(collectedCount) {
+  const k = Math.max(0, Math.min(9, Math.round(Number(collectedCount) || 0)));
+  return BADGE_IMAGE_BASE + "collection/collection_" + k + ".png" + BADGE_V;
+}
 
 // The badge a spend qualifies for: null below Boulder (i.e. no purchase yet), the
 // entry Boulder tier for any spend >= 1 cent, one of BADGES, or a Champion tier
