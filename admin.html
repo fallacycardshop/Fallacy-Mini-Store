@@ -4405,24 +4405,20 @@ function fmtSpendDate(ms) {
   return new Date(Number(ms)).toLocaleDateString("en-SG", { dateStyle: "medium" });
 }
 
-// Original themed pictograms keyed by badge number (rock, drop, bolt, rainbow,
-// heart, leaf, volcano, globe; star for Champion) — drawn here, not the game's
-// trademarked badge art. They take the badge's colour via currentColor.
-const BADGE_ICONS = {
-  1: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M5 14l3-7 7-1 5 6-2 6H8z"/></svg>',
-  2: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 3s7 8 7 12a7 7 0 0 1-14 0c0-4 7-12 7-12z"/></svg>',
-  3: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M13 2 4 14h7l-2 8 11-13h-7z"/></svg>',
-  4: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 19a9 9 0 0 1 18 0"/><path d="M7 19a5 5 0 0 1 10 0"/></svg>',
-  5: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 21S4 13 4 8a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 5-8 13-8 13z"/></svg>',
-  6: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M5 19C5 10 12 4 20 4c0 8-7 15-15 15z"/></svg>',
-  7: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M4 20 9 9l1 2 2-4 2 4 1-2 5 11z"/></svg>',
-  8: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3.2 3 3.2 15 0 18M12 3c-3.2 3-3.2 15 0 18"/></svg>',
-  champion: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2l3 6.5 7 .5-5 4.5L18.5 21 12 17l-6.5 4L7 13.5 2 9l7-.5z"/></svg>',
-};
+// The painted badge art (images/badges/, served from raw GitHub — same scheme as
+// the card photos). One medal covers every Champion tier (badge n >= 9).
+const BADGE_IMG_BASE = "https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/badges/";
+const BADGE_SLUGS = { 1: "boulder", 2: "cascade", 3: "thunder", 4: "rainbow", 5: "soul", 6: "marsh", 7: "volcano", 8: "earth" };
+function badgeSlug(n) { return Number(n) >= 9 ? "champion" : (BADGE_SLUGS[Number(n)] || ""); }
+function badgeImg(n, size) {
+  const s = badgeSlug(n);
+  if (!s) return "";
+  const px = size || 16;
+  return `<img src="${BADGE_IMG_BASE}${s}.png" width="${px}" height="${px}" alt="" loading="lazy" style="vertical-align:middle;display:inline-block;border-radius:3px">`;
+}
 function badgeChip(b) {
   const c = b.color || "#a8305f";
-  const icon = BADGE_ICONS[b.n] || BADGE_ICONS.champion;
-  return `<span class="badge-chip" style="color:${c};background:${c}1f;border-color:${c}59">${icon}<span>${b.n}&#183;${escapeHtml(b.name)}</span></span>`;
+  return `<span class="badge-chip" style="color:${c};background:${c}1f;border-color:${c}59">${badgeImg(b.n, 15)}<span>${b.n}&#183;${escapeHtml(b.name)}</span></span>`;
 }
 
 function renderSpendTable() {
@@ -4703,7 +4699,7 @@ function renderVouchers() {
               `<button class="spend-adjust" data-void="${escapeHtml(r.code)}">Void</button>`;
             return `<tr>
               <td>${escapeHtml(r.handle || r.customer)}</td>
-              <td>${r.badgeN ? r.badgeN + "·" : ""}${escapeHtml(r.badgeName || "")}</td>
+              <td>${badgeImg(r.badgeN, 15)} ${r.badgeN ? r.badgeN + "·" : ""}${escapeHtml(r.badgeName || "")}</td>
               <td><code>${escapeHtml(r.code)}</code></td>
               <td class="num">${r.pct}% · $${Number(r.cap).toFixed(0)}</td>
               <td class="num">${fmtSpendDate(r.issuedAt)}</td>

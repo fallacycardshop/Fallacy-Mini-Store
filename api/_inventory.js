@@ -833,6 +833,20 @@ export function badgeEmoji(n) {
   return BADGE_EMOJI[k] || "🎖";
 }
 
+// The painted badge art, committed under images/badges/ and served the same way
+// as the card photos (raw GitHub). Every Champion tier shares the one medal.
+export const BADGE_SLUGS = { 1: "boulder", 2: "cascade", 3: "thunder", 4: "rainbow", 5: "soul", 6: "marsh", 7: "volcano", 8: "earth" };
+export const BADGE_IMAGE_BASE = "https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/badges/";
+export function badgeSlug(n) {
+  const k = Number(n);
+  if (k >= 9) return "champion";
+  return BADGE_SLUGS[k] || "";
+}
+export function badgeImageUrl(n) {
+  const s = badgeSlug(n);
+  return s ? BADGE_IMAGE_BASE + s + ".png" : "";
+}
+
 // The badge a spend qualifies for: null below Boulder, one of BADGES, or a
 // Champion tier ($1,650, $1,900, …). Champion tier k is badge number 8+k.
 export function badgeForSpend(spend) {

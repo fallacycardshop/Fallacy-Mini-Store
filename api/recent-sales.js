@@ -17,6 +17,7 @@ import {
   SPEND_LOG_PREFIX,
   BADGE_SNAPSHOT_KEY,
   badgeEmoji,
+  badgeImageUrl,
 } from "./_inventory.js";
 
 // Emoji for a badge object from either helper: badgeForSpend gives a numbered
@@ -267,7 +268,8 @@ async function badgeStatusText(userId) {
   } else {
     msg += "\n\n<i>Earn a badge to unlock a reward voucher.</i>";
   }
-  return msg;
+  // badgeN drives the badge PHOTO the bot sends above this text (0 = no badge yet).
+  return { text: msg, badgeN: badge ? badge.n : 0 };
 }
 
 async function handleTelegram(req, res) {
@@ -306,12 +308,23 @@ async function handleTelegram(req, res) {
       reply_markup: kb,
     });
   } else if (text.includes("badge") || text.startsWith("/mytier") || text.startsWith("/mybadges")) {
-    await telegramCall("sendMessage", {
-      chat_id: chatId,
-      text: canSeeBadges ? await badgeStatusText(fromId) : comingSoon,
-      parse_mode: "HTML",
-      reply_markup: kb,
-    });
+    if (!canSeeBadges) {
+      await telegramCall("sendMessage", { chat_id: chatId, text: comingSoon, reply_markup: kb });
+    } else {
+      const { text: statusText, badgeN } = await badgeStatusText(fromId);
+      const img = badgeN ? badgeImageUrl(badgeN) : "";
+      // Show the current badge as a picture above the status. Telegram photo
+      // captions cap at 1024 chars, so if the voucher list makes it longer, send
+      // the badge with a short caption and the details as a follow-up message.
+      if (img && statusText.length <= 1024) {
+        await telegramCall("sendPhoto", { chat_id: chatId, photo: img, caption: statusText, parse_mode: "HTML", reply_markup: kb });
+      } else if (img) {
+        await telegramCall("sendPhoto", { chat_id: chatId, photo: img, caption: "🎖 Your current badge", parse_mode: "HTML" });
+        await telegramCall("sendMessage", { chat_id: chatId, text: statusText, parse_mode: "HTML", reply_markup: kb });
+      } else {
+        await telegramCall("sendMessage", { chat_id: chatId, text: statusText, parse_mode: "HTML", reply_markup: kb });
+      }
+    }
   } else if (text.startsWith("/start") || text.startsWith("/shop") || text.startsWith("/store")) {
     // Populate the menu-button command list to match what's live (idempotent).
     await telegramCall("setMyCommands", { commands: live ? BOT_COMMANDS : BOT_COMMANDS_BASE });
