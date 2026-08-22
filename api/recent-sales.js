@@ -221,7 +221,17 @@ async function activeVouchersFor(key) {
     if (voucherStatus(v, now) === "active") out.push(v);
   });
   out.sort((a, b) => (Number(a.expiresAt) || 0) - (Number(b.expiresAt) || 0));
-  return out;
+  // One voucher per badge in the list — guards the display against any historical
+  // duplicate so a badge never shows twice (soonest-expiring kept, to use first).
+  const seen = new Set();
+  const deduped = [];
+  for (const v of out) {
+    const b = String(v.badgeN);
+    if (seen.has(b)) continue;
+    seen.add(b);
+    deduped.push(v);
+  }
+  return deduped;
 }
 
 // Read-only loyalty status for a Telegram numeric user id — the permanent
@@ -264,7 +274,7 @@ async function badgeStatusText(userId) {
 
   const vouchers = await activeVouchersFor(key);
   if (vouchers.length) {
-    msg += "\n\n🎟 <b>Lifetime valid vouchers:</b>\n";
+    msg += "\n\n🎟 <b>Your vouchers</b>\n";
     for (const v of vouchers) {
       const cap = Number(v.cap) || 0;
       msg += `<code>${v.code}</code> — ${Number(v.pct) || 0}% off${cap ? ` (up to ${money(cap)})` : ""}, expires ${fmtVoucherDate(v.expiresAt)}\n`;
