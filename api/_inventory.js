@@ -1013,7 +1013,8 @@ export function earnedBadges(spend) {
 // Unambiguous alphabet (no O/0/I/1) for readable, unguessable codes.
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 export function voucherCode(badgeName) {
-  const prefix = (String(badgeName || "FCS").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 8)) || "FCS";
+  // Short prefix: the badge name's first 3 letters (e.g. Cascade -> CAS-XXXXX).
+  const prefix = (String(badgeName || "FCS").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3)) || "FCS";
   let suffix = "";
   for (let i = 0; i < 5; i++) suffix += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
   return `${prefix}-${suffix}`;
