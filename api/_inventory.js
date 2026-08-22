@@ -876,7 +876,7 @@ export const BADGE_IMAGE_BASE = "https://raw.githubusercontent.com/fallacycardsh
 // This version tag is appended to every badge URL; bump it whenever the art is
 // regenerated so clients fetch the new file. (raw GitHub ignores the query and
 // serves the file; the changed URL is what busts the cache.)
-export const BADGE_ASSET_VERSION = "5";
+export const BADGE_ASSET_VERSION = "6";
 const BADGE_V = "?v=" + BADGE_ASSET_VERSION;
 export function badgeSlug(n) {
   const k = Number(n);
