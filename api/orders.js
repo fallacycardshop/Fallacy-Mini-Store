@@ -1,8 +1,6 @@
 import { Redis } from "@upstash/redis";
 import {
   ORDER_PAID_KEY,
-  CUSTOMER_SPEND_KEY,
-  CUSTOMER_COUNT_KEY,
   CUSTOMER_ADJUST_KEY,
   CUSTOMER_ADJUST_LOG,
   customerKey,
@@ -13,6 +11,7 @@ import {
   parseSgtDate,
   parseAdjustEntries,
   sumAdjust,
+  spendLogKey,
 } from "./_inventory.js";
 
 const redis = Redis.fromEnv();
@@ -100,14 +99,13 @@ export default async function handler(req, res) {
 
       await redis.hset(ORDER_PAID_KEY, { [id]: target ? "1" : "0" });
 
-      // Credit on paying, reverse on un-paying. HINCRBYFLOAT keeps the running
-      // total exact; count moves by one order in step. (These two hashes are a
-      // cache for the future /mytier bot's O(1) lookups — the admin Spend panel
-      // recomputes authoritatively from the orders list, so a cache drift can
-      // never mislead the shop owner, and a backfill re-syncs it.)
-      const sign = target ? 1 : -1;
-      await redis.hincrbyfloat(CUSTOMER_SPEND_KEY, ckey, sign * amt);
-      await redis.hincrby(CUSTOMER_COUNT_KEY, ckey, sign);
+      // Maintain the customer's dated spend log — the bot's O(1) source (see
+      // /mytier). Paying adds this order (with its date), un-paying removes it.
+      // The admin panel recomputes authoritatively from the orders list, so a
+      // log drift can never mislead the shop owner and a backfill re-syncs it.
+      const when = Number(entry.savedAt) || Number(record.Order_ID) || Date.now();
+      if (target) await redis.hset(spendLogKey(ckey), { [id]: `${when}:${amt}` });
+      else await redis.hdel(spendLogKey(ckey), id);
 
       return res.status(200).json({ ok: true, orderId: id, paid: target, changed: true });
     }
@@ -127,50 +125,46 @@ export default async function handler(req, res) {
     if (action === "backfillSpend") {
       const orders = await readAllOrders();
       const paidMap = (await redis.hgetall(ORDER_PAID_KEY)) || {};
-      const spendMap = (await redis.hgetall(CUSTOMER_SPEND_KEY)) || {};
-      const countMap = (await redis.hgetall(CUSTOMER_COUNT_KEY)) || {};
 
-      // Window view: paid orders per customer (an order with no paid entry is a
-      // pre-feature historical order, treated as paid), and the historical ids
-      // that still need an explicit "1" written.
-      const { byCustomer: windowAgg, seededPaid } = aggregateSpend(orders, paidMap);
-
-      // Seed the explicit paid flags for historical orders, so mark-paid can
-      // later toggle them and the reconciliation check sees them as paid.
-      if (Object.keys(seededPaid).length > 0) {
-        await redis.hset(ORDER_PAID_KEY, seededPaid);
+      // Rebuild each customer's dated spend log (the bot's O(1) source) from the
+      // stored orders. Idempotent — it OVERWRITES each log, so running it twice
+      // can't double anything. Orders with no paid-state entry are pre-feature
+      // history: treated as paid and given an explicit "1" so they stay counted.
+      const seededPaid = {};
+      const logs = new Map(); // custKey -> { orderId: "when:amount" }
+      for (const e of orders) {
+        const record = e.record || e;
+        if (!record || typeof record !== "object") continue;
+        const id = String(record.Order_ID || "");
+        let paid;
+        if (id && Object.prototype.hasOwnProperty.call(paidMap, id)) paid = String(paidMap[id]) === "1";
+        else { paid = true; if (id) seededPaid[id] = "1"; }
+        if (!paid) continue;
+        const ckey = customerKey(record);
+        const when = Number(e.savedAt) || Number(record.Order_ID) || 0;
+        const amt = orderAmount(record);
+        if (!logs.has(ckey)) logs.set(ckey, {});
+        logs.get(ckey)[id] = `${when}:${amt}`;
       }
 
-      // Credit the SHORTFALL between a customer's banked lifetime spend and the
-      // paid orders currently visible in the window. This seeds first-time
-      // history AND self-heals a total that was left under-credited (e.g. a
-      // Rebuild whose credit step didn't land, or a mark-paid that half-failed).
-      // It only ever ADDS the deficit, so lifetime spend from orders that have
-      // since rotated out of the window (banked total already above the window
-      // sum) is never reduced. Idempotent: once banked >= window, deficit is 0.
+      if (Object.keys(seededPaid).length > 0) await redis.hset(ORDER_PAID_KEY, seededPaid);
+
+      // Overwrite each customer's log (DEL then HSET) in a single pipeline — one
+      // network round trip, not a loop of awaited writes. Admin-only, run rarely.
       const pipe = redis.pipeline();
-      let queued = 0;
-      let customers = 0;
-      let credited = 0;
-      for (const [key, w] of windowAgg) {
-        const organicSpend = Number(spendMap[key]) || 0;
-        const organicCount = Number(countMap[key]) || 0;
-        const spendDeficit = Number((w.spend - organicSpend).toFixed(2));
-        const countDeficit = w.orders - organicCount;
-        if (spendDeficit > 0.005) {
-          pipe.hincrbyfloat(CUSTOMER_SPEND_KEY, key, spendDeficit);
-          queued += 1; customers += 1; credited += spendDeficit;
-        }
-        if (countDeficit > 0) { pipe.hincrby(CUSTOMER_COUNT_KEY, key, countDeficit); queued += 1; }
+      let orderCount = 0;
+      for (const [ckey, map] of logs) {
+        pipe.del(spendLogKey(ckey));
+        const n = Object.keys(map).length;
+        if (n > 0) { pipe.hset(spendLogKey(ckey), map); orderCount += n; }
       }
-      if (queued > 0) await pipe.exec();
+      if (logs.size > 0) await pipe.exec();
 
       return res.status(200).json({
         ok: true,
-        customers,                              // customers whose lifetime was topped up
-        credited: Number(credited.toFixed(2)),  // dollars added this run
-        seeded: Object.keys(seededPaid).length, // historical orders given an explicit paid flag
-        orders: orders.length,
+        customers: logs.size,
+        orders: orderCount,
+        seeded: Object.keys(seededPaid).length,
       });
     }
 
