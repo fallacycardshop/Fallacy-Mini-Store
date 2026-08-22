@@ -1,3 +1,8 @@
+import { Redis } from "@upstash/redis";
+import { VOUCHERS_KEY, voucherStatus } from "./_inventory.js";
+
+const redis = Redis.fromEnv();
+
 const MINIMUM_DISCOUNT_SPEND = 10;
 
 // Promotions are advertised in Singapore time; expiry is interpreted in SGT.
@@ -58,7 +63,47 @@ function parseDiscountCodes(raw) {
     });
 }
 
-export default function handler(req, res) {
+// A loyalty voucher (issued per earned badge, stored in the VOUCHERS_KEY hash)
+// redeems here alongside the env-var promo codes. A voucher is a percent
+// discount capped at a dollar amount, single-use, and dated — everything the
+// env-var format can't express, which is why these live in Redis. The code is
+// only VALIDATED here (status + minimum spend); it is BURNED at order placement
+// in api/confirm-order.js, so the discount is applied at most once.
+async function lookupVoucher(rawCode, subtotal) {
+  const code = String(rawCode || "").trim().toUpperCase();
+  let raw;
+  try {
+    raw = await redis.hget(VOUCHERS_KEY, code);
+  } catch (e) {
+    // Fail closed: a Redis read error must not silently reject a real voucher as
+    // "unknown", but it also must not grant a discount it couldn't verify.
+    console.error("voucher lookup failed:", e);
+    return { error: true };
+  }
+  if (!raw) return null; // not a voucher
+
+  let v;
+  try { v = typeof raw === "string" ? JSON.parse(raw) : raw; } catch (e) { return null; }
+
+  const status = voucherStatus(v);
+  if (status === "used") return { valid: false, reason: "used" };
+  if (status === "expired") return { valid: false, reason: "expired", expiredAt: Number(v.expiresAt) || null };
+
+  if (Number(subtotal || 0) < MINIMUM_DISCOUNT_SPEND) {
+    return { valid: false, reason: "minimum_not_met", minimumRequired: MINIMUM_DISCOUNT_SPEND };
+  }
+
+  return {
+    valid: true,
+    type: "percent",
+    value: Number(v.pct) || 0,
+    cap: Number(v.cap) || 0,      // max discount in dollars
+    voucher: true,
+    badgeName: v.badgeName || "",
+  };
+}
+
+export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ valid: false, error: "Method not allowed" });
   }
@@ -73,6 +118,12 @@ export default function handler(req, res) {
     const match = codes.find(c => c.code === code.trim().toUpperCase());
 
     if (!match) {
+      // Not an env-var promo code — try a loyalty voucher before giving up.
+      const voucher = await lookupVoucher(code, subtotal);
+      if (voucher && voucher.error) {
+        return res.status(500).json({ valid: false, error: "Failed to validate code." });
+      }
+      if (voucher) return res.status(200).json(voucher);
       return res.status(200).json({ valid: false });
     }
 
