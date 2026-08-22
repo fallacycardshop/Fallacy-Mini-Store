@@ -672,6 +672,12 @@ export const CUSTOMER_ADJUST_LOG = "customer:spend:log";    // capped list: { at
 export const SPEND_LOG_PREFIX = "spend:";
 export function spendLogKey(custKey) { return SPEND_LOG_PREFIX + custKey; }
 
+// Last badge tier we notified a customer about (hash: customerKey -> badge n, 0
+// = no badge). The loyalty cron compares each customer's live window badge to
+// this and DMs only when it has DROPPED, then updates the snapshot — so a lapse
+// notice fires once, not every day.
+export const BADGE_SNAPSHOT_KEY = "loyalty:badgeSnapshot";
+
 // Sum a spend-log hash into cumulative + rolling-window figures.
 export function sumSpendLog(logHash, windowStart) {
   let cumulative = 0, window = 0, orders = 0, windowOrders = 0, lastOrder = 0;

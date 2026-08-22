@@ -34,6 +34,25 @@ function loyaltyTestIds() {
   return new Set(String(process.env.LOYALTY_TEST_IDS || "").split(/[\s,;]+/).map(s => s.trim()).filter(Boolean));
 }
 
+// DM a customer through the bot. Only possible for a numeric Telegram id (the
+// Mini App identity) — a browser "@handle" has no chat id to message. Swallows
+// its own errors so a push can never break the caller (a voucher is still
+// issued even if the notification fails).
+async function notifyTelegram(chatId, text) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const id = String(chatId || "");
+  if (!token || !/^\d+$/.test(id)) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: id, text, parse_mode: "HTML", disable_web_page_preview: true }),
+    });
+  } catch (e) {
+    console.error("telegram notify failed:", e);
+  }
+}
+
 // Issue one voucher per newly-earned badge for a customer (leapfrog + once-ever).
 // Reads the customer's window spend, walks the badges they've earned, and issues
 // any not already in their permanent issued-badge set. Returns the new vouchers.
@@ -61,6 +80,12 @@ async function issueVouchersFor(redis, ckey, handle, now = Date.now()) {
     await redis.sadd(customerVouchersKey(ckey), code);
     await redis.sadd(issuedBadgesKey(ckey), String(b.n));
     out.push(rec);
+  }
+  // One DM summarising every voucher this payment unlocked (Mini App users only).
+  if (out.length) {
+    const lines = out.map(r => `🎖 <b>${r.badgeName}</b> — <code>${r.code}</code>, ${r.pct}% off${r.cap ? ` (up to $${r.cap})` : ""}, valid ${VOUCHER_DAYS} days.`);
+    await notifyTelegram(ckey,
+      `Congrats! You've unlocked a new reward:\n\n${lines.join("\n")}\n\nEnter the code in the cart's promo box, or tap 🎖 My Badges.`);
   }
   return out;
 }
@@ -465,6 +490,69 @@ export default async function handler(req, res) {
       catch (e) { console.error("merge voucher issuance failed:", e); }
 
       return res.status(200).json({ ok: true, merged: true, from, into, movedVouchers: vouchersFrom.length, vouchers });
+    }
+
+    // -------------------------------------------------------- backdateVouchers
+    // One-time launch step: give every existing customer ONE voucher for the
+    // badge they currently hold, and mark all the badges they've earned as
+    // already issued so the lower ones never retro-pay a stack. Silent — it does
+    // NOT DM (a launch blast could be hundreds of messages); customers find the
+    // voucher in the bot's My Badges. Idempotent: a customer whose current badge
+    // is already issued is skipped, so re-running is safe. Admin-only, run once.
+    if (action === "backdateVouchers") {
+      const orders = await readAllOrders();
+      const paidMap = (await redis.hgetall(ORDER_PAID_KEY)) || {};
+      const adjustMap = (await redis.hgetall(CUSTOMER_ADJUST_KEY)) || {};
+      const aliasMap = (await redis.hgetall(CUSTOMER_ALIAS_KEY)) || {};
+      const windowStart = windowStartMs();
+      const now = Date.now();
+
+      // Same window figure the Spend panel shows, folded by identity merge.
+      const { byCustomer } = aggregateSpend(orders, paidMap, windowStart, aliasMap);
+      const adjustByCanon = new Map();
+      for (const [k, raw] of Object.entries(adjustMap)) {
+        const canon = resolveCustomerKey(aliasMap, k);
+        const a = sumAdjust(parseAdjustEntries(raw), windowStart);
+        const cur = adjustByCanon.get(canon) || { window: 0 };
+        cur.window += a.window;
+        adjustByCanon.set(canon, cur);
+      }
+
+      const keys = new Set([...byCustomer.keys(), ...adjustByCanon.keys()]);
+      let customers = 0, issued = 0, skipped = 0;
+      const results = [];
+      for (const key of keys) {
+        const c = byCustomer.get(key);
+        const adj = adjustByCanon.get(key) || { window: 0 };
+        const windowSpend = (c ? c.windowSpend : 0) + adj.window;
+        const earned = earnedBadges(windowSpend);
+        if (!earned.length) continue; // below Boulder — no badge, no voucher
+        customers += 1;
+
+        const already = new Set((await redis.smembers(issuedBadgesKey(key))) || []);
+        // Mark EVERY earned badge as issued up front, so the lower ones can never
+        // pay out later — a backdated customer gets exactly one voucher, ever,
+        // for this launch.
+        await redis.sadd(issuedBadgesKey(key), ...earned.map(b => String(b.n)));
+
+        const current = earned[earned.length - 1]; // highest badge held
+        if (already.has(String(current.n))) { skipped += 1; continue; }
+
+        let code = voucherCode(current.name);
+        for (let t = 0; t < 5 && (await redis.hexists(VOUCHERS_KEY, code)); t++) code = voucherCode(current.name);
+        const rec = {
+          code, customer: key, handle: (c && c.handle) || key,
+          badgeN: current.n, badgeName: current.name, pct: current.pct, cap: current.cap,
+          issuedAt: now, expiresAt: now + VOUCHER_DAYS * 86400000,
+          status: "active", usedAt: null, usedOrderId: null, backdated: true,
+        };
+        await redis.hset(VOUCHERS_KEY, { [code]: JSON.stringify(rec) });
+        await redis.sadd(customerVouchersKey(key), code);
+        issued += 1;
+        results.push({ key, badge: current.name, code });
+      }
+
+      return res.status(200).json({ ok: true, customers, issued, skipped, results });
     }
 
     // ------------------------------------------------------- default: read --

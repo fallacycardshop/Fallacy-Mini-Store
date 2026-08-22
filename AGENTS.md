@@ -104,6 +104,15 @@ runtime:
   same person's two identities (numeric Telegram id + browser `@handle`) fold
   into one badge/spend/voucher row. Resolve every customer key through
   `resolveCustomerKey` before reading/writing spend.
+- `vouchers` — hash: CODE → JSON voucher record (issued per earned badge).
+- `customer:vouchers:<key>` / `customer:badges:<key>` — per-customer sets: the
+  codes a customer holds, and the badge numbers ever issued (once-per-badge lock).
+- `loyalty:badgeSnapshot` — hash: customerKey → last badge tier we notified them
+  about. The daily loyalty cron DMs a lapse notice only when the live badge has
+  dropped below this, then updates it. The cron (`/api/recent-sales?cron=1`,
+  registered under `crons` in vercel.json, guarded by `CRON_SECRET`) also sends
+  voucher expiry reminders. Both jobs are gated like issuance — pre-launch only
+  `LOYALTY_TEST_IDS` receive a DM.
 
 Note that each multi-item feature uses **one** key holding a JSON object, not
 one key per item. That is deliberate: one key per hidden card or per scheduled
