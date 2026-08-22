@@ -864,6 +864,52 @@ export function sumAdjust(entries, windowStart) {
   return { cumulative, window };
 }
 
+// ===========================================================================
+// Vouchers (loyalty-programme.md §4). Each earned badge issues one single-use
+// voucher, ever. All voucher data lives in ONE hash so the admin panel and the
+// storefront redemption read the same source; per-customer index sets keep the
+// bot's "my vouchers" and the once-per-badge check O(1).
+// ===========================================================================
+export const VOUCHERS_KEY = "vouchers";                 // hash: CODE -> JSON voucher record
+export const VOUCHER_DAYS = 60;                         // 60-day expiry (§4)
+export function customerVouchersKey(k) { return "customer:vouchers:" + k; } // set of CODEs per customer
+export function issuedBadgesKey(k) { return "customer:badges:" + k; }        // set of badge numbers ever issued
+
+// All badges a spend has earned (threshold met), Boulder..Earth plus each
+// Champion tier. Issuance walks this and skips any already in the issued set,
+// so one order crossing several badges pays out one voucher per badge.
+export function earnedBadges(spend) {
+  const s = Number(spend) || 0;
+  const out = [];
+  for (const b of BADGES) { if (s >= b.spend) out.push({ n: b.n, name: b.name, pct: b.pct, cap: b.cap }); }
+  const earth = BADGES[BADGES.length - 1];
+  if (s >= earth.spend + CHAMPION.step) {
+    const tiers = Math.floor((s - earth.spend) / CHAMPION.step);
+    for (let t = 1; t <= tiers; t++) {
+      out.push({ n: earth.n + t, name: t === 1 ? "Champion" : `Champion ×${t}`, pct: CHAMPION.pct, cap: CHAMPION.cap });
+    }
+  }
+  return out;
+}
+
+// Unambiguous alphabet (no O/0/I/1) for readable, unguessable codes.
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+export function voucherCode(badgeName) {
+  const prefix = (String(badgeName || "FCS").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 8)) || "FCS";
+  let suffix = "";
+  for (let i = 0; i < 5; i++) suffix += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+  return `${prefix}-${suffix}`;
+}
+
+// Live status of a voucher: used > expired > active. Expiry is COMPUTED from
+// the date, so nothing has to run to "expire" a voucher.
+export function voucherStatus(v, now = Date.now()) {
+  if (!v) return "unknown";
+  if (v.status === "used" || v.usedAt) return "used";
+  if (Number(v.expiresAt) && now > Number(v.expiresAt)) return "expired";
+  return "active";
+}
+
 // Resolve a single order's paid state with the same "no entry = paid" rule the
 // aggregate uses, so the admin toggle and the totals never disagree.
 export function isOrderPaid(paidMap, orderId) {
