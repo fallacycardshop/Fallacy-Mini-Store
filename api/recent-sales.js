@@ -17,6 +17,7 @@ import {
   SPEND_LOG_PREFIX,
   BADGE_SNAPSHOT_KEY,
   badgeEmoji,
+  badgeStatusBannerUrl,
 } from "./_inventory.js";
 
 // Emoji for a badge object from either helper: badgeForSpend gives a numbered
@@ -114,33 +115,31 @@ New cards are released daily. Check the "Newly in stock!" row at the top of the 
 Still stuck? Message @fallacytcg and we'll help.`;
 
 // Shown by the "How badges work" button / /howbadges.
-const HOW_BADGES_TEXT = `🎴 <b>how our badges work</b>
+const HOW_BADGES_TEXT = `🎴 <b>How do Badges work?</b>
 
-as you shop with us, your spend earns you badges — and every badge comes with a reward 🎖
+As you shop with us, your spend earns you Badges — and every Badge comes with a reward! 🎖
 
-<b>the basics</b>
-• we add up what you've spent over the last <b>6 months</b>
-• hit a milestone and you unlock that badge
-• each badge gives you a voucher — a % off, up to a set cap, single use, valid <b>60 days</b> ✨
-• badges reset if your 6-month spend slips below the tier, so keep them warm!
+• your cumulative spend over the last 6 months helps you to hit Badge milestones
+• hitting a milestone means unlocking a new Badge voucher valid for use at our Mini Store for 60 days ✨
+• Badges reset if your 6-month spend slips below the Badge Tier, so keep them warm!
 
-<b>the ladder</b> 🪜
-🪨 boulder — $80 → 5% off (up to $8)
-💧 cascade — $200 → 8% off (up to $16)
-⚡ thunder — $400 → 10% off (up to $20)
-🌈 rainbow — $600 → 10% off (up to $20)
-💗 soul — $800 → 10% off (up to $25)
-🟡 marsh — $1,000 → 10% off (up to $25)
-🔥 volcano — $1,200 → 12% off (up to $30)
-🍃 earth — $1,400 → 12% off (up to $30)
-👑 champion — every +$250 past earth → another 12% reward
+<b>Badge Tiers</b>
+🪨 Boulder — $80 → 5% off (up to $8)
+💧 Cascade — $200 → 8% off (up to $16)
+⚡️ Thunder — $400 → 10% off (up to $20)
+🌈 Rainbow — $600 → 10% off (up to $20)
+💗 Soul — $800 → 10% off (up to $25)
+🟡 Marsh — $1,000 → 10% off (up to $25)
+🔥 Volcano — $1,200 → 12% off (up to $30)
+🍃 Earth — $1,400 → 12% off (up to $30)
+👑 Champion — every +$250 past earth → another 12% off
 
-<b>good to know</b>
-• jump several badges in one go? you get a voucher for each 🎁
-• each badge rewards you once, ever
-• pop your code in the cart's promo box at checkout (min $10 spend)
+<b>Additional FAQ</b>
+• What if you jump several Badges in one go? Don't fret! You still get a voucher for each Badge unlocked 🎁
+• Each Badge unlocks a voucher only once (vouchers do not repeat even if you drop back down to lower Badge Tiers)
+• How do you use the vouchers? Just pop your code in your Mini Store cart promo box at checkout (min $10 spend required!)
 
-tap 🎖 <b>my badges</b> anytime to see your badge, your vouchers, and how close you are to the next one 💛`;
+Tap 🎖 <b>My Badges</b> button below anytime to see your Badge status, vouchers, and how close you are to the next one! 💛`;
 
 async function telegramCall(method, payload) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -246,14 +245,23 @@ async function badgeStatusText(userId) {
   const badge = badgeForSpend(windowSpend);
   const next = nextBadge(windowSpend);
 
+  // Fraction of the way from the current badge's threshold to the next one —
+  // drives the progress bar on the status banner. Champion always has a next.
+  let progress = 0;
+  if (badge && next && next.badge) {
+    const span = Number(next.badge.spend) - Number(badge.spend);
+    progress = span > 0 ? (windowSpend - Number(badge.spend)) / span : 0;
+    progress = Math.max(0, Math.min(1, progress));
+  }
+
   let msg = "🎖 <b>Your Badges</b>\n\n";
   msg += badge
     ? `Current badge: ${emojiForBadge(badge)} <b>${badge.name}</b> (Badge Tier ${badge.n})\n`
     : "You haven't earned a badge yet.\n";
   msg += `Spend in the last 6 months: <b>${money(windowSpend)}</b>\n`;
   if (next && next.badge) {
-    const tier = next.badge.n ? ` (Badge Tier ${next.badge.n})` : "";
-    msg += `\n${money(next.needed)} more to reach ${emojiForBadge(next.badge)} <b>${next.badge.name}</b>${tier}.`;
+    const nc = Number(next.badge.cap) || 0;
+    msg += `\n${money(next.needed)} to the next badge, ${emojiForBadge(next.badge)} <b>${next.badge.name}</b> — ${Number(next.badge.pct) || 0}% off${nc ? `, up to $${nc}` : ""}.`;
   }
 
   const vouchers = await activeVouchersFor(key);
@@ -267,7 +275,8 @@ async function badgeStatusText(userId) {
   } else {
     msg += "\n\n<i>Earn a badge to unlock a reward voucher.</i>";
   }
-  return msg;
+  // badgeN drives the badge PHOTO; progress picks the status banner's bar fill.
+  return { text: msg, badgeN: badge ? badge.n : 0, progress };
 }
 
 async function handleTelegram(req, res) {
@@ -306,12 +315,23 @@ async function handleTelegram(req, res) {
       reply_markup: kb,
     });
   } else if (text.includes("badge") || text.startsWith("/mytier") || text.startsWith("/mybadges")) {
-    await telegramCall("sendMessage", {
-      chat_id: chatId,
-      text: canSeeBadges ? await badgeStatusText(fromId) : comingSoon,
-      parse_mode: "HTML",
-      reply_markup: kb,
-    });
+    if (!canSeeBadges) {
+      await telegramCall("sendMessage", { chat_id: chatId, text: comingSoon, reply_markup: kb });
+    } else {
+      const { text: statusText, badgeN, progress } = await badgeStatusText(fromId);
+      const img = badgeN ? badgeStatusBannerUrl(badgeN, Math.round((progress || 0) * 100)) : "";
+      // Show the current badge as a picture above the status. Telegram photo
+      // captions cap at 1024 chars, so if the voucher list makes it longer, send
+      // the badge with a short caption and the details as a follow-up message.
+      if (img && statusText.length <= 1024) {
+        await telegramCall("sendPhoto", { chat_id: chatId, photo: img, caption: statusText, parse_mode: "HTML", reply_markup: kb });
+      } else if (img) {
+        await telegramCall("sendPhoto", { chat_id: chatId, photo: img, caption: "🎖 Your current badge", parse_mode: "HTML" });
+        await telegramCall("sendMessage", { chat_id: chatId, text: statusText, parse_mode: "HTML", reply_markup: kb });
+      } else {
+        await telegramCall("sendMessage", { chat_id: chatId, text: statusText, parse_mode: "HTML", reply_markup: kb });
+      }
+    }
   } else if (text.startsWith("/start") || text.startsWith("/shop") || text.startsWith("/store")) {
     // Populate the menu-button command list to match what's live (idempotent).
     await telegramCall("setMyCommands", { commands: live ? BOT_COMMANDS : BOT_COMMANDS_BASE });

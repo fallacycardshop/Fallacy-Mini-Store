@@ -24,6 +24,7 @@ import {
   CUSTOMER_ALIAS_KEY,
   resolveCustomerKey,
   badgeEmoji,
+  badgeBannerUrl,
 } from "./_inventory.js";
 
 // Loyalty launch gate — vouchers only auto-issue once live, or for the owner's
@@ -39,16 +40,22 @@ function loyaltyTestIds() {
 // Mini App identity) — a browser "@handle" has no chat id to message. Swallows
 // its own errors so a push can never break the caller (a voucher is still
 // issued even if the notification fails).
-async function notifyTelegram(chatId, text) {
+async function notifyTelegram(chatId, text, photoUrl) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const id = String(chatId || "");
   if (!token || !/^\d+$/.test(id)) return;
+  const api = m => `https://api.telegram.org/bot${token}/${m}`;
+  const post = (m, body) => fetch(api(m), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   try {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: id, text, parse_mode: "HTML", disable_web_page_preview: true }),
-    });
+    if (photoUrl && text.length <= 1024) {
+      // The earn banner with the full congrats as its caption (fits the 1024 cap).
+      await post("sendPhoto", { chat_id: id, photo: photoUrl, caption: text, parse_mode: "HTML" });
+    } else if (photoUrl) {
+      await post("sendPhoto", { chat_id: id, photo: photoUrl, caption: "🎉 New reward unlocked!", parse_mode: "HTML" });
+      await post("sendMessage", { chat_id: id, text, parse_mode: "HTML", disable_web_page_preview: true });
+    } else {
+      await post("sendMessage", { chat_id: id, text, parse_mode: "HTML", disable_web_page_preview: true });
+    }
   } catch (e) {
     console.error("telegram notify failed:", e);
   }
@@ -85,8 +92,11 @@ async function issueVouchersFor(redis, ckey, handle, now = Date.now()) {
   // One DM summarising every voucher this payment unlocked (Mini App users only).
   if (out.length) {
     const lines = out.map(r => `${badgeEmoji(r.badgeN)} <b>${r.badgeName}</b> — <code>${r.code}</code>, ${r.pct}% off${r.cap ? ` (up to $${r.cap})` : ""}, valid ${VOUCHER_DAYS} days.`);
+    // Headline the highest badge just earned with its "New badge earned!" banner.
+    const top = out[out.length - 1];
     await notifyTelegram(ckey,
-      `Congrats! You've unlocked a new reward:\n\n${lines.join("\n")}\n\nEnter the code in the cart's promo box, or tap 🎖 My Badges.`);
+      `Congrats! You've unlocked a new reward:\n\n${lines.join("\n")}\n\nEnter the code in the cart's promo box, or tap 🎖 My Badges.`,
+      badgeBannerUrl(top.badgeN));
   }
   return out;
 }

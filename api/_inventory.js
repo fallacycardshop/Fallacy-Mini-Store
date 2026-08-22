@@ -833,6 +833,35 @@ export function badgeEmoji(n) {
   return BADGE_EMOJI[k] || "🎖";
 }
 
+// The painted badge art, committed under images/badges/ and served the same way
+// as the card photos (raw GitHub). Every Champion tier shares the one medal.
+export const BADGE_SLUGS = { 1: "boulder", 2: "cascade", 3: "thunder", 4: "rainbow", 5: "soul", 6: "marsh", 7: "volcano", 8: "earth" };
+export const BADGE_IMAGE_BASE = "https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/badges/";
+export function badgeSlug(n) {
+  const k = Number(n);
+  if (k >= 9) return "champion";
+  return BADGE_SLUGS[k] || "";
+}
+export function badgeImageUrl(n) {
+  const s = badgeSlug(n);
+  return s ? BADGE_IMAGE_BASE + s + ".png" : "";
+}
+// The EARN banner ("NEW BADGE EARNED!") — sent in the earn-moment DM when a
+// badge is first unlocked. The bare badgeImageUrl icon is kept for admin chips.
+export function badgeBannerUrl(n) {
+  const s = badgeSlug(n);
+  return s ? BADGE_IMAGE_BASE + "banner_" + s + ".png" : "";
+}
+// The STATUS banner ("BADGE UNLOCKED" + a progress bar toward the next badge) —
+// the bot's My Badges photo. The bar can't be drawn at request time, so it is
+// pre-rendered at 10% steps and the closest bucket is chosen from live progress.
+export function badgeStatusBannerUrl(n, progressPercent) {
+  const s = badgeSlug(n);
+  if (!s) return "";
+  const bucket = Math.max(0, Math.min(100, Math.round((Number(progressPercent) || 0) / 10) * 10));
+  return BADGE_IMAGE_BASE + "status/" + s + "_p" + bucket + ".png";
+}
+
 // The badge a spend qualifies for: null below Boulder, one of BADGES, or a
 // Champion tier ($1,650, $1,900, …). Champion tier k is badge number 8+k.
 export function badgeForSpend(spend) {
