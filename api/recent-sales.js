@@ -95,6 +95,18 @@ New cards are released daily. Check the "Newly in stock!" row at the top of the 
 
 Still stuck? Message @fallacytcg and we'll help.`;
 
+// Shown by the "How badges work" button / /howbadges. Placeholder wording drawn
+// from the loyalty programme — replace with the final copy when ready.
+const HOW_BADGES_TEXT = `🎖 <b>How Badges Work</b>
+
+Every order you pay for adds to your spend, and as it grows you unlock badges — each one earns a one-time discount voucher.
+
+• Your badge reflects what you've spent over the last 6 months.
+• Each badge gives a voucher: a percentage off, up to a set cap, to use once within 60 days.
+• Climb the ladder from Boulder all the way to Champion — every step is a new reward.
+
+Tap <b>My Badges</b> any time to see your current badge and how close you are to the next.`;
+
 async function telegramCall(method, payload) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
@@ -114,23 +126,22 @@ const openStoreKeyboard = {
   inline_keyboard: [[{ text: "🛒 Open the Mini Store", web_app: { url: STORE_URL } }]],
 };
 
-// Persistent reply keyboard shown above the text box — nothing to type or
-// remember. "Shop" is a web_app button that opens the Mini App directly; the
-// other two send their label as text, handled in handleTelegram. Slash commands
-// still work as a fallback, and the menu button (setMyCommands) lists them.
+// Persistent reply keyboard shown above the text box — two loyalty buttons that
+// send their label as text, handled in handleTelegram. The store opens from the
+// built-in menu button beside the message box, so there's no Shop button here.
+// Slash commands still work as a fallback, and setMyCommands lists them.
 const mainKeyboard = {
   keyboard: [
-    [{ text: "🎖 My Badges" }],
-    [{ text: "🛒 Shop", web_app: { url: STORE_URL } }, { text: "❓ FAQ" }],
+    [{ text: "🎖 My Badges" }, { text: "ℹ️ How badges work" }],
   ],
   resize_keyboard: true,
   is_persistent: true,
 };
 
 const BOT_COMMANDS = [
-  { command: "start", description: "Open the Mini Store" },
+  { command: "start", description: "Start" },
   { command: "mytier", description: "My badges & spend" },
-  { command: "faq", description: "Frequently asked questions" },
+  { command: "howbadges", description: "How badges work" },
 ];
 
 // Launch gate. The badge features stay hidden from customers until the whole
@@ -138,14 +149,11 @@ const BOT_COMMANDS = [
 // LOYALTY_BOT_LIVE=1 to reveal them to everyone. Until then, only the Telegram
 // IDs in LOYALTY_TEST_IDS (comma-separated) see badges, so the shop owner can
 // test on the live bot privately without exposing half a programme.
-const shopFaqKeyboard = {
-  keyboard: [[{ text: "🛒 Shop", web_app: { url: STORE_URL } }, { text: "❓ FAQ" }]],
-  resize_keyboard: true,
-  is_persistent: true,
-};
+// When loyalty isn't live for this user, the bot shows NO reply keyboard — the
+// built-in menu button beside the message box already opens the store.
+const noKeyboard = { remove_keyboard: true };
 const BOT_COMMANDS_BASE = [
-  { command: "start", description: "Open the Mini Store" },
-  { command: "faq", description: "Frequently asked questions" },
+  { command: "start", description: "Start" },
 ];
 function loyaltyLive() {
   return ["1", "true", "yes", "on"].includes(String(process.env.LOYALTY_BOT_LIVE || "").toLowerCase());
@@ -206,12 +214,15 @@ async function handleTelegram(req, res) {
   // ID(s) beforehand. The keyboard, menu and replies all follow this.
   const live = loyaltyLive();
   const canSeeBadges = live || loyaltyTestIds().has(String(fromId));
-  const kb = canSeeBadges ? mainKeyboard : shopFaqKeyboard;
+  const kb = canSeeBadges ? mainKeyboard : noKeyboard;
+  const comingSoon = "Our loyalty badges are launching soon — stay tuned! 🎴";
 
-  if (text.includes("faq")) {
+  // "How badges work" is checked before "My Badges" since its text also
+  // contains the word "badges".
+  if (text.includes("how badges") || text.startsWith("/howbadges") || text.startsWith("/faq")) {
     await telegramCall("sendMessage", {
       chat_id: chatId,
-      text: FAQ_TEXT,
+      text: canSeeBadges ? HOW_BADGES_TEXT : comingSoon,
       parse_mode: "HTML",
       disable_web_page_preview: true,
       reply_markup: kb,
@@ -219,9 +230,7 @@ async function handleTelegram(req, res) {
   } else if (text.includes("badge") || text.startsWith("/mytier") || text.startsWith("/mybadges")) {
     await telegramCall("sendMessage", {
       chat_id: chatId,
-      text: canSeeBadges
-        ? await badgeStatusText(fromId)
-        : "Our loyalty badges are launching soon — stay tuned! 🎴",
+      text: canSeeBadges ? await badgeStatusText(fromId) : comingSoon,
       parse_mode: "HTML",
       reply_markup: kb,
     });
@@ -233,8 +242,8 @@ async function handleTelegram(req, res) {
       text:
         "Welcome to <b>Fallacy's Mini Store</b> 🎴\n\n" +
         (canSeeBadges
-          ? "Use the buttons below to shop, check your badges, or read the FAQ."
-          : "Use the buttons below to shop or read the FAQ."),
+          ? "Check your loyalty badges with the buttons below, or open the store from the menu button beside the message box."
+          : "Tap the store button beside the message box to browse our Pokémon singles."),
       parse_mode: "HTML",
       reply_markup: kb,
     });
@@ -242,8 +251,8 @@ async function handleTelegram(req, res) {
     await telegramCall("sendMessage", {
       chat_id: chatId,
       text: canSeeBadges
-        ? "Use the buttons below — Shop, My Badges, or FAQ."
-        : "Use the buttons below — Shop or FAQ.",
+        ? "Tap My Badges or How badges work below, or open the store from the menu button."
+        : "Tap the store button beside the message box to browse.",
       reply_markup: kb,
     });
   }
