@@ -1025,9 +1025,9 @@
   <h1>Welcome Reward</h1>
   <p>
     A one-time perk open to <strong>every</strong> Mini App customer — new and
-    existing: the cheapest card in their cart is free, up to the cap, once the
-    order meets the minimum spend. Each customer can claim it <strong>once</strong>
-    (on their next qualifying order), and a promo code can't be combined with it.
+    existing: a <strong>flat dollar discount</strong> once the order meets the
+    minimum spend. Each customer can claim it <strong>once</strong> (on their next
+    qualifying order), and a promo code can't be combined with it.
   </p>
   <input type="password" id="welcomePassphrase" placeholder="Enter admin passphrase" autocomplete="off">
   <div class="date-row"><button id="welcomeLoadButton">Load settings</button></div>
@@ -1037,7 +1037,7 @@
     </label>
     <div class="date-row" style="gap:14px;flex-wrap:wrap;align-items:flex-end;">
       <label style="font-size:13px;">Min spend ($)<br><input type="number" id="welcomeMinSpend" min="0" step="1" style="width:100px;"></label>
-      <label style="font-size:13px;">Max off ($)<br><input type="number" id="welcomeMaxOff" min="0" step="0.5" style="width:100px;"></label>
+      <label style="font-size:13px;">Discount ($ off)<br><input type="number" id="welcomeAmount" min="0" step="0.5" style="width:100px;"></label>
       <button id="welcomeSaveButton">Save settings</button>
     </div>
     <p id="welcomeStats" style="font-size:12px;color:#666;margin-top:10px;"></p>
@@ -4442,7 +4442,7 @@ function fmtSpendDate(ms) {
 // The painted badge art (images/badges/, served from raw GitHub — same scheme as
 // the card photos). One medal covers every Champion tier (badge n >= 9).
 const BADGE_IMG_BASE = "https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/badges/";
-const BADGE_IMG_V = "?v=3"; // bump with BADGE_ASSET_VERSION when the art is regenerated
+const BADGE_IMG_V = "?v=4"; // bump with BADGE_ASSET_VERSION when the art is regenerated
 const BADGE_SLUGS = { 1: "boulder", 2: "cascade", 3: "thunder", 4: "rainbow", 5: "soul", 6: "marsh", 7: "volcano", 8: "earth" };
 function badgeSlug(n) { return Number(n) >= 9 ? "champion" : (BADGE_SLUGS[Number(n)] || ""); }
 function badgeImg(n, size) {
@@ -4801,7 +4801,7 @@ document.getElementById("vouchersBackdateButton").onclick = async () => {
     const data = await postVouchers("backdateVouchers");
     if (!data) return;
     vouchersResultEl.textContent =
-      `Backdated ${data.customers} customer(s) with a badge — issued ${data.issued} new voucher(s), notified ${data.notified || 0}, skipped ${data.skipped} already issued.`;
+      `Enrolled ${data.customers} customer(s) — issued ${data.issued} new voucher(s). Existing customers weren't re-notified.`;
     vouchersResultEl.className = "success";
     const report = await postVouchers("vouchersReport");
     if (report) { voucherRows = report.rows || []; renderVouchers(); }
@@ -4847,7 +4847,7 @@ function renderWelcome(d) {
   const c = d.config || {};
   document.getElementById("welcomeEnabled").checked = !!c.enabled;
   document.getElementById("welcomeMinSpend").value = (c.minSpend != null ? c.minSpend : 30);
-  document.getElementById("welcomeMaxOff").value = (c.maxOff != null ? c.maxOff : 5);
+  document.getElementById("welcomeAmount").value = (c.amount != null ? c.amount : 3);
   document.getElementById("welcomeStats").textContent =
     `${d.granted || 0} customer(s) have claimed the welcome reward so far.`;
 }
@@ -4863,10 +4863,10 @@ document.getElementById("welcomeSaveButton").onclick = async () => {
   const d = await postWelcome("welcomeSave", {
     enabled: document.getElementById("welcomeEnabled").checked,
     minSpend: Number(document.getElementById("welcomeMinSpend").value),
-    maxOff: Number(document.getElementById("welcomeMaxOff").value),
+    amount: Number(document.getElementById("welcomeAmount").value),
   });
   if (!d) return;
-  welcomeResultEl.textContent = `Saved. Welcome reward is ${d.config.enabled ? "LIVE" : "off"} — cheapest card free up to $${Number(d.config.maxOff).toFixed(2)}, min spend $${Number(d.config.minSpend).toFixed(2)}.`;
+  welcomeResultEl.textContent = `Saved. Welcome reward is ${d.config.enabled ? "LIVE" : "off"} — $${Number(d.config.amount).toFixed(2)} off orders of $${Number(d.config.minSpend).toFixed(2)}+.`;
   welcomeResultEl.className = "success";
 };
 

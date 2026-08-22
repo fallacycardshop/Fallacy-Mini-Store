@@ -8,6 +8,7 @@ import {
   orderAmount,
   aggregateSpend,
   badgeForSpend,
+  nextBadge,
   windowStartMs,
   parseSgtDate,
   parseAdjustEntries,
@@ -122,48 +123,46 @@ async function issueVouchersFor(redis, ckey, handle, now = Date.now(), windowSpe
   const windowSpend = windowSpendOverride !== undefined
     ? windowSpendOverride
     : await customerWindowSpend(redis, ckey, now);
-  const earned = earnedBadges(windowSpend);
-  if (!earned.length) {
-    // Fell below Boulder — nothing to issue, but record the drop so climbing back
-    // into a tier later is detected as an upward crossing and re-surfaces rewards.
-    try { await redis.hset(BADGE_SNAPSHOT_KEY, { [ckey]: "0" }); } catch (e) { console.error("badge snapshot failed:", e); }
-    return [];
-  }
-  const issued = new Set((await redis.smembers(issuedBadgesKey(ckey))) || []);
-  // Belt-and-suspenders against duplicates: a badge the customer ALREADY HOLDS a
-  // voucher for counts as issued too, so even a desynced issued-set can never
-  // mint a second voucher for the same badge. (One voucher per badge, ever.)
-  const heldCodes = (await redis.smembers(customerVouchersKey(ckey))) || [];
-  if (heldCodes.length) {
-    const raws = await redis.hmget(VOUCHERS_KEY, ...heldCodes);
-    const arr = Array.isArray(raws) ? raws : heldCodes.map(c => raws && raws[c]);
-    arr.forEach(raw => {
-      if (!raw) return;
-      let v; try { v = typeof raw === "string" ? JSON.parse(raw) : raw; } catch (e) { return; }
-      if (v && v.badgeN !== undefined && v.badgeN !== null) issued.add(String(v.badgeN));
-    });
-  }
-  const toIssue = earned.filter(b => !issued.has(String(b.n)));
+  const earned = earnedBadges(windowSpend);           // voucher tiers only (Cascade+)
+  const statusBadge = badgeForSpend(windowSpend);     // status tier, incl. the Boulder entry
+  const curTier = statusBadge ? statusBadge.n : 0;
+
+  // Mint any newly-earned VOUCHER badges. The Boulder entry tier grants none, and
+  // earnedBadges already excludes it, so this never mints for Boulder.
   const out = [];
-  for (const b of toIssue) {
-    let code = voucherCode(b.name);
-    for (let t = 0; t < 5 && (await redis.hexists(VOUCHERS_KEY, code)); t++) code = voucherCode(b.name);
-    const rec = {
-      code, customer: ckey, handle: handle || ckey,
-      badgeN: b.n, badgeName: b.name, pct: b.pct, cap: b.cap,
-      issuedAt: now, expiresAt: now + VOUCHER_DAYS * 86400000,
-      status: "active", usedAt: null, usedOrderId: null,
-    };
-    await redis.hset(VOUCHERS_KEY, { [code]: JSON.stringify(rec) });
-    await redis.sadd(customerVouchersKey(ckey), code);
-    await redis.sadd(issuedBadgesKey(ckey), String(b.n));
-    out.push(rec);
+  if (earned.length) {
+    const issued = new Set((await redis.smembers(issuedBadgesKey(ckey))) || []);
+    // Belt-and-suspenders against duplicates: a badge the customer ALREADY HOLDS a
+    // voucher for counts as issued too, so even a desynced set can't mint a dupe.
+    const heldCodes = (await redis.smembers(customerVouchersKey(ckey))) || [];
+    if (heldCodes.length) {
+      const raws = await redis.hmget(VOUCHERS_KEY, ...heldCodes);
+      const arr = Array.isArray(raws) ? raws : heldCodes.map(c => raws && raws[c]);
+      arr.forEach(raw => {
+        if (!raw) return;
+        let v; try { v = typeof raw === "string" ? JSON.parse(raw) : raw; } catch (e) { return; }
+        if (v && v.badgeN !== undefined && v.badgeN !== null) issued.add(String(v.badgeN));
+      });
+    }
+    for (const b of earned.filter(b => !issued.has(String(b.n)))) {
+      let code = voucherCode(b.name);
+      for (let t = 0; t < 5 && (await redis.hexists(VOUCHERS_KEY, code)); t++) code = voucherCode(b.name);
+      const rec = {
+        code, customer: ckey, handle: handle || ckey,
+        badgeN: b.n, badgeName: b.name, pct: b.pct, cap: b.cap,
+        issuedAt: now, expiresAt: now + VOUCHER_DAYS * 86400000,
+        status: "active", usedAt: null, usedOrderId: null,
+      };
+      await redis.hset(VOUCHERS_KEY, { [code]: JSON.stringify(rec) });
+      await redis.sadd(customerVouchersKey(ckey), code);
+      await redis.sadd(issuedBadgesKey(ckey), String(b.n));
+      out.push(rec);
+    }
   }
-  // Decide whether to DM. We track the last badge tier we saw for this customer
-  // so we can tell an UPWARD crossing (earned or re-attained) from a drop or a
-  // same-tier payment. A drop never pings; a same-tier payment never pings.
-  const cur = earned.length ? earned[earned.length - 1] : null;
-  const curTier = cur ? cur.n : 0;
+
+  // Snapshot the current STATUS tier (incl. Boulder) so we can tell an upward
+  // crossing from a drop or a same-tier payment. A drop never pings; a same-tier
+  // payment never pings.
   let prevTier = null;
   try {
     const prevRaw = await redis.hget(BADGE_SNAPSHOT_KEY, ckey);
@@ -172,19 +171,35 @@ async function issueVouchersFor(redis, ckey, handle, now = Date.now(), windowSpe
   } catch (e) { console.error("badge snapshot failed:", e); }
 
   if (out.length) {
-    // Newly-earned badge(s) — congratulate with the new codes.
+    // Newly-earned voucher badge(s) — congratulate with the new codes.
     const top = out[out.length - 1];
     await notifyTelegram(ckey,
       `Congrats! You've unlocked a new reward:\n\n${out.map(voucherLine).join("\n\n")}\n\nTap a code to copy it, then enter it in the cart's promo box at checkout.`,
       badgeBannerUrl(top.badgeN));
-  } else if (cur && prevTier !== null && curTier > prevTier) {
-    // Climbed back into a tier they'd dropped out of — no new voucher, but
-    // re-surface the rewards they already hold, in badge order.
-    const held = await activeVouchersForKey(redis, ckey, now);
-    if (held.length) {
-      await notifyTelegram(ckey,
-        `Welcome back to ${badgeEmoji(cur.n)} <b>${cur.name} Badge</b>! Here's a summary of your rewards:\n\n${held.map(voucherLine).join("\n\n")}\n\nTap a code to copy it, then use it in the cart's promo box at checkout.`,
-        badgeBannerUrl(curTier));
+  } else if (curTier > 0 && statusBadge) {
+    // No new voucher this time. DM only on an UPWARD crossing.
+    const firstSight = prevTier === null;
+    const crossedUp = firstSight ? true : curTier > prevTier;
+    if (crossedUp) {
+      const held = await activeVouchersForKey(redis, ckey, now);
+      if (held.length) {
+        // Re-attained a tier they hold vouchers for — re-surface them. Skip on the
+        // very first sighting so existing customers aren't spammed once at rollout.
+        if (!firstSight) {
+          await notifyTelegram(ckey,
+            `Welcome back to ${badgeEmoji(statusBadge.n)} <b>${statusBadge.name} Badge</b>! Here's a summary of your rewards:\n\n${held.map(voucherLine).join("\n\n")}\n\nTap a code to copy it, then use it in the cart's promo box at checkout.`,
+            badgeBannerUrl(curTier));
+        }
+      } else {
+        // Entry tier (Boulder) — no voucher yet. Welcome them and point to the
+        // first voucher tier.
+        const next = nextBadge(windowSpend);
+        let text = `🎉 You've earned the ${badgeEmoji(statusBadge.n)} <b>${statusBadge.name} Badge</b> — welcome to our loyalty programme!`;
+        if (next && next.badge && Number(next.badge.pct) > 0) {
+          text += `\n\nSpend $${Number(next.needed).toFixed(2)} more to reach ${badgeEmoji(next.badge.n || 9)} <b>${next.badge.name}</b> and unlock your first voucher: ${Number(next.badge.pct)}% off (up to $${Number(next.badge.cap)}).`;
+        }
+        await notifyTelegram(ckey, text, badgeBannerUrl(curTier));
+      }
     }
   }
   return out;
@@ -601,14 +616,14 @@ export default async function handler(req, res) {
     }
 
     // -------------------------------------------------------- backdateVouchers
-    // One-time launch step: give every existing customer a voucher for EVERY
-    // badge tier they've already reached (Boulder up to their current tier), each
-    // once. Reuses issueVouchersFor with the authoritative window spend, so it
-    // mints all un-issued earned badges and DMs the customer (Mini App / numeric
-    // ids), gated exactly like normal issuance — pre-launch only test ids are
-    // messaged, so you can preview it. Idempotent: badges already issued are
-    // skipped (the once-ever lock + held-voucher guard), so re-running is safe
-    // and won't duplicate or re-notify. Admin-only, run once at launch.
+    // One-time launch step: enrol every existing customer. Anyone with a purchase
+    // is at least the Boulder entry tier; those past $80 get a voucher for EVERY
+    // tier they've reached (Cascade up), each once. Reuses issueVouchersFor with
+    // the authoritative window spend, so it mints all un-issued earned badges and
+    // DMs the customer (Mini App / numeric ids) — an earn DM if they got vouchers,
+    // or a Boulder welcome otherwise. Gated exactly like normal issuance (pre-
+    // launch only test ids are messaged). Idempotent: already-issued badges are
+    // skipped, and existing customers aren't re-notified. Run once at launch.
     if (action === "backdateVouchers") {
       const orders = await readAllOrders();
       const paidMap = (await redis.hgetall(ORDER_PAID_KEY)) || {};
@@ -629,13 +644,13 @@ export default async function handler(req, res) {
       }
 
       const keys = new Set([...byCustomer.keys(), ...adjustByCanon.keys()]);
-      let customers = 0, issued = 0, skipped = 0, notified = 0;
+      let customers = 0, issued = 0;
       const results = [];
       for (const key of keys) {
         const c = byCustomer.get(key);
         const adj = adjustByCanon.get(key) || { window: 0 };
         const windowSpend = (c ? c.windowSpend : 0) + adj.window;
-        if (!earnedBadges(windowSpend).length) continue; // below Boulder
+        if (!badgeForSpend(windowSpend)) continue; // no purchase — not even Boulder
         customers += 1;
 
         let minted = [];
@@ -643,12 +658,10 @@ export default async function handler(req, res) {
         catch (e) { console.error("backdate issuance failed for", key, e); }
 
         issued += minted.length;
-        if (minted.length === 0) { skipped += 1; continue; } // already had them all
-        if (/^\d+$/.test(key) && (loyaltyLive() || loyaltyTestIds().has(key))) notified += 1;
-        results.push({ key, badges: minted.map(v => v.badgeName), codes: minted.map(v => v.code) });
+        if (minted.length) results.push({ key, badges: minted.map(v => v.badgeName) });
       }
 
-      return res.status(200).json({ ok: true, customers, issued, skipped, notified, results });
+      return res.status(200).json({ ok: true, customers, issued, results });
     }
 
     // ------------------------------------------------------- welcome reward --
@@ -660,7 +673,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, config: cfg, granted: Number(granted) || 0 });
     }
     if (action === "welcomeSave") {
-      const cfg = parseWelcomeConfig(req.body); // reads enabled/minSpend/maxOff, ignores the rest
+      const cfg = parseWelcomeConfig(req.body); // reads enabled/minSpend/amount, ignores the rest
       await redis.set(WELCOME_CONFIG_KEY, JSON.stringify(cfg));
       return res.status(200).json({ ok: true, config: cfg });
     }
