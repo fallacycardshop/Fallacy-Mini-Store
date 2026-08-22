@@ -25,7 +25,6 @@ import {
   badgeEmoji,
   badgeBannerUrl,
   WELCOME_CONFIG_KEY,
-  WELCOME_SEEN_KEY,
   WELCOME_GRANTED_KEY,
   parseWelcomeConfig,
 } from "./_inventory.js";
@@ -92,9 +91,11 @@ async function customerWindowSpend(redis, ckey, now = Date.now()) {
 // issues any not already in their permanent issued-badge set. Returns the new
 // vouchers. Fires from any spend change that can cross a tier — a payment
 // (markPaid), a manual correction (adjustSpend), or a merge.
-async function issueVouchersFor(redis, ckey, handle, now = Date.now()) {
+async function issueVouchersFor(redis, ckey, handle, now = Date.now(), windowSpendOverride) {
   if (!ckey || !(loyaltyLive() || loyaltyTestIds().has(ckey))) return [];
-  const windowSpend = await customerWindowSpend(redis, ckey, now);
+  const windowSpend = windowSpendOverride !== undefined
+    ? windowSpendOverride
+    : await customerWindowSpend(redis, ckey, now);
   const earned = earnedBadges(windowSpend);
   if (!earned.length) return [];
   const issued = new Set((await redis.smembers(issuedBadgesKey(ckey))) || []);
@@ -550,13 +551,14 @@ export default async function handler(req, res) {
     }
 
     // -------------------------------------------------------- backdateVouchers
-    // One-time launch step: give every existing customer ONE voucher for the
-    // badge they currently hold, and mark all the badges they've earned as
-    // already issued so the lower ones never retro-pay a stack. Each customer is
-    // DM'd their new voucher (Mini App / numeric ids), gated exactly like normal
-    // issuance — pre-launch only test ids are messaged, so you can preview it.
-    // Idempotent: a customer whose current badge is already issued is skipped, so
-    // re-running is safe and won't re-notify. Admin-only, run once at launch.
+    // One-time launch step: give every existing customer a voucher for EVERY
+    // badge tier they've already reached (Boulder up to their current tier), each
+    // once. Reuses issueVouchersFor with the authoritative window spend, so it
+    // mints all un-issued earned badges and DMs the customer (Mini App / numeric
+    // ids), gated exactly like normal issuance — pre-launch only test ids are
+    // messaged, so you can preview it. Idempotent: badges already issued are
+    // skipped (the once-ever lock + held-voucher guard), so re-running is safe
+    // and won't duplicate or re-notify. Admin-only, run once at launch.
     if (action === "backdateVouchers") {
       const orders = await readAllOrders();
       const paidMap = (await redis.hgetall(ORDER_PAID_KEY)) || {};
@@ -576,7 +578,6 @@ export default async function handler(req, res) {
         adjustByCanon.set(canon, cur);
       }
 
-      const canDM = loyaltyLive() ? (() => true) : (k => loyaltyTestIds().has(k));
       const keys = new Set([...byCustomer.keys(), ...adjustByCanon.keys()]);
       let customers = 0, issued = 0, skipped = 0, notified = 0;
       const results = [];
@@ -584,69 +585,34 @@ export default async function handler(req, res) {
         const c = byCustomer.get(key);
         const adj = adjustByCanon.get(key) || { window: 0 };
         const windowSpend = (c ? c.windowSpend : 0) + adj.window;
-        const earned = earnedBadges(windowSpend);
-        if (!earned.length) continue; // below Boulder — no badge, no voucher
+        if (!earnedBadges(windowSpend).length) continue; // below Boulder
         customers += 1;
 
-        const already = new Set((await redis.smembers(issuedBadgesKey(key))) || []);
-        // Mark EVERY earned badge as issued up front, so the lower ones can never
-        // pay out later — a backdated customer gets exactly one voucher, ever,
-        // for this launch.
-        await redis.sadd(issuedBadgesKey(key), ...earned.map(b => String(b.n)));
+        let minted = [];
+        try { minted = await issueVouchersFor(redis, key, (c && c.handle) || key, now, windowSpend); }
+        catch (e) { console.error("backdate issuance failed for", key, e); }
 
-        const current = earned[earned.length - 1]; // highest badge held
-        if (already.has(String(current.n))) { skipped += 1; continue; }
-
-        let code = voucherCode(current.name);
-        for (let t = 0; t < 5 && (await redis.hexists(VOUCHERS_KEY, code)); t++) code = voucherCode(current.name);
-        const rec = {
-          code, customer: key, handle: (c && c.handle) || key,
-          badgeN: current.n, badgeName: current.name, pct: current.pct, cap: current.cap,
-          issuedAt: now, expiresAt: now + VOUCHER_DAYS * 86400000,
-          status: "active", usedAt: null, usedOrderId: null, backdated: true,
-        };
-        await redis.hset(VOUCHERS_KEY, { [code]: JSON.stringify(rec) });
-        await redis.sadd(customerVouchersKey(key), code);
-        issued += 1;
-        results.push({ key, badge: current.name, code });
-
-        // Tell the customer their reward is waiting (numeric Telegram id + gate).
-        if (/^\d+$/.test(key) && canDM(key)) {
-          await notifyTelegram(key,
-            `🎉 Your loyalty reward is ready!\n\nAs a thank-you for reaching ${badgeEmoji(current.n)} <b>${current.name} Badge</b>, here's your voucher:\nYour code: <code>${code}</code> (expires ${fmtVoucherDate(rec.expiresAt)})\n${current.pct}% off${current.cap ? ` (up to $${current.cap})` : ""}\n\nTap the code to copy it, then use it in the cart's promo box at checkout.`,
-            badgeBannerUrl(current.n));
-          notified += 1;
-        }
+        issued += minted.length;
+        if (minted.length === 0) { skipped += 1; continue; } // already had them all
+        if (/^\d+$/.test(key) && (loyaltyLive() || loyaltyTestIds().has(key))) notified += 1;
+        results.push({ key, badges: minted.map(v => v.badgeName), codes: minted.map(v => v.code) });
       }
 
       return res.status(200).json({ ok: true, customers, issued, skipped, notified, results });
     }
 
     // ------------------------------------------------------- welcome reward --
-    // The first-order free-card perk. Config + the "seen" set (strictly first
-    // order) + the granted count. welcomeBackfill seeds "seen" with everyone who
-    // has already ordered, so switching the perk on only rewards NEW buyers.
+    // The one-time free-card perk, open to EVERY customer. Config + the count of
+    // customers who have already claimed it (received the free card).
     if (action === "welcomeGet") {
       const cfg = parseWelcomeConfig(await redis.get(WELCOME_CONFIG_KEY));
-      const seen = await redis.scard(WELCOME_SEEN_KEY);
       const granted = await redis.scard(WELCOME_GRANTED_KEY);
-      return res.status(200).json({ ok: true, config: cfg, seen: Number(seen) || 0, granted: Number(granted) || 0 });
+      return res.status(200).json({ ok: true, config: cfg, granted: Number(granted) || 0 });
     }
     if (action === "welcomeSave") {
       const cfg = parseWelcomeConfig(req.body); // reads enabled/minSpend/maxOff, ignores the rest
       await redis.set(WELCOME_CONFIG_KEY, JSON.stringify(cfg));
       return res.status(200).json({ ok: true, config: cfg });
-    }
-    if (action === "welcomeBackfill") {
-      const orders = await readAllOrders();
-      const ids = new Set();
-      for (const e of orders) {
-        const r = e.record || e;
-        const id = String((r && r.Telegram_User_ID) || "").trim();
-        if (/^\d+$/.test(id)) ids.add(id);
-      }
-      if (ids.size) await redis.sadd(WELCOME_SEEN_KEY, ...ids);
-      return res.status(200).json({ ok: true, excluded: ids.size });
     }
 
     // --------------------------------------------------------- dedupeVouchers
@@ -658,19 +624,19 @@ export default async function handler(req, res) {
     // so the once-ever lock covers it. Idempotent.
     if (action === "dedupeVouchers") {
       const raw = (await redis.hgetall(VOUCHERS_KEY)) || {};
-      const groups = new Map(); // `${customer} ${badgeN}` -> [{code, v}]
+      const groups = new Map(); // `${customer}|${badgeN}` -> [{code, v}]
       for (const [code, val] of Object.entries(raw)) {
         let v;
         try { v = typeof val === "string" ? JSON.parse(val) : val; } catch (e) { continue; }
         if (!v || !v.customer || v.badgeN === undefined || v.badgeN === null) continue;
-        const gk = v.customer + " " + v.badgeN;
+        const gk = v.customer + "|" + v.badgeN;
         if (!groups.has(gk)) groups.set(gk, []);
         groups.get(gk).push({ code, v });
       }
       let removed = 0;
       const keptByCustomer = new Map(); // customer -> Set(badgeN)
       for (const [gk, list] of groups) {
-        const customer = gk.slice(0, gk.indexOf(" "));
+        const customer = gk.slice(0, gk.indexOf("|"));
         list.sort((a, b) => {
           const au = (a.v.status === "used" || a.v.usedAt) ? 1 : 0;
           const bu = (b.v.status === "used" || b.v.usedAt) ? 1 : 0;

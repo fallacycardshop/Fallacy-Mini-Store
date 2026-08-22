@@ -1002,11 +1002,11 @@
   <div style="margin-top:14px;padding-top:12px;border-top:1px solid #eee;">
     <p style="font-size:12px;color:#666;margin:0 0 6px;">
       <strong>Launch backdating</strong> — run this <em>once</em> when you go live.
-      Every existing customer gets <strong>one</strong> voucher for the badge they
-      currently hold (lower badges are marked issued so they never pay out a stack
-      later), and each is <strong>DM'd</strong> that their reward is ready. Pre-launch,
-      only your test IDs are messaged, so you can preview it. Safe to re-run —
-      already-issued customers are skipped and not re-notified.
+      Every existing customer gets a voucher for <strong>every badge tier they've
+      already reached</strong> (Boulder up to their current tier), each once, and
+      is <strong>DM'd</strong> that their rewards are ready. Pre-launch, only your
+      test IDs are messaged, so you can preview it. Safe to re-run — badges already
+      issued are skipped, so it never duplicates or re-notifies.
     </p>
     <button id="vouchersBackdateButton">Backdate launch vouchers</button>
   </div>
@@ -1024,12 +1024,10 @@
 <div class="card">
   <h1>Welcome Reward</h1>
   <p>
-    A one-time first-order perk for new Mini App customers: the cheapest card in
-    their cart is free, up to the cap, once the order meets the minimum spend.
-    Strictly their <strong>first order</strong> — placing any order uses it up,
-    and a promo code can't be combined with it. Before switching it on, run
-    <strong>Exclude existing customers</strong> once so only brand-new buyers
-    qualify.
+    A one-time perk open to <strong>every</strong> Mini App customer — new and
+    existing: the cheapest card in their cart is free, up to the cap, once the
+    order meets the minimum spend. Each customer can claim it <strong>once</strong>
+    (on their next qualifying order), and a promo code can't be combined with it.
   </p>
   <input type="password" id="welcomePassphrase" placeholder="Enter admin passphrase" autocomplete="off">
   <div class="date-row"><button id="welcomeLoadButton">Load settings</button></div>
@@ -1043,14 +1041,6 @@
       <button id="welcomeSaveButton">Save settings</button>
     </div>
     <p id="welcomeStats" style="font-size:12px;color:#666;margin-top:10px;"></p>
-    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #eee;">
-      <p style="font-size:12px;color:#666;margin:0 0 6px;">
-        <strong>Exclude existing customers</strong> — run once before going live.
-        Marks everyone who has already placed an order as "seen", so the reward
-        only ever reaches brand-new buyers. Safe to re-run.
-      </p>
-      <button id="welcomeBackfillButton">Exclude existing customers</button>
-    </div>
   </div>
   <p id="welcomeResultText"></p>
 </div>
@@ -4859,7 +4849,7 @@ function renderWelcome(d) {
   document.getElementById("welcomeMinSpend").value = (c.minSpend != null ? c.minSpend : 30);
   document.getElementById("welcomeMaxOff").value = (c.maxOff != null ? c.maxOff : 5);
   document.getElementById("welcomeStats").textContent =
-    `${d.seen || 0} customer(s) excluded (have ordered before) · ${d.granted || 0} free card(s) granted.`;
+    `${d.granted || 0} customer(s) have claimed the welcome reward so far.`;
 }
 document.getElementById("welcomeLoadButton").onclick = async () => {
   welcomeResultEl.textContent = "Loading..."; welcomeResultEl.className = "";
@@ -4878,14 +4868,6 @@ document.getElementById("welcomeSaveButton").onclick = async () => {
   if (!d) return;
   welcomeResultEl.textContent = `Saved. Welcome reward is ${d.config.enabled ? "LIVE" : "off"} — cheapest card free up to $${Number(d.config.maxOff).toFixed(2)}, min spend $${Number(d.config.minSpend).toFixed(2)}.`;
   welcomeResultEl.className = "success";
-};
-document.getElementById("welcomeBackfillButton").onclick = async () => {
-  if (!confirm("Mark everyone who has already ordered as excluded from the welcome reward?\n\nRun once before going live so only brand-new customers qualify. Safe to re-run.")) return;
-  welcomeResultEl.textContent = "Excluding existing customers…"; welcomeResultEl.className = "";
-  const d = await postWelcome("welcomeBackfill"); if (!d) return;
-  welcomeResultEl.textContent = `Done — ${d.excluded} existing customer id(s) excluded from the welcome reward.`;
-  welcomeResultEl.className = "success";
-  const g = await postWelcome("welcomeGet"); if (g) renderWelcome(g);
 };
 
 // --------------------------------------------------------------------------
