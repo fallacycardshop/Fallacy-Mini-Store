@@ -122,13 +122,13 @@ const HOW_BADGES_TEXT = `🎴 <b>How do Badge Rewards work?</b>
 
 Every purchase from our Mini Store earns you Badges — and each Badge comes with its own reward voucher! The more you spend, the more you collect 💛
 
-🎁 <b>Welcome Reward — new &amp; existing customers</b>
+🎁 <b>Welcome Reward — for ALL new &amp; existing customers</b>
 • spend $30+ and get <b>$3 off</b>, applied automatically in your cart
 • one-time per customer, on your next order
-• <b>only through our Mini App</b> — tap the store button beside the chat box to claim it
+• <b>only applicable for purchases made through our Mini App</b> — tap the store button beside the chat box to claim it
 
 🏅 <b>Earning Badges</b>
-• your very first purchase enrols you at 🪨 <b>Boulder</b> — you're in! (a Welcome Reward order counts as spend too)
+• your very first purchase enrols you in the 🪨 <b>Boulder</b> tier — you're in! (a Welcome Reward order counts as spend too)
 • from there, your <b>lifetime</b> spend unlocks higher Badges, each with a reward voucher
 • Badges are yours to keep — your tier never drops
 • vouchers are valid at our Mini Store for 60 days, single-use ✨
