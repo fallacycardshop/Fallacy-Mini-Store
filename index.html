@@ -354,7 +354,7 @@ const REF_MULT={"Lightly Played":1.3,"Moderately Played":1.6,"Heavily Played":2}
 const CART_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>';
 const MAIL_FEE=3;
 let cart={};let only=null;let savedScroll=0;let appliedDiscount=null;let promoMsg="";let promoText="";
-function discountAmt(sub){if(!appliedDiscount)return 0;return appliedDiscount.type==="percent"?sub*(Number(appliedDiscount.value)||0)/100:Math.min(Number(appliedDiscount.value)||0,sub)}
+function discountAmt(sub){if(!appliedDiscount)return 0;if(appliedDiscount.type==="percent"){const d=sub*(Number(appliedDiscount.value)||0)/100;const cap=Number(appliedDiscount.cap)||0;return cap>0?Math.min(d,cap):d}return Math.min(Number(appliedDiscount.value)||0,sub)}
 
 const conds=p=>[...p.conds].sort((a,b)=>RANK[a.cond]-RANK[b.cond]);
 const inStock=p=>conds(p).filter(c=>c.stock>0);
@@ -733,9 +733,10 @@ function openCart(ret){
     try{
       const res=await fetch("/api/validate-discount",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:v,subtotal:sub})});
       const d=await res.json();
-      if(d.valid){appliedDiscount={code:v.toUpperCase(),type:d.type,value:d.value};promoMsg=appliedDiscount.type==="percent"?`${appliedDiscount.value}% off applied.`:`$${appliedDiscount.value} off applied.`}
+      if(d.valid){appliedDiscount={code:v.toUpperCase(),type:d.type,value:d.value,cap:Number(d.cap)||0};const cap=appliedDiscount.cap;promoMsg=appliedDiscount.type==="percent"?(cap>0?`${appliedDiscount.value}% off applied (up to $${cap}).`:`${appliedDiscount.value}% off applied.`):`$${appliedDiscount.value} off applied.`}
       else if(d.reason==="minimum_not_met"){appliedDiscount=null;promoMsg=`Minimum spend $${d.minimumRequired} to use a code.`}
       else if(d.reason==="expired"){appliedDiscount=null;promoMsg="This promotion has ended."}
+      else if(d.reason==="used"){appliedDiscount=null;promoMsg="This reward code has already been used."}
       else{appliedDiscount=null;promoMsg="This code isn’t valid."}
     }catch(e){appliedDiscount=null;promoMsg="Couldn’t check that code — try again."}
     openCart();

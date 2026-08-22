@@ -1,5 +1,5 @@
 import { Redis } from "@upstash/redis";
-import { loadInventoryGroups, ORDER_PAID_KEY } from "./_inventory.js";
+import { loadInventoryGroups, ORDER_PAID_KEY, VOUCHERS_KEY, voucherStatus } from "./_inventory.js";
 
 const redis = Redis.fromEnv();
 
@@ -87,6 +87,40 @@ export default async function handler(req, res) {
     } catch (orderErr) {
       // A backup failure must never void a paid order.
       console.error("order backup failed:", orderErr);
+    }
+
+    // BURN A LOYALTY VOUCHER, if this order used one. The discount was validated
+    // (status + minimum) at apply time in api/validate-discount.js; here — in the
+    // same request that has claimed the reservation and can't be replayed — we
+    // mark it used so it can't be spent again. Env-var promo codes aren't in this
+    // hash, so a normal promo code simply isn't found and nothing happens.
+    //
+    // Wrapped and best-effort: a burn failure must NEVER void a placed order (the
+    // stock is already decremented and the order backed up). A voucher that was
+    // somehow already used is left as-is and logged, so the shop owner sees it on
+    // the order before releasing it against the manual PayNow payment.
+    try {
+      const code = String((record && record.Discount_Code) || "").trim().toUpperCase();
+      if (code && code !== "NONE") {
+        const raw = await redis.hget(VOUCHERS_KEY, code);
+        if (raw) {
+          let v = null;
+          try { v = typeof raw === "string" ? JSON.parse(raw) : raw; } catch (e) { v = null; }
+          if (v) {
+            const orderId = String((record && record.Order_ID) || "");
+            if (voucherStatus(v) === "active") {
+              v.status = "used";
+              v.usedAt = Date.now();
+              v.usedOrderId = orderId;
+              await redis.hset(VOUCHERS_KEY, { [code]: JSON.stringify(v) });
+            } else {
+              console.error(`voucher ${code} used on order ${orderId} but was already ${voucherStatus(v)}`);
+            }
+          }
+        }
+      }
+    } catch (voucherErr) {
+      console.error("voucher burn failed:", voucherErr);
     }
 
     // Log each sold item to a recent-activity feed for the "recently sold"

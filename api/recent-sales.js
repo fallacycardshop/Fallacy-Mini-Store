@@ -10,6 +10,9 @@ import {
   nextBadge,
   CUSTOMER_ALIAS_KEY,
   resolveCustomerKey,
+  customerVouchersKey,
+  voucherStatus,
+  VOUCHERS_KEY,
 } from "./_inventory.js";
 
 const redis = Redis.fromEnv();
@@ -166,6 +169,34 @@ function loyaltyTestIds() {
 
 function money(n) { return "$" + (Number(n) || 0).toFixed(2); }
 
+// Short SGT date like "12 Oct" for a voucher's expiry line.
+function fmtVoucherDate(ms) {
+  const d = new Date((Number(ms) || 0) + 8 * 3600000);
+  const mon = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getUTCMonth()];
+  return `${d.getUTCDate()} ${mon}`;
+}
+
+// A customer's still-active vouchers, soonest-expiring first. Reads the small
+// per-customer code set, then their few records in one HMGET — bounded by badge
+// count, never by the catalogue or the whole voucher hash.
+async function activeVouchersFor(key) {
+  const codes = (key ? await redis.smembers(customerVouchersKey(key)) : []) || [];
+  if (!codes.length) return [];
+  const now = Date.now();
+  const raws = await redis.hmget(VOUCHERS_KEY, ...codes);
+  const pick = (i, c) => (Array.isArray(raws) ? raws[i] : (raws ? raws[c] : null));
+  const out = [];
+  codes.forEach((c, i) => {
+    const raw = pick(i, c);
+    if (!raw) return;
+    let v;
+    try { v = typeof raw === "string" ? JSON.parse(raw) : raw; } catch (e) { return; }
+    if (voucherStatus(v, now) === "active") out.push(v);
+  });
+  out.sort((a, b) => (Number(a.expiresAt) || 0) - (Number(b.expiresAt) || 0));
+  return out;
+}
+
 // Read-only loyalty status for a Telegram numeric user id — the permanent
 // identity carried on every Telegram message. One HGETALL of the customer's
 // short spend log plus one HGET of their adjustments: O(1) Redis, no scan of the
@@ -194,7 +225,18 @@ async function badgeStatusText(userId) {
     const tier = next.badge.n ? ` (Badge Tier ${next.badge.n})` : "";
     msg += `\n${money(next.needed)} more to reach <b>${next.badge.name}</b>${tier}.`;
   }
-  msg += "\n\n<i>Vouchers will appear here once rewards launch.</i>";
+
+  const vouchers = await activeVouchersFor(key);
+  if (vouchers.length) {
+    msg += "\n\n🎟 <b>Your vouchers</b>\n";
+    for (const v of vouchers) {
+      const cap = Number(v.cap) || 0;
+      msg += `<code>${v.code}</code> — ${Number(v.pct) || 0}% off${cap ? ` (up to ${money(cap)})` : ""}, expires ${fmtVoucherDate(v.expiresAt)}\n`;
+    }
+    msg += "\nEnter a code in the cart's promo box at checkout.";
+  } else {
+    msg += "\n\n<i>Earn a badge to unlock a reward voucher.</i>";
+  }
   return msg;
 }
 
