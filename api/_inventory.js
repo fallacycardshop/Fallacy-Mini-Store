@@ -846,6 +846,12 @@ export function badgeImageUrl(n) {
   const s = badgeSlug(n);
   return s ? BADGE_IMAGE_BASE + s + ".png" : "";
 }
+// A wider composed banner (art + name + phrase) used as the bot's My Badges
+// photo. The bare badgeImageUrl icon is kept for the small admin chips.
+export function badgeBannerUrl(n) {
+  const s = badgeSlug(n);
+  return s ? BADGE_IMAGE_BASE + "banner_" + s + ".png" : "";
+}
 
 // The badge a spend qualifies for: null below Boulder, one of BADGES, or a
 // Champion tier ($1,650, $1,900, …). Champion tier k is badge number 8+k.

@@ -17,7 +17,7 @@ import {
   SPEND_LOG_PREFIX,
   BADGE_SNAPSHOT_KEY,
   badgeEmoji,
-  badgeImageUrl,
+  badgeBannerUrl,
 } from "./_inventory.js";
 
 // Emoji for a badge object from either helper: badgeForSpend gives a numbered
@@ -312,7 +312,7 @@ async function handleTelegram(req, res) {
       await telegramCall("sendMessage", { chat_id: chatId, text: comingSoon, reply_markup: kb });
     } else {
       const { text: statusText, badgeN } = await badgeStatusText(fromId);
-      const img = badgeN ? badgeImageUrl(badgeN) : "";
+      const img = badgeN ? badgeBannerUrl(badgeN) : "";
       // Show the current badge as a picture above the status. Telegram photo
       // captions cap at 1024 chars, so if the voucher list makes it longer, send
       // the badge with a short caption and the details as a follow-up message.
