@@ -15,6 +15,9 @@ import {
   VOUCHERS_KEY,
   badgeEmoji,
   badgeStatusBannerUrl,
+  WELCOME_CONFIG_KEY,
+  WELCOME_GRANTED_KEY,
+  parseWelcomeConfig,
 } from "./_inventory.js";
 
 // Emoji for a badge object from either helper: badgeForSpend gives a numbered
@@ -262,13 +265,22 @@ async function badgeStatusText(userId) {
   }
 
   let msg = "🎖 <b>Your Badges</b>\n\n";
-  msg += badge
-    ? `Current badge: ${emojiForBadge(badge)} <b>${badge.name}</b> (Badge Tier ${badge.n})\n`
-    : "You haven't earned a badge yet.\n";
-  msg += `Total spend: <b>${money(windowSpend)}</b>\n`;
-  if (next && next.badge) {
-    const nc = Number(next.badge.cap) || 0;
-    msg += `\n${money(next.needed)} to the next badge, ${emojiForBadge(next.badge)} <b>${next.badge.name}</b> — ${Number(next.badge.pct) || 0}% off${nc ? `, up to $${nc}` : ""}.`;
+  if (badge) {
+    msg += `Current badge: ${emojiForBadge(badge)} <b>${badge.name}</b> (Badge Tier ${badge.n})\n`;
+    msg += `Total spend: <b>${money(windowSpend)}</b>\n`;
+    if (next && next.badge) {
+      const nc = Number(next.badge.cap) || 0;
+      msg += `\n${money(next.needed)} to the next badge, ${emojiForBadge(next.badge)} <b>${next.badge.name}</b> — ${Number(next.badge.pct) || 0}% off${nc ? `, up to $${nc}` : ""}.`;
+    }
+  } else {
+    // Not enrolled yet ($0 spend) — nudge the first purchase and the welcome reward.
+    msg += "You're not a member yet — your very first purchase enrols you at 🪨 <b>Boulder</b> and starts you earning rewards!\n";
+    try {
+      const wc = parseWelcomeConfig(await redis.get(WELCOME_CONFIG_KEY));
+      if (wc.enabled && key && !(await redis.sismember(WELCOME_GRANTED_KEY, key))) {
+        msg += `\n🎁 <b>Welcome Reward:</b> spend $${wc.minSpend}+ on your first order and <b>$${wc.amount} comes off automatically</b> at checkout.`;
+      }
+    } catch (e) { /* welcome nudge is optional */ }
   }
 
   const vouchers = await activeVouchersFor(key);
