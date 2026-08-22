@@ -114,14 +114,14 @@ Still stuck? Message @fallacytcg and we'll help.`;
 // Shown by the "How badges work" button / /howbadges.
 const HOW_BADGES_TEXT = `🎴 <b>How do Badges work?</b>
 
-Your very first purchase enrols you at 🪨 <b>Boulder</b> — and from there your spend earns Badges, most with a reward voucher! 🎖
+Your very first purchase enrols you with a 🪨 <b>Boulder</b> Badge — and from there your spend continues to earn you more Badges. Each Badge comes with a reward voucher! 🎖
 
-• your <b>lifetime</b> spend with us counts toward every Badge milestone
-• hitting a milestone means unlocking a new Badge voucher valid for use at our Mini Store for 60 days ✨
-• Badges are yours to keep — your tier never drops, so every dollar moves you up!
+• your cumulative spend helps you to unlock Badge vouchers
+• Badge vouchers are valid for use at our Mini Store for 60 days ✨
+• Badges earned are for a lifetime! Rewards are unlimited once you hit Champion Tier 👑
 
 <b>Badge Tiers</b>
-🪨 Boulder — any purchase → you're in! (no voucher)
+🪨 Boulder — any purchase → you're in!
 💧 Cascade — $80 → 5% off (up to $8)
 ⚡️ Thunder — $200 → 8% off (up to $16)
 🌈 Rainbow — $400 → 10% off (up to $20)
@@ -132,9 +132,8 @@ Your very first purchase enrols you at 🪨 <b>Boulder</b> — and from there yo
 👑 Champion — every +$250 past Earth → 12% off (up to $30)
 
 <b>Additional FAQ</b>
-• What if you jump several Badges in one go? Don't fret! You still get a voucher for each Badge unlocked 🎁
-• Each Badge unlocks its voucher only once — your tiers are lifetime and never drop
-• What if I have already spent up to a higher tier? You will immediately receive a valid voucher reward for that Tier, ready to be used!
+• What if I spend &gt;$200 and jump several Badge Tiers in one purchase? Don't fret! You still get a voucher for each Badge unlocked 🎁
+• What if I have been purchasing from the Mini Store and have already spent up to a higher tier? You will immediately receive multiple vouchers for every eligible Tier you have earned! Ready to be used on your next purchase
 • How do you use the vouchers? Just pop your code in your Mini Store cart promo box at checkout (min $10 spend required!)
 
 Tap 🎖 <b>My Badges</b> button below anytime to see your Badge status, vouchers, and how close you are to the next one! 💛`;
