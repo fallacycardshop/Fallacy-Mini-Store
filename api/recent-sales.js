@@ -271,7 +271,7 @@ async function badgeStatusText(userId) {
       const cap = Number(v.cap) || 0;
       msg += `<code>${v.code}</code> — ${Number(v.pct) || 0}% off${cap ? ` (up to ${money(cap)})` : ""}, expires ${fmtVoucherDate(v.expiresAt)}\n`;
     }
-    msg += "\nEnter a code in the cart's promo box at checkout.";
+    msg += "\nTap a code to copy it, then enter it in the cart's promo box at checkout.";
   } else {
     msg += "\n\n<i>Earn a badge to unlock a reward voucher.</i>";
   }

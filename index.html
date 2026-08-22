@@ -354,7 +354,18 @@ const REF_MULT={"Lightly Played":1.3,"Moderately Played":1.6,"Heavily Played":2}
 const CART_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>';
 const MAIL_FEE=3;
 let cart={};let only=null;let savedScroll=0;let appliedDiscount=null;let promoMsg="";let promoText="";
+// welcomeInfo: undefined = not checked yet, null = not eligible/disabled,
+// {eligible,minSpend,maxOff} = eligible. Only meaningful in the Mini App.
+let welcomeInfo=undefined;
 function discountAmt(sub){if(!appliedDiscount)return 0;if(appliedDiscount.type==="percent"){const d=sub*(Number(appliedDiscount.value)||0)/100;const cap=Number(appliedDiscount.cap)||0;return cap>0?Math.min(d,cap):d}return Math.min(Number(appliedDiscount.value)||0,sub)}
+// Cheapest single card (unit price) currently in the cart — what the welcome
+// reward makes free.
+function cheapestUnit(){let m=Infinity;Object.keys(cart).forEach(k=>{const[id,cond]=k.split("::");const p=byId(id);if(!p)return;const c=p.conds.find(x=>x.cond===cond);if(c&&c.price<m)m=c.price});return m===Infinity?0:m}
+function welcomeAmt(sub){if(!welcomeInfo||!welcomeInfo.eligible)return 0;if(sub<(Number(welcomeInfo.minSpend)||0))return 0;return Math.min(cheapestUnit(),Number(welcomeInfo.maxOff)||0)}
+// The effective order discount: the welcome reward when it applies (promo codes
+// can't be combined with it), otherwise the promo-code discount.
+function orderDiscount(sub){const w=welcomeAmt(sub);if(w>0)return{welcome:w,promo:0,total:w};const p=discountAmt(sub);return{welcome:0,promo:p,total:p}}
+async function loadWelcome(){if(welcomeInfo!==undefined)return;if(!(telegramUser&&telegramUser.id)){welcomeInfo=null;return}try{const r=await fetch("/api/validate-discount",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"welcome",telegramUserId:String(telegramUser.id)})});const d=await r.json();welcomeInfo=(d&&d.eligible)?{eligible:true,minSpend:Number(d.minSpend)||0,maxOff:Number(d.maxOff)||0}:null}catch(e){welcomeInfo=null}}
 
 const conds=p=>[...p.conds].sort((a,b)=>RANK[a.cond]-RANK[b.cond]);
 const inStock=p=>conds(p).filter(c=>c.stock>0);
@@ -714,20 +725,27 @@ function openCart(ret){
         <p class="ci-meta">${rarLabel(p)?`<span class="ci-rar">${rarLabel(p)}</span> &middot; `:""}${setName(p)}</p></div>
         <div class="ci-row"><div class="qadj"><button data-cdec="${id}" data-c="${cond}">&minus;</button><span class="qn tag">${q}</span><button data-cinc="${id}" data-c="${cond}" ${q>=c.stock?"disabled":""}>+</button></div><span class="ci-line tag">$${line.toFixed(2)}</span><button class="ci-x" data-crm="${id}" data-c="${cond}" aria-label="Remove">&times;</button></div>
       </div></div>`}).join("");
-  const sub=subtotal();const disc=discountAmt(sub);
+  if(welcomeInfo===undefined&&telegramUser&&telegramUser.id){loadWelcome().then(()=>{if(document.getElementById("toDetails"))openCart(ret);});}
+  const sub=subtotal();const od=orderDiscount(sub);const wActive=od.welcome>0;
+  const wBelow=welcomeInfo&&welcomeInfo.eligible&&!wActive&&sub<(Number(welcomeInfo.minSpend)||0);
   $("#panelBody").innerHTML=`${noticeHTML}<div class="cart-list">${items}</div>
     <div class="cart-sticky">
-      <div class="promo"><input id="promoInput" placeholder="Promo code" value="${appliedDiscount?appliedDiscount.code:''}"><button id="promoApply">Apply</button></div>
-      ${promoMsg?`<div class="promo-msg ${appliedDiscount?'ok':'no'}">${promoMsg}</div>`:""}
+      ${wActive
+        ? `<div class="promo-msg ok" style="text-align:center">&#127873; Welcome reward applied &mdash; a promo code can&rsquo;t be combined with it.</div>`
+        : `<div class="promo"><input id="promoInput" placeholder="Promo code" value="${appliedDiscount?appliedDiscount.code:''}"><button id="promoApply">Apply</button></div>
+      ${promoMsg?`<div class="promo-msg ${appliedDiscount?'ok':'no'}">${promoMsg}</div>`:""}`}
+      ${wBelow?`<div class="promo-msg ok" style="text-align:center">&#127873; Spend $${(Number(welcomeInfo.minSpend)-sub).toFixed(2)} more to unlock your welcome reward &mdash; a free card!</div>`:""}
       <div class="sumrow"><span>Subtotal</span><span class="tag">$${sub.toFixed(2)}</span></div>
-      ${appliedDiscount?`<div class="sumrow discount"><span>Discount (${appliedDiscount.code})</span><span class="tag">&minus;$${disc.toFixed(2)}</span></div>`:""}
+      ${wActive
+        ? `<div class="sumrow discount"><span>&#127873; Welcome reward</span><span class="tag">&minus;$${od.welcome.toFixed(2)}</span></div>`
+        : (appliedDiscount?`<div class="sumrow discount"><span>Discount (${appliedDiscount.code})</span><span class="tag">&minus;$${od.promo.toFixed(2)}</span></div>`:"")}
       <div class="sumrow"><span>Mailing</span><span>Calculated at checkout</span></div>
-      <div class="sumrow tot"><span>Cart total</span><span class="tag">$${(sub-disc).toFixed(2)}</span></div>
+      <div class="sumrow tot"><span>Cart total</span><span class="tag">$${(sub-od.total).toFixed(2)}</span></div>
       <button class="primary" id="toDetails">Checkout and Payment</button></div>`;
   $("#panelBody").querySelectorAll("[data-cinc]").forEach(b=>b.onclick=()=>{setQty(b.dataset.cinc,b.dataset.c,qtyOf(b.dataset.cinc,b.dataset.c)+1);refreshSku(b.dataset.cinc,b.dataset.c);openCart()});
   $("#panelBody").querySelectorAll("[data-cdec]").forEach(b=>b.onclick=()=>{setQty(b.dataset.cdec,b.dataset.c,qtyOf(b.dataset.cdec,b.dataset.c)-1);refreshSku(b.dataset.cdec,b.dataset.c);openCart()});
   $("#panelBody").querySelectorAll("[data-crm]").forEach(b=>b.onclick=()=>{setQty(b.dataset.crm,b.dataset.c,0);refreshSku(b.dataset.crm,b.dataset.c);openCart()});
-  $("#promoApply").onclick=async()=>{
+  const _pa=$("#promoApply");if(_pa)_pa.onclick=async()=>{
     const v=$("#promoInput").value.trim();if(!v){appliedDiscount=null;promoMsg="";return openCart()}
     $("#promoApply").disabled=true;
     try{
@@ -767,7 +785,7 @@ function openDetailsStep(){
   startTimer(5*60,()=>{releaseReservation();bump("Reservation expired");openCart()});
   drawDetails();openPanel();
 }
-function totals(){const sub=subtotal();const disc=discountAmt(sub);const fee=hasPackage?0:MAIL_FEE;return{sub,disc,fee,total:sub-disc+fee}}
+function totals(){const sub=subtotal();const od=orderDiscount(sub);const fee=hasPackage?0:MAIL_FEE;return{sub,disc:od.total,welcome:od.welcome,promo:od.promo,fee,total:sub-od.total+fee}}
 function detailsValid(){
   if(!form.user.trim())return false;
   if(!hasPackage&&["name","phone","addr","unit","postal"].some(k=>!form[k].trim()))return false;
@@ -796,7 +814,9 @@ function drawDetails(){
     </div>
     <div class="step-foot">
       <div class="sumrow"><span>Subtotal</span><span class="tag">$${t.sub.toFixed(2)}</span></div>
-      ${appliedDiscount?`<div class="sumrow discount"><span>Discount (${appliedDiscount.code})</span><span class="tag">&minus;$${t.disc.toFixed(2)}</span></div>`:""}
+      ${t.welcome>0
+        ? `<div class="sumrow discount"><span>&#127873; Welcome reward</span><span class="tag">&minus;$${t.welcome.toFixed(2)}</span></div>`
+        : (appliedDiscount?`<div class="sumrow discount"><span>Discount (${appliedDiscount.code})</span><span class="tag">&minus;$${t.disc.toFixed(2)}</span></div>`:"")}
       <div class="sumrow"><span>Mailing fee</span><span class="tag">${t.fee?"$"+t.fee.toFixed(2):"Waived"}</span></div>
       <div class="sumrow tot"><span>Total</span><span class="tag">$${t.total.toFixed(2)}</span></div>
       <button class="primary" id="toPay">Proceed to Pay &rarr;</button>
@@ -851,8 +871,10 @@ function orderRecord(orderId){
     Buyer_Entered_Telegram_Username:form.user||"",
     Buyer_Claims_Package_On_Hold:hasPackage?"YES — verify against hold list before confirming":"No",
     Mail_Preference:mailMode==="hold"?"Hold my package":"Mail it out now",
-    Subtotal:`$${t.sub.toFixed(2)}`, Discount_Code:appliedDiscount?appliedDiscount.code:"None",
-    Discount_Amount:appliedDiscount?`$${t.disc.toFixed(2)}`:"$0.00",
+    Subtotal:`$${t.sub.toFixed(2)}`,
+    Discount_Code:t.welcome>0?"WELCOME (first order)":(appliedDiscount?appliedDiscount.code:"None"),
+    Discount_Amount:`$${t.disc.toFixed(2)}`,
+    Welcome_Reward:t.welcome>0?`$${t.welcome.toFixed(2)}`:"$0.00",
     Shipping:t.fee?`$${t.fee.toFixed(2)}`:"$0.00", Total:`$${t.total.toFixed(2)}`,
     Items_Readable:items.join("\n"),
     "PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition":blockA.join("\n"),
@@ -891,10 +913,11 @@ async function gotoDone(){
   const custRows=[];if(form.phone)custRows.push(form.phone);
   const addr=[form.addr,form.unit,form.postal].filter(Boolean).join(", ");if(addr)custRows.push(addr);
   custRows.push(hasPackage?"Package on hold — mailing fee waived":(mailMode==="hold"?"Hold my package":"Mail it out now"));
-  const dcode=appliedDiscount?appliedDiscount.code:null;
+  const dcode=appliedDiscount?appliedDiscount.code:null;const wSnap=t.welcome;
   // send the notification email (keepalive survives navigation)
   try{await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(NOTIFY_EMAIL)}`,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},keepalive:true,body:JSON.stringify(record)})}catch(e){console.error(e)}
-  reservationId=null;rememberReservation(null);cart={};appliedDiscount=null;promoMsg="";saveCart();updateBar();
+  // The welcome reward is strictly first-order-only; this order just used it up.
+  reservationId=null;rememberReservation(null);cart={};appliedDiscount=null;promoMsg="";welcomeInfo=null;saveCart();updateBar();
   // 3) Confirmation screen: order summary + customer details to verify.
   setBack(()=>{closePanel();render()});
   $("#panelTitle").textContent="Order confirmed";
@@ -908,7 +931,9 @@ async function gotoDone(){
     <div class="oc-lines">${lines}</div>
     <div class="oc-sum">
       <div class="oc-sr"><span>Subtotal</span><span class="tag">$${t.sub.toFixed(2)}</span></div>
-      ${dcode?`<div class="oc-sr discount"><span>Discount (${dcode})</span><span class="tag">&minus;$${t.disc.toFixed(2)}</span></div>`:""}
+      ${wSnap>0
+        ? `<div class="oc-sr discount"><span>&#127873; Welcome reward</span><span class="tag">&minus;$${wSnap.toFixed(2)}</span></div>`
+        : (dcode?`<div class="oc-sr discount"><span>Discount (${dcode})</span><span class="tag">&minus;$${t.disc.toFixed(2)}</span></div>`:"")}
       <div class="oc-sr"><span>Mailing</span><span class="tag">${t.fee?"$"+t.fee.toFixed(2):"Waived"}</span></div>
       <div class="oc-sr oc-total"><span>Total</span><span class="tag">$${t.total.toFixed(2)}</span></div>
     </div>

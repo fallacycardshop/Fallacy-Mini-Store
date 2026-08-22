@@ -264,6 +264,35 @@ export function promoTextIfActive(promoText, rawCodes = process.env.DISCOUNT_COD
   return text;
 }
 
+// ---------------------------------------------------------------------------
+// Welcome reward — a one-time first-order perk: the cheapest card in the cart is
+// free (up to a cap) on a customer's FIRST order, if it meets a minimum spend.
+// Mini App only (needs a numeric Telegram id). Config + eligibility live in
+// Redis so the perk can be switched on/off and tuned without a deploy.
+//
+//   welcome:config  — JSON { enabled, minSpend, maxOff }
+//   welcome:seen    — set of Telegram ids that have placed ANY order (so the
+//                     reward is strictly first-order-only). Seeded at launch
+//                     with existing customers so only brand-new buyers qualify.
+//   welcome:granted — set of Telegram ids that actually received the free card.
+// ---------------------------------------------------------------------------
+export const WELCOME_CONFIG_KEY = "welcome:config";
+export const WELCOME_SEEN_KEY = "welcome:seen";
+export const WELCOME_GRANTED_KEY = "welcome:granted";
+export const DEFAULT_WELCOME_CONFIG = { enabled: false, minSpend: 30, maxOff: 5 };
+
+export function parseWelcomeConfig(raw) {
+  const c = { ...DEFAULT_WELCOME_CONFIG };
+  if (!raw) return c;
+  let d;
+  try { d = typeof raw === "string" ? JSON.parse(raw) : raw; } catch (e) { return c; }
+  if (!d || typeof d !== "object") return c;
+  c.enabled = Boolean(d.enabled);
+  if (Number.isFinite(Number(d.minSpend))) c.minSpend = Math.max(0, Number(d.minSpend));
+  if (Number.isFinite(Number(d.maxOff))) c.maxOff = Math.max(0, Number(d.maxOff));
+  return c;
+}
+
 // CardIDs are compared case-insensitively and trimmed, so "abc123 " typed into
 // the admin box still matches "ABC123" in the CSV.
 export function normaliseCardId(id) {

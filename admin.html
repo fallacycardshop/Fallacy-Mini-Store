@@ -1013,6 +1013,40 @@
 </div>
 
 <div class="card">
+  <h1>Welcome Reward</h1>
+  <p>
+    A one-time first-order perk for new Mini App customers: the cheapest card in
+    their cart is free, up to the cap, once the order meets the minimum spend.
+    Strictly their <strong>first order</strong> — placing any order uses it up,
+    and a promo code can't be combined with it. Before switching it on, run
+    <strong>Exclude existing customers</strong> once so only brand-new buyers
+    qualify.
+  </p>
+  <input type="password" id="welcomePassphrase" placeholder="Enter admin passphrase" autocomplete="off">
+  <div class="date-row"><button id="welcomeLoadButton">Load settings</button></div>
+  <div id="welcomeForm" style="display:none;margin-top:10px;">
+    <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:12px;">
+      <input type="checkbox" id="welcomeEnabled"> <span>Welcome reward is <strong>live</strong></span>
+    </label>
+    <div class="date-row" style="gap:14px;flex-wrap:wrap;align-items:flex-end;">
+      <label style="font-size:13px;">Min spend ($)<br><input type="number" id="welcomeMinSpend" min="0" step="1" style="width:100px;"></label>
+      <label style="font-size:13px;">Max off ($)<br><input type="number" id="welcomeMaxOff" min="0" step="0.5" style="width:100px;"></label>
+      <button id="welcomeSaveButton">Save settings</button>
+    </div>
+    <p id="welcomeStats" style="font-size:12px;color:#666;margin-top:10px;"></p>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #eee;">
+      <p style="font-size:12px;color:#666;margin:0 0 6px;">
+        <strong>Exclude existing customers</strong> — run once before going live.
+        Marks everyone who has already placed an order as "seen", so the reward
+        only ever reaches brand-new buyers. Safe to re-run.
+      </p>
+      <button id="welcomeBackfillButton">Exclude existing customers</button>
+    </div>
+  </div>
+  <p id="welcomeResultText"></p>
+</div>
+
+<div class="card">
   <h1>Auction Promo Image</h1>
   <p>
     For cards that aren&rsquo;t in the store inventory. Upload the card photos to
@@ -1459,6 +1493,7 @@ document.addEventListener("DOMContentLoaded", () => {
     "Recent Orders": "Orders",
     "Customer Spend": "Spend",
     "Vouchers": "Vouchers",
+    "Welcome Reward": "Welcome",
     "Slow Release Scheduling": "Drip",
     "Featured Section Heading": "Headings",
     "Card Lookup & Auction Hiding": "Card lookup",
@@ -4772,6 +4807,56 @@ document.getElementById("vouchersBackdateButton").onclick = async () => {
     vouchersResultEl.textContent = "Network error — please try again.";
     vouchersResultEl.className = "error";
   }
+};
+
+// ---- Welcome reward panel ----
+const welcomePassphraseEl = document.getElementById("welcomePassphrase");
+const welcomeResultEl = document.getElementById("welcomeResultText");
+async function postWelcome(action, extra) {
+  const key = welcomePassphraseEl.value.trim();
+  if (!key) { welcomeResultEl.textContent = "Please enter the passphrase."; welcomeResultEl.className = "error"; return null; }
+  const res = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, action, ...(extra || {}) }) });
+  const raw = await res.text();
+  let data;
+  try { data = JSON.parse(raw); }
+  catch (e) { welcomeResultEl.textContent = raw.trim().startsWith("<") ? `The /api/orders endpoint isn't deployed (HTTP ${res.status}).` : `Unexpected response (HTTP ${res.status}).`; welcomeResultEl.className = "error"; return null; }
+  if (!res.ok) { welcomeResultEl.textContent = data.error || `Something went wrong (HTTP ${res.status}).`; welcomeResultEl.className = "error"; return null; }
+  return data;
+}
+function renderWelcome(d) {
+  document.getElementById("welcomeForm").style.display = "block";
+  const c = d.config || {};
+  document.getElementById("welcomeEnabled").checked = !!c.enabled;
+  document.getElementById("welcomeMinSpend").value = (c.minSpend != null ? c.minSpend : 30);
+  document.getElementById("welcomeMaxOff").value = (c.maxOff != null ? c.maxOff : 5);
+  document.getElementById("welcomeStats").textContent =
+    `${d.seen || 0} customer(s) excluded (have ordered before) · ${d.granted || 0} free card(s) granted.`;
+}
+document.getElementById("welcomeLoadButton").onclick = async () => {
+  welcomeResultEl.textContent = "Loading..."; welcomeResultEl.className = "";
+  const d = await postWelcome("welcomeGet"); if (!d) return;
+  renderWelcome(d);
+  welcomeResultEl.textContent = d.config.enabled ? "Welcome reward is LIVE." : "Welcome reward is off.";
+  welcomeResultEl.className = "success";
+};
+document.getElementById("welcomeSaveButton").onclick = async () => {
+  welcomeResultEl.textContent = "Saving..."; welcomeResultEl.className = "";
+  const d = await postWelcome("welcomeSave", {
+    enabled: document.getElementById("welcomeEnabled").checked,
+    minSpend: Number(document.getElementById("welcomeMinSpend").value),
+    maxOff: Number(document.getElementById("welcomeMaxOff").value),
+  });
+  if (!d) return;
+  welcomeResultEl.textContent = `Saved. Welcome reward is ${d.config.enabled ? "LIVE" : "off"} — cheapest card free up to $${Number(d.config.maxOff).toFixed(2)}, min spend $${Number(d.config.minSpend).toFixed(2)}.`;
+  welcomeResultEl.className = "success";
+};
+document.getElementById("welcomeBackfillButton").onclick = async () => {
+  if (!confirm("Mark everyone who has already ordered as excluded from the welcome reward?\n\nRun once before going live so only brand-new customers qualify. Safe to re-run.")) return;
+  welcomeResultEl.textContent = "Excluding existing customers…"; welcomeResultEl.className = "";
+  const d = await postWelcome("welcomeBackfill"); if (!d) return;
+  welcomeResultEl.textContent = `Done — ${d.excluded} existing customer id(s) excluded from the welcome reward.`;
+  welcomeResultEl.className = "success";
+  const g = await postWelcome("welcomeGet"); if (g) renderWelcome(g);
 };
 
 // --------------------------------------------------------------------------
