@@ -355,17 +355,16 @@ const CART_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strok
 const MAIL_FEE=3;
 let cart={};let only=null;let savedScroll=0;let appliedDiscount=null;let promoMsg="";let promoText="";
 // welcomeInfo: undefined = not checked yet, null = not eligible/disabled,
-// {eligible,minSpend,maxOff} = eligible. Only meaningful in the Mini App.
+// {eligible,minSpend,amount} = eligible. Only meaningful in the Mini App.
 let welcomeInfo=undefined;
 function discountAmt(sub){if(!appliedDiscount)return 0;if(appliedDiscount.type==="percent"){const d=sub*(Number(appliedDiscount.value)||0)/100;const cap=Number(appliedDiscount.cap)||0;return cap>0?Math.min(d,cap):d}return Math.min(Number(appliedDiscount.value)||0,sub)}
-// Cheapest single card (unit price) currently in the cart — what the welcome
-// reward makes free.
-function cheapestUnit(){let m=Infinity;Object.keys(cart).forEach(k=>{const[id,cond]=k.split("::");const p=byId(id);if(!p)return;const c=p.conds.find(x=>x.cond===cond);if(c&&c.price<m)m=c.price});return m===Infinity?0:m}
-function welcomeAmt(sub){if(!welcomeInfo||!welcomeInfo.eligible)return 0;if(sub<(Number(welcomeInfo.minSpend)||0))return 0;return Math.min(cheapestUnit(),Number(welcomeInfo.maxOff)||0)}
+// Welcome reward: a flat dollar discount once the cart meets the minimum spend
+// (capped at the subtotal so it can't exceed the order).
+function welcomeAmt(sub){if(!welcomeInfo||!welcomeInfo.eligible)return 0;if(sub<(Number(welcomeInfo.minSpend)||0))return 0;return Math.min(Number(welcomeInfo.amount)||0,sub)}
 // The effective order discount: the welcome reward when it applies (promo codes
 // can't be combined with it), otherwise the promo-code discount.
 function orderDiscount(sub){const w=welcomeAmt(sub);if(w>0)return{welcome:w,promo:0,total:w};const p=discountAmt(sub);return{welcome:0,promo:p,total:p}}
-async function loadWelcome(){if(welcomeInfo!==undefined)return;if(!(telegramUser&&telegramUser.id)){welcomeInfo=null;return}try{const r=await fetch("/api/validate-discount",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"welcome",telegramUserId:String(telegramUser.id)})});const d=await r.json();welcomeInfo=(d&&d.eligible)?{eligible:true,minSpend:Number(d.minSpend)||0,maxOff:Number(d.maxOff)||0}:null}catch(e){welcomeInfo=null}}
+async function loadWelcome(){if(welcomeInfo!==undefined)return;if(!(telegramUser&&telegramUser.id)){welcomeInfo=null;return}try{const r=await fetch("/api/validate-discount",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"welcome",telegramUserId:String(telegramUser.id)})});const d=await r.json();welcomeInfo=(d&&d.eligible)?{eligible:true,minSpend:Number(d.minSpend)||0,amount:Number(d.amount)||0}:null}catch(e){welcomeInfo=null}}
 
 const conds=p=>[...p.conds].sort((a,b)=>RANK[a.cond]-RANK[b.cond]);
 const inStock=p=>conds(p).filter(c=>c.stock>0);
@@ -734,7 +733,7 @@ function openCart(ret){
         ? `<div class="promo-msg ok" style="text-align:center">&#127873; Welcome reward applied &mdash; a promo code can&rsquo;t be combined with it.</div>`
         : `<div class="promo"><input id="promoInput" placeholder="Promo code" value="${appliedDiscount?appliedDiscount.code:''}"><button id="promoApply">Apply</button></div>
       ${promoMsg?`<div class="promo-msg ${appliedDiscount?'ok':'no'}">${promoMsg}</div>`:""}`}
-      ${wBelow?`<div class="promo-msg ok" style="text-align:center">&#127873; Spend $${(Number(welcomeInfo.minSpend)-sub).toFixed(2)} more to unlock your welcome reward &mdash; a free card!</div>`:""}
+      ${wBelow?`<div class="promo-msg ok" style="text-align:center">&#127873; Spend $${(Number(welcomeInfo.minSpend)-sub).toFixed(2)} more to unlock your welcome reward &mdash; $${(Number(welcomeInfo.amount)||0).toFixed(2)} off!</div>`:""}
       <div class="sumrow"><span>Subtotal</span><span class="tag">$${sub.toFixed(2)}</span></div>
       ${wActive
         ? `<div class="sumrow discount"><span>&#127873; Welcome reward</span><span class="tag">&minus;$${od.welcome.toFixed(2)}</span></div>`
