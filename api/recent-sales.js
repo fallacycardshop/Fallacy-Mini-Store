@@ -117,11 +117,11 @@ Still stuck? Message @fallacytcg and we'll help.`;
 // Shown by the "How badges work" button / /howbadges.
 const HOW_BADGES_TEXT = `🎴 <b>How do Badges work?</b>
 
-As you shop with us, your spend earns you Badges — and every Badge comes with a reward 🎖
+As you shop with us, your spend earns you Badges — and every Badge comes with a reward! 🎖
 
-• your cumulative spend over the last 6 months is used to help you hit Badge milestones
-• hitting a milestone means unlocking a new Badge voucher valid for 60 days ✨
-• Badges reset if your 6-month spend slips below the tier, so keep them warm!
+• your cumulative spend over the last 6 months helps you to hit Badge milestones
+• hitting a milestone means unlocking a new Badge voucher valid for use at our Mini Store for 60 days ✨
+• Badges reset if your 6-month spend slips below the Badge Tier, so keep them warm!
 
 <b>Badge Tiers</b>
 🪨 Boulder — $80 → 5% off (up to $8)
@@ -132,14 +132,14 @@ As you shop with us, your spend earns you Badges — and every Badge comes with 
 🟡 Marsh — $1,000 → 10% off (up to $25)
 🔥 Volcano — $1,200 → 12% off (up to $30)
 🍃 Earth — $1,400 → 12% off (up to $30)
-👑 Champion — every +$250 past earth → another 12% reward
+👑 Champion — every +$250 past earth → another 12% off
 
 <b>Additional FAQ</b>
 • What if you jump several Badges in one go? Don't fret! You still get a voucher for each Badge unlocked 🎁
 • Each Badge unlocks a voucher only once (vouchers do not repeat even if you drop back down to lower Badge Tiers)
 • How do you use the vouchers? Just pop your code in your Mini Store cart promo box at checkout (min $10 spend required!)
 
-Tap 🎖 <b>My Badges</b> button below anytime to see your Badge status, vouchers, and how close you are to the next one 💛`;
+Tap 🎖 <b>My Badges</b> button below anytime to see your Badge status, vouchers, and how close you are to the next one! 💛`;
 
 async function telegramCall(method, payload) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
