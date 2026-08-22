@@ -18,6 +18,8 @@ import {
   WELCOME_CONFIG_KEY,
   WELCOME_GRANTED_KEY,
   parseWelcomeConfig,
+  BADGES,
+  CHAMPION,
 } from "./_inventory.js";
 
 // Emoji for a badge object from either helper: badgeForSpend gives a numbered
@@ -166,7 +168,8 @@ const openStoreKeyboard = {
 // Slash commands still work as a fallback, and setMyCommands lists them.
 const mainKeyboard = {
   keyboard: [
-    [{ text: "🎖 My Badges" }, { text: "ℹ️ How badges work" }],
+    [{ text: "🎖 My Badges" }, { text: "🏅 My Collection" }],
+    [{ text: "ℹ️ How badges work" }],
   ],
   resize_keyboard: true,
   is_persistent: true,
@@ -175,6 +178,7 @@ const mainKeyboard = {
 const BOT_COMMANDS = [
   { command: "start", description: "Start" },
   { command: "mytier", description: "My badges & spend" },
+  { command: "mycollection", description: "My badge collection" },
   { command: "howbadges", description: "How badges work" },
 ];
 
@@ -298,6 +302,39 @@ async function badgeStatusText(userId) {
   return { text: msg, badgeN: badge ? badge.n : 0, progress };
 }
 
+// A "trophy case" view of every badge, showing which the customer has collected
+// (✅) versus still locked (🔒), with progress — to nudge the collector instinct.
+async function badgeCollectionText(userId) {
+  const aliasMap = (await redis.hgetall(CUSTOMER_ALIAS_KEY)) || {};
+  const key = resolveCustomerKey(aliasMap, String(userId || ""));
+  const log = key ? (await redis.hgetall(spendLogKey(key))) || {} : {};
+  const s = sumSpendLog(log, 0);
+  const adj = sumAdjust(parseAdjustEntries(key ? await redis.hget(CUSTOMER_ADJUST_KEY, key) : null), 0);
+  const spend = s.cumulative + adj.cumulative;
+
+  const earth = BADGES[BADGES.length - 1];
+  const slots = BADGES.map(b => ({ n: b.n, name: b.name, spend: b.spend, got: spend >= b.spend }));
+  const champSpend = earth.spend + CHAMPION.step;
+  slots.push({ n: earth.n + 1, name: "Champion", spend: champSpend, got: spend >= champSpend });
+
+  const got = slots.filter(x => x.got).length;
+  let msg = `🏅 <b>Your Badge Collection</b>\nYou've collected <b>${got} of ${slots.length}</b> badges!\n\n`;
+  for (const x of slots) {
+    msg += `${badgeEmoji(x.n)} ${x.name} ${x.got ? "✅" : "🔒"}\n`;
+  }
+
+  const nextLocked = slots.find(x => !x.got);
+  if (!nextLocked) {
+    msg += `\n<i>You've collected them all — legendary! 👑</i>`;
+  } else if (nextLocked.n === BADGES[0].n) {
+    msg += `\n<i>Make your first purchase to start your collection with ${badgeEmoji(nextLocked.n)} Boulder!</i>`;
+  } else {
+    msg += `\n<i>Next to collect: ${badgeEmoji(nextLocked.n)} ${nextLocked.name} — ${money(Math.max(0, nextLocked.spend - spend))} to go!</i>`;
+  }
+  msg += "\nEvery badge is yours for life 💛";
+  return msg;
+}
+
 async function handleTelegram(req, res) {
   // Telegram echoes the secret back on every call; anything else is not from
   // Telegram and is ignored.
@@ -329,6 +366,14 @@ async function handleTelegram(req, res) {
     await telegramCall("sendMessage", {
       chat_id: chatId,
       text: canSeeBadges ? HOW_BADGES_TEXT : comingSoon,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+      reply_markup: kb,
+    });
+  } else if (text.includes("collection") || text.startsWith("/mycollection")) {
+    await telegramCall("sendMessage", {
+      chat_id: chatId,
+      text: canSeeBadges ? await badgeCollectionText(fromId) : comingSoon,
       parse_mode: "HTML",
       disable_web_page_preview: true,
       reply_markup: kb,
@@ -368,7 +413,7 @@ async function handleTelegram(req, res) {
     await telegramCall("sendMessage", {
       chat_id: chatId,
       text: canSeeBadges
-        ? "Tap My Badges or How badges work below, or open the store from the menu button."
+        ? "Tap My Badges, My Collection or How badges work below, or open the store from the menu button."
         : "Tap the store button beside the message box to browse.",
       reply_markup: kb,
     });
