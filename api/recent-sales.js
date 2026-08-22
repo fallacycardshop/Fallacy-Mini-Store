@@ -133,6 +133,27 @@ const BOT_COMMANDS = [
   { command: "faq", description: "Frequently asked questions" },
 ];
 
+// Launch gate. The badge features stay hidden from customers until the whole
+// programme (badges + vouchers + launch message) is ready: set env var
+// LOYALTY_BOT_LIVE=1 to reveal them to everyone. Until then, only the Telegram
+// IDs in LOYALTY_TEST_IDS (comma-separated) see badges, so the shop owner can
+// test on the live bot privately without exposing half a programme.
+const shopFaqKeyboard = {
+  keyboard: [[{ text: "🛒 Shop", web_app: { url: STORE_URL } }, { text: "❓ FAQ" }]],
+  resize_keyboard: true,
+  is_persistent: true,
+};
+const BOT_COMMANDS_BASE = [
+  { command: "start", description: "Open the Mini Store" },
+  { command: "faq", description: "Frequently asked questions" },
+];
+function loyaltyLive() {
+  return ["1", "true", "yes", "on"].includes(String(process.env.LOYALTY_BOT_LIVE || "").toLowerCase());
+}
+function loyaltyTestIds() {
+  return new Set(String(process.env.LOYALTY_TEST_IDS || "").split(/[\s,;]+/).map(s => s.trim()).filter(Boolean));
+}
+
 function money(n) { return "$" + (Number(n) || 0).toFixed(2); }
 
 // Read-only loyalty status for a Telegram numeric user id — the permanent
@@ -180,37 +201,49 @@ async function handleTelegram(req, res) {
   // Always 200, promptly — Telegram retries anything else.
   if (!chatId) return res.status(200).json({ ok: true });
 
+  // Gate: badges are visible to everyone once live, or only to the owner's test
+  // ID(s) beforehand. The keyboard, menu and replies all follow this.
+  const live = loyaltyLive();
+  const canSeeBadges = live || loyaltyTestIds().has(String(fromId));
+  const kb = canSeeBadges ? mainKeyboard : shopFaqKeyboard;
+
   if (text.includes("faq")) {
     await telegramCall("sendMessage", {
       chat_id: chatId,
       text: FAQ_TEXT,
       parse_mode: "HTML",
       disable_web_page_preview: true,
-      reply_markup: mainKeyboard,
+      reply_markup: kb,
     });
   } else if (text.includes("badge") || text.startsWith("/mytier") || text.startsWith("/mybadges")) {
     await telegramCall("sendMessage", {
       chat_id: chatId,
-      text: await badgeStatusText(fromId),
+      text: canSeeBadges
+        ? await badgeStatusText(fromId)
+        : "Our loyalty badges are launching soon — stay tuned! 🎴",
       parse_mode: "HTML",
-      reply_markup: mainKeyboard,
+      reply_markup: kb,
     });
   } else if (text.startsWith("/start") || text.startsWith("/shop") || text.startsWith("/store")) {
-    // Populate the menu-button command list (idempotent, cheap) on first contact.
-    await telegramCall("setMyCommands", { commands: BOT_COMMANDS });
+    // Populate the menu-button command list to match what's live (idempotent).
+    await telegramCall("setMyCommands", { commands: live ? BOT_COMMANDS : BOT_COMMANDS_BASE });
     await telegramCall("sendMessage", {
       chat_id: chatId,
       text:
         "Welcome to <b>Fallacy's Mini Store</b> 🎴\n\n" +
-        "Use the buttons below to shop, check your badges, or read the FAQ.",
+        (canSeeBadges
+          ? "Use the buttons below to shop, check your badges, or read the FAQ."
+          : "Use the buttons below to shop or read the FAQ."),
       parse_mode: "HTML",
-      reply_markup: mainKeyboard,
+      reply_markup: kb,
     });
   } else {
     await telegramCall("sendMessage", {
       chat_id: chatId,
-      text: "Use the buttons below — Shop, My Badges, or FAQ.",
-      reply_markup: mainKeyboard,
+      text: canSeeBadges
+        ? "Use the buttons below — Shop, My Badges, or FAQ."
+        : "Use the buttons below — Shop or FAQ.",
+      reply_markup: kb,
     });
   }
 
