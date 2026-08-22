@@ -115,33 +115,31 @@ New cards are released daily. Check the "Newly in stock!" row at the top of the 
 Still stuck? Message @fallacytcg and we'll help.`;
 
 // Shown by the "How badges work" button / /howbadges.
-const HOW_BADGES_TEXT = `🎴 <b>how our badges work</b>
+const HOW_BADGES_TEXT = `🎴 <b>How do Badges work?</b>
 
-as you shop with us, your spend earns you badges — and every badge comes with a reward 🎖
+As you shop with us, your spend earns you Badges — and every Badge comes with a reward 🎖
 
-<b>the basics</b>
-• we add up what you've spent over the last <b>6 months</b>
-• hit a milestone and you unlock that badge
-• each badge gives you a voucher — a % off, up to a set cap, single use, valid <b>60 days</b> ✨
-• badges reset if your 6-month spend slips below the tier, so keep them warm!
+• your cumulative spend over the last 6 months is used to help you hit Badge milestones
+• hitting a milestone means unlocking a new Badge voucher valid for 60 days ✨
+• Badges reset if your 6-month spend slips below the tier, so keep them warm!
 
-<b>the ladder</b> 🪜
-🪨 boulder — $80 → 5% off (up to $8)
-💧 cascade — $200 → 8% off (up to $16)
-⚡ thunder — $400 → 10% off (up to $20)
-🌈 rainbow — $600 → 10% off (up to $20)
-💗 soul — $800 → 10% off (up to $25)
-🟡 marsh — $1,000 → 10% off (up to $25)
-🔥 volcano — $1,200 → 12% off (up to $30)
-🍃 earth — $1,400 → 12% off (up to $30)
-👑 champion — every +$250 past earth → another 12% reward
+<b>Badge Tiers</b>
+🪨 Boulder — $80 → 5% off (up to $8)
+💧 Cascade — $200 → 8% off (up to $16)
+⚡️ Thunder — $400 → 10% off (up to $20)
+🌈 Rainbow — $600 → 10% off (up to $20)
+💗 Soul — $800 → 10% off (up to $25)
+🟡 Marsh — $1,000 → 10% off (up to $25)
+🔥 Volcano — $1,200 → 12% off (up to $30)
+🍃 Earth — $1,400 → 12% off (up to $30)
+👑 Champion — every +$250 past earth → another 12% reward
 
-<b>good to know</b>
-• jump several badges in one go? you get a voucher for each 🎁
-• each badge rewards you once, ever
-• pop your code in the cart's promo box at checkout (min $10 spend)
+<b>Additional FAQ</b>
+• What if you jump several Badges in one go? Don't fret! You still get a voucher for each Badge unlocked 🎁
+• Each Badge unlocks a voucher only once (vouchers do not repeat even if you drop back down to lower Badge Tiers)
+• How do you use the vouchers? Just pop your code in your Mini Store cart promo box at checkout (min $10 spend required!)
 
-tap 🎖 <b>my badges</b> anytime to see your badge, your vouchers, and how close you are to the next one 💛`;
+Tap 🎖 <b>My Badges</b> button below anytime to see your Badge status, vouchers, and how close you are to the next one 💛`;
 
 async function telegramCall(method, payload) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -262,8 +260,8 @@ async function badgeStatusText(userId) {
     : "You haven't earned a badge yet.\n";
   msg += `Spend in the last 6 months: <b>${money(windowSpend)}</b>\n`;
   if (next && next.badge) {
-    const tier = next.badge.n ? ` (Badge Tier ${next.badge.n})` : "";
-    msg += `\n${money(next.needed)} more to reach ${emojiForBadge(next.badge)} <b>${next.badge.name}</b>${tier}.`;
+    const nc = Number(next.badge.cap) || 0;
+    msg += `\n${money(next.needed)} to the next badge, ${emojiForBadge(next.badge)} <b>${next.badge.name}</b> — ${Number(next.badge.pct) || 0}% off${nc ? `, up to $${nc}` : ""}.`;
   }
 
   const vouchers = await activeVouchersFor(key);
