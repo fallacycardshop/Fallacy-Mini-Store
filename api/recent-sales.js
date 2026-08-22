@@ -220,9 +220,9 @@ async function activeVouchersFor(key) {
     try { v = typeof raw === "string" ? JSON.parse(raw) : raw; } catch (e) { return; }
     if (voucherStatus(v, now) === "active") out.push(v);
   });
-  out.sort((a, b) => (Number(a.expiresAt) || 0) - (Number(b.expiresAt) || 0));
-  // One voucher per badge in the list — guards the display against any historical
-  // duplicate so a badge never shows twice (soonest-expiring kept, to use first).
+  // Ordered by badge tier (Boulder first), one voucher per badge — guards the
+  // display against any historical duplicate so a badge never shows twice.
+  out.sort((a, b) => (Number(a.badgeN) || 0) - (Number(b.badgeN) || 0));
   const seen = new Set();
   const deduped = [];
   for (const v of out) {
