@@ -329,7 +329,6 @@ async function badgeCollection(userId) {
   } else {
     caption += `\nNext to collect: ${badgeEmoji(nextLocked.n)} <b>${nextLocked.name}</b> — ${money(Math.max(0, nextLocked.spend - spend))} to go!`;
   }
-  caption += `\nEvery badge is yours for life 💛`;
   return { url: badgeCollectionUrl(got), caption };
 }
 
