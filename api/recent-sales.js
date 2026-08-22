@@ -118,13 +118,20 @@ New cards are released daily. Check the "Newly in stock!" row at the top of the 
 Still stuck? Message @fallacytcg and we'll help.`;
 
 // Shown by the "How badges work" button / /howbadges.
-const HOW_BADGES_TEXT = `🎴 <b>How do Badges work?</b>
+const HOW_BADGES_TEXT = `🎴 <b>How do Badge Rewards work?</b>
 
-Your very first purchase enrols you with a 🪨 <b>Boulder</b> Badge — and from there your spend continues to earn you more Badges. Each Badge comes with a reward voucher! 🎖
+Every purchase from our Mini Store earns you Badges — and each Badge comes with its own reward voucher! The more you spend, the more you collect 💛
 
-• your cumulative spend helps you to unlock Badge vouchers
-• Badge vouchers are valid for use at our Mini Store for 60 days ✨
-• Badges earned are for a lifetime! Rewards are unlimited once you hit Champion Tier 👑
+🎁 <b>Welcome Reward — new &amp; existing customers</b>
+• spend $30+ and get <b>$3 off</b>, applied automatically in your cart
+• one-time per customer, on your next order
+• <b>only through our Mini App</b> — tap the store button beside the chat box to claim it
+
+🏅 <b>Earning Badges</b>
+• your very first purchase enrols you at 🪨 <b>Boulder</b> — you're in! (a Welcome Reward order counts as spend too)
+• from there, your <b>lifetime</b> spend unlocks higher Badges, each with a reward voucher
+• Badges are yours to keep — your tier never drops
+• vouchers are valid at our Mini Store for 60 days, single-use ✨
 
 <b>Badge Tiers</b>
 🪨 Boulder — any purchase → you're in!
@@ -137,12 +144,13 @@ Your very first purchase enrols you with a 🪨 <b>Boulder</b> Badge — and fro
 🍃 Earth — $1,200 → 12% off (up to $30)
 👑 Champion — every +$250 past Earth → 12% off (up to $30)
 
-<b>Additional FAQ</b>
-• What if I spend &gt;$200 and jump several Badge Tiers in one purchase? Don't fret! You still get a voucher for each Badge unlocked 🎁
-• What if I have been purchasing from the Mini Store and have already spent up to a higher tier? You will immediately receive multiple vouchers for every eligible Tier you have earned! Ready to be used on your next purchase
-• How do you use the vouchers? Just pop your code in your Mini Store cart promo box at checkout (min $10 spend required!)
+<b>Good to know</b>
+• jump several Tiers in one order? you get a voucher for EACH Badge unlocked 🎁
+• already spent up to a higher Tier? you'll receive vouchers for every Tier you've earned, ready to use
+• each Badge unlocks its voucher once; Tiers are lifetime and never drop
+• to redeem: pop your code in your Mini Store cart's promo box at checkout (min $10 spend). the Welcome Reward can't be combined with a voucher
 
-Tap 🎖 <b>My Badges</b> button below anytime to see your Badge status, vouchers, and how close you are to the next one! 💛`;
+Tap 🎖 <b>My Badges</b> or 🏅 <b>My Collection</b> below anytime to track your progress! 💛`;
 
 async function telegramCall(method, payload) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
