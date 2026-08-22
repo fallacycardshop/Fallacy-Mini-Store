@@ -25,6 +25,10 @@ import {
   resolveCustomerKey,
   badgeEmoji,
   badgeBannerUrl,
+  WELCOME_CONFIG_KEY,
+  WELCOME_SEEN_KEY,
+  WELCOME_GRANTED_KEY,
+  parseWelcomeConfig,
 } from "./_inventory.js";
 
 // Loyalty launch gate — vouchers only auto-issue once live, or for the owner's
@@ -91,11 +95,11 @@ async function issueVouchersFor(redis, ckey, handle, now = Date.now()) {
   }
   // One DM summarising every voucher this payment unlocked (Mini App users only).
   if (out.length) {
-    const lines = out.map(r => `${badgeEmoji(r.badgeN)} <b>${r.badgeName}</b> — <code>${r.code}</code>, ${r.pct}% off${r.cap ? ` (up to $${r.cap})` : ""}, valid ${VOUCHER_DAYS} days.`);
+    const lines = out.map(r => `${badgeEmoji(r.badgeN)} <b>${r.badgeName}</b> — ${r.pct}% off${r.cap ? ` (up to $${r.cap})` : ""}, valid ${VOUCHER_DAYS} days\nYour code: <code>${r.code}</code>`);
     // Headline the highest badge just earned with its "New badge earned!" banner.
     const top = out[out.length - 1];
     await notifyTelegram(ckey,
-      `Congrats! You've unlocked a new reward:\n\n${lines.join("\n")}\n\nEnter the code in the cart's promo box, or tap 🎖 My Badges.`,
+      `Congrats! You've unlocked a new reward:\n\n${lines.join("\n\n")}\n\nTap a code to copy it, then enter it in the cart's promo box at checkout.`,
       badgeBannerUrl(top.badgeN));
   }
   return out;
@@ -574,6 +578,33 @@ export default async function handler(req, res) {
       }
 
       return res.status(200).json({ ok: true, customers, issued, skipped, notified, results });
+    }
+
+    // ------------------------------------------------------- welcome reward --
+    // The first-order free-card perk. Config + the "seen" set (strictly first
+    // order) + the granted count. welcomeBackfill seeds "seen" with everyone who
+    // has already ordered, so switching the perk on only rewards NEW buyers.
+    if (action === "welcomeGet") {
+      const cfg = parseWelcomeConfig(await redis.get(WELCOME_CONFIG_KEY));
+      const seen = await redis.scard(WELCOME_SEEN_KEY);
+      const granted = await redis.scard(WELCOME_GRANTED_KEY);
+      return res.status(200).json({ ok: true, config: cfg, seen: Number(seen) || 0, granted: Number(granted) || 0 });
+    }
+    if (action === "welcomeSave") {
+      const cfg = parseWelcomeConfig(req.body); // reads enabled/minSpend/maxOff, ignores the rest
+      await redis.set(WELCOME_CONFIG_KEY, JSON.stringify(cfg));
+      return res.status(200).json({ ok: true, config: cfg });
+    }
+    if (action === "welcomeBackfill") {
+      const orders = await readAllOrders();
+      const ids = new Set();
+      for (const e of orders) {
+        const r = e.record || e;
+        const id = String((r && r.Telegram_User_ID) || "").trim();
+        if (/^\d+$/.test(id)) ids.add(id);
+      }
+      if (ids.size) await redis.sadd(WELCOME_SEEN_KEY, ...ids);
+      return res.status(200).json({ ok: true, excluded: ids.size });
     }
 
     // ------------------------------------------------------- default: read --

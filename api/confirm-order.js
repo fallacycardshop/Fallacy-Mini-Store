@@ -1,5 +1,8 @@
 import { Redis } from "@upstash/redis";
-import { loadInventoryGroups, ORDER_PAID_KEY, VOUCHERS_KEY, voucherStatus } from "./_inventory.js";
+import {
+  loadInventoryGroups, ORDER_PAID_KEY, VOUCHERS_KEY, voucherStatus,
+  WELCOME_SEEN_KEY, WELCOME_GRANTED_KEY,
+} from "./_inventory.js";
 
 const redis = Redis.fromEnv();
 
@@ -121,6 +124,22 @@ export default async function handler(req, res) {
       }
     } catch (voucherErr) {
       console.error("voucher burn failed:", voucherErr);
+    }
+
+    // WELCOME REWARD bookkeeping. The perk is strictly first-order-only, so the
+    // moment a Telegram id places ANY order it's marked "seen" and can never
+    // qualify again — whether or not this order actually used the reward. If it
+    // did use it, also record the grant for the admin count. Wrapped: this must
+    // never fail a real order.
+    try {
+      const tgid = String((record && record.Telegram_User_ID) || "").trim();
+      if (/^\d+$/.test(tgid)) {
+        await redis.sadd(WELCOME_SEEN_KEY, tgid);
+        const wr = Number(String((record && record.Welcome_Reward) || "").replace(/[^0-9.]/g, "")) || 0;
+        if (wr > 0) await redis.sadd(WELCOME_GRANTED_KEY, tgid);
+      }
+    } catch (welcomeErr) {
+      console.error("welcome bookkeeping failed:", welcomeErr);
     }
 
     // Log each sold item to a recent-activity feed for the "recently sold"

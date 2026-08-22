@@ -1,7 +1,28 @@
 import { Redis } from "@upstash/redis";
-import { VOUCHERS_KEY, voucherStatus } from "./_inventory.js";
+import {
+  VOUCHERS_KEY, voucherStatus,
+  WELCOME_CONFIG_KEY, WELCOME_SEEN_KEY, parseWelcomeConfig,
+} from "./_inventory.js";
 
 const redis = Redis.fromEnv();
+
+// Welcome-reward eligibility for the Mini App cart. Returns whether the perk is
+// on and whether THIS Telegram id still qualifies (strictly first order — never
+// placed one before). Fails CLOSED: on any doubt, not eligible, so a free card
+// is never granted on an unverifiable check.
+async function handleWelcome(req, res) {
+  const id = String((req.body || {}).telegramUserId || "").trim();
+  let cfg;
+  try { cfg = parseWelcomeConfig(await redis.get(WELCOME_CONFIG_KEY)); }
+  catch (e) { console.error("welcome config read failed:", e); return res.status(200).json({ enabled: false, eligible: false }); }
+  if (!cfg.enabled || !/^\d+$/.test(id)) {
+    return res.status(200).json({ enabled: cfg.enabled, eligible: false, minSpend: cfg.minSpend, maxOff: cfg.maxOff });
+  }
+  let seen;
+  try { seen = await redis.sismember(WELCOME_SEEN_KEY, id); }
+  catch (e) { console.error("welcome seen check failed:", e); return res.status(500).json({ enabled: true, eligible: false }); }
+  return res.status(200).json({ enabled: true, eligible: !seen, minSpend: cfg.minSpend, maxOff: cfg.maxOff });
+}
 
 const MINIMUM_DISCOUNT_SPEND = 10;
 
@@ -109,6 +130,12 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Welcome-reward eligibility check shares this endpoint (no room for a 13th
+    // function). Distinguished by action, not a code.
+    if (req.body && req.body.action === "welcome") {
+      return await handleWelcome(req, res);
+    }
+
     const { code, subtotal } = req.body || {};
     if (!code || !code.trim()) {
       return res.status(200).json({ valid: false });
