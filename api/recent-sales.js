@@ -16,7 +16,17 @@ import {
   scanKeys,
   SPEND_LOG_PREFIX,
   BADGE_SNAPSHOT_KEY,
+  badgeEmoji,
 } from "./_inventory.js";
+
+// Emoji for a badge object from either helper: badgeForSpend gives a numbered
+// badge (Champion carries n>=9), while nextBadge's Champion target has no n but
+// a champion flag.
+function emojiForBadge(b) {
+  if (!b) return "🎖";
+  if (b.champion || Number(b.n) >= 9) return "👑";
+  return badgeEmoji(b.n);
+}
 
 const redis = Redis.fromEnv();
 
@@ -103,17 +113,34 @@ New cards are released daily. Check the "Newly in stock!" row at the top of the 
 
 Still stuck? Message @fallacytcg and we'll help.`;
 
-// Shown by the "How badges work" button / /howbadges. Placeholder wording drawn
-// from the loyalty programme — replace with the final copy when ready.
-const HOW_BADGES_TEXT = `🎖 <b>How Badges Work</b>
+// Shown by the "How badges work" button / /howbadges.
+const HOW_BADGES_TEXT = `🎴 <b>how our badges work</b>
 
-Every order you pay for adds to your spend, and as it grows you unlock badges — each one earns a one-time discount voucher.
+as you shop with us, your spend earns you badges — and every badge comes with a reward 🎖
 
-• Your badge reflects what you've spent over the last 6 months.
-• Each badge gives a voucher: a percentage off, up to a set cap, to use once within 60 days.
-• Climb the ladder from Boulder all the way to Champion — every step is a new reward.
+<b>the basics</b>
+• we add up what you've spent over the last <b>6 months</b>
+• hit a milestone and you unlock that badge
+• each badge gives you a voucher — a % off, up to a set cap, single use, valid <b>60 days</b> ✨
+• badges reset if your 6-month spend slips below the tier, so keep them warm!
 
-Tap <b>My Badges</b> any time to see your current badge and how close you are to the next.`;
+<b>the ladder</b> 🪜
+🪨 boulder — $80 → 5% off (up to $8)
+💧 cascade — $200 → 8% off (up to $16)
+⚡ thunder — $400 → 10% off (up to $20)
+🌈 rainbow — $600 → 10% off (up to $20)
+💗 soul — $800 → 10% off (up to $25)
+🟡 marsh — $1,000 → 10% off (up to $25)
+🔥 volcano — $1,200 → 12% off (up to $30)
+🍃 earth — $1,400 → 12% off (up to $30)
+👑 champion — every +$250 past earth → another 12% reward
+
+<b>good to know</b>
+• jump several badges in one go? you get a voucher for each 🎁
+• each badge rewards you once, ever
+• pop your code in the cart's promo box at checkout (min $10 spend)
+
+tap 🎖 <b>my badges</b> anytime to see your badge, your vouchers, and how close you are to the next one 💛`;
 
 async function telegramCall(method, payload) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -221,12 +248,12 @@ async function badgeStatusText(userId) {
 
   let msg = "🎖 <b>Your Badges</b>\n\n";
   msg += badge
-    ? `Current badge: <b>${badge.name}</b> (Badge Tier ${badge.n})\n`
+    ? `Current badge: ${emojiForBadge(badge)} <b>${badge.name}</b> (Badge Tier ${badge.n})\n`
     : "You haven't earned a badge yet.\n";
   msg += `Spend in the last 6 months: <b>${money(windowSpend)}</b>\n`;
   if (next && next.badge) {
     const tier = next.badge.n ? ` (Badge Tier ${next.badge.n})` : "";
-    msg += `\n${money(next.needed)} more to reach <b>${next.badge.name}</b>${tier}.`;
+    msg += `\n${money(next.needed)} more to reach ${emojiForBadge(next.badge)} <b>${next.badge.name}</b>${tier}.`;
   }
 
   const vouchers = await activeVouchersFor(key);
@@ -469,9 +496,9 @@ async function runLoyaltyCron() {
     if (curN < prevN && canDM(custKey)) {
       const next = nextBadge(windowSpend);
       let text = badge
-        ? `📉 Your badge is now <b>${badge.name}</b> (Badge Tier ${badge.n}). Spend in the last 6 months: <b>${money(windowSpend)}</b>.`
+        ? `📉 Your badge is now ${emojiForBadge(badge)} <b>${badge.name}</b> (Badge Tier ${badge.n}). Spend in the last 6 months: <b>${money(windowSpend)}</b>.`
         : `📉 Your loyalty badge has lapsed — your spend in the last 6 months fell below the first badge.`;
-      if (next && next.badge) text += `\n${money(next.needed)} more to reach <b>${next.badge.name}</b>.`;
+      if (next && next.badge) text += `\n${money(next.needed)} more to reach ${emojiForBadge(next.badge)} <b>${next.badge.name}</b>.`;
       await telegramCall("sendMessage", { chat_id: String(custKey), parse_mode: "HTML", disable_web_page_preview: true, text });
       lapseNotices += 1;
     }
