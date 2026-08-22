@@ -837,6 +837,13 @@ export function badgeEmoji(n) {
 // as the card photos (raw GitHub). Every Champion tier shares the one medal.
 export const BADGE_SLUGS = { 1: "boulder", 2: "cascade", 3: "thunder", 4: "rainbow", 5: "soul", 6: "marsh", 7: "volcano", 8: "earth" };
 export const BADGE_IMAGE_BASE = "https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/badges/";
+// Telegram caches a photo by its URL forever once fetched, and raw GitHub caches
+// too — so re-rendering the art at the SAME path keeps serving the stale image.
+// This version tag is appended to every badge URL; bump it whenever the art is
+// regenerated so clients fetch the new file. (raw GitHub ignores the query and
+// serves the file; the changed URL is what busts the cache.)
+export const BADGE_ASSET_VERSION = "3";
+const BADGE_V = "?v=" + BADGE_ASSET_VERSION;
 export function badgeSlug(n) {
   const k = Number(n);
   if (k >= 9) return "champion";
@@ -844,13 +851,13 @@ export function badgeSlug(n) {
 }
 export function badgeImageUrl(n) {
   const s = badgeSlug(n);
-  return s ? BADGE_IMAGE_BASE + s + ".png" : "";
+  return s ? BADGE_IMAGE_BASE + s + ".png" + BADGE_V : "";
 }
 // The EARN banner ("NEW BADGE EARNED!") — sent in the earn-moment DM when a
 // badge is first unlocked. The bare badgeImageUrl icon is kept for admin chips.
 export function badgeBannerUrl(n) {
   const s = badgeSlug(n);
-  return s ? BADGE_IMAGE_BASE + "banner_" + s + ".png" : "";
+  return s ? BADGE_IMAGE_BASE + "banner_" + s + ".png" + BADGE_V : "";
 }
 // The STATUS banner ("BADGE UNLOCKED" + a progress bar toward the next badge) —
 // the bot's My Badges photo. The bar can't be drawn at request time, so it is
@@ -859,7 +866,7 @@ export function badgeStatusBannerUrl(n, progressPercent) {
   const s = badgeSlug(n);
   if (!s) return "";
   const bucket = Math.max(0, Math.min(100, Math.round((Number(progressPercent) || 0) / 10) * 10));
-  return BADGE_IMAGE_BASE + "status/" + s + "_p" + bucket + ".png";
+  return BADGE_IMAGE_BASE + "status/" + s + "_p" + bucket + ".png" + BADGE_V;
 }
 
 // The badge a spend qualifies for: null below Boulder, one of BADGES, or a
