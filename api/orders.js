@@ -43,6 +43,13 @@ function loyaltyTestIds() {
 // Mini App identity) — a browser "@handle" has no chat id to message. Swallows
 // its own errors so a push can never break the caller (a voucher is still
 // issued even if the notification fails).
+// Short SGT date like "22 Oct" for a voucher's expiry line in a DM.
+function fmtVoucherDate(ms) {
+  const d = new Date((Number(ms) || 0) + 8 * 3600000);
+  const mon = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getUTCMonth()];
+  return `${d.getUTCDate()} ${mon}`;
+}
+
 async function notifyTelegram(chatId, text, photoUrl) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const id = String(chatId || "");
@@ -109,7 +116,7 @@ async function issueVouchersFor(redis, ckey, handle, now = Date.now()) {
   }
   // One DM summarising every voucher this payment unlocked (Mini App users only).
   if (out.length) {
-    const lines = out.map(r => `${badgeEmoji(r.badgeN)} <b>${r.badgeName}</b> — ${r.pct}% off${r.cap ? ` (up to $${r.cap})` : ""}, valid ${VOUCHER_DAYS} days\nYour code: <code>${r.code}</code>`);
+    const lines = out.map(r => `${badgeEmoji(r.badgeN)} <b>${r.badgeName}</b> — ${r.pct}% off${r.cap ? ` (up to $${r.cap})` : ""}\nYour code: <code>${r.code}</code> (expires ${fmtVoucherDate(r.expiresAt)})`);
     // Headline the highest badge just earned with its "New badge earned!" banner.
     const top = out[out.length - 1];
     await notifyTelegram(ckey,
@@ -593,7 +600,7 @@ export default async function handler(req, res) {
         // Tell the customer their reward is waiting (numeric Telegram id + gate).
         if (/^\d+$/.test(key) && canDM(key)) {
           await notifyTelegram(key,
-            `🎉 Your loyalty reward is ready!\n\nAs a thank-you for reaching ${badgeEmoji(current.n)} <b>${current.name} Badge</b>, here's your voucher:\nYour code: <code>${code}</code>\n${current.pct}% off${current.cap ? ` (up to $${current.cap})` : ""}, valid ${VOUCHER_DAYS} days.\n\nTap the code to copy it, then use it in the cart's promo box at checkout.`,
+            `🎉 Your loyalty reward is ready!\n\nAs a thank-you for reaching ${badgeEmoji(current.n)} <b>${current.name} Badge</b>, here's your voucher:\nYour code: <code>${code}</code> (expires ${fmtVoucherDate(rec.expiresAt)})\n${current.pct}% off${current.cap ? ` (up to $${current.cap})` : ""}\n\nTap the code to copy it, then use it in the cart's promo box at checkout.`,
             badgeBannerUrl(current.n));
           notified += 1;
         }

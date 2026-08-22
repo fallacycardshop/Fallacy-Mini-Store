@@ -13,9 +13,6 @@ import {
   customerVouchersKey,
   voucherStatus,
   VOUCHERS_KEY,
-  scanKeys,
-  SPEND_LOG_PREFIX,
-  BADGE_SNAPSHOT_KEY,
   badgeEmoji,
   badgeStatusBannerUrl,
 } from "./_inventory.js";
@@ -267,7 +264,7 @@ async function badgeStatusText(userId) {
 
   const vouchers = await activeVouchersFor(key);
   if (vouchers.length) {
-    msg += "\n\n🎟 <b>Your vouchers</b>\n";
+    msg += "\n\n🎟 <b>Lifetime valid vouchers:</b>\n";
     for (const v of vouchers) {
       const cap = Number(v.cap) || 0;
       msg += `<code>${v.code}</code> — ${Number(v.pct) || 0}% off${cap ? ` (up to ${money(cap)})` : ""}, expires ${fmtVoucherDate(v.expiresAt)}\n`;
@@ -453,26 +450,23 @@ const MAX_SHOWN = 20;
 const MAX_PANEL = 20;        // expanded panel shows the same last 20
 
 // Daily loyalty maintenance, driven by a scheduler (Vercel Cron or otherwise).
-// Two idempotent jobs, both gated exactly like issuance — pre-launch, only the
-// owner's test id can receive a DM:
-//   1. Voucher expiry reminders — one nudge when a live voucher has ≤7 days
-//      left, flagged so it never repeats.
-//   2. Badge-lapse notices — when a customer's rolling-window badge drops below
-//      the last one we told them about, DM once and lower the snapshot.
-// Both loops are bounded by customer/voucher count and run once a day off the
-// hot path, so the O(1)-per-page-load rule doesn't apply here.
+// One idempotent job: voucher expiry reminders — a single nudge when a live
+// voucher has ≤7 days left, flagged so it never repeats. Gated exactly like
+// issuance (pre-launch only the owner's test id is messaged). Bounded by voucher
+// count, run once a day off the hot path.
+//
+// There is deliberately NO "your tier dropped" notice — a lapse never revokes
+// vouchers already earned, so there's nothing to warn a customer about.
 async function runLoyaltyCron() {
   const now = Date.now();
-  const windowStart = windowStartMs(now);
   const live = loyaltyLive();
   const testIds = loyaltyTestIds();
   // A DM is only possible to a numeric Telegram id, and pre-launch only to a
   // test id.
   const canDM = id => /^\d+$/.test(String(id)) && (live || testIds.has(String(id)));
 
-  let expiryReminders = 0, lapseNotices = 0;
+  let expiryReminders = 0;
 
-  // 1) Expiry reminders.
   const vraw = (await redis.hgetall(VOUCHERS_KEY)) || {};
   const SEVEN_DAYS = 7 * 86400000;
   const voucherUpdates = {};
@@ -497,37 +491,7 @@ async function runLoyaltyCron() {
   }
   if (Object.keys(voucherUpdates).length) await redis.hset(VOUCHERS_KEY, voucherUpdates);
 
-  // 2) Badge-lapse notices.
-  const snap = (await redis.hgetall(BADGE_SNAPSHOT_KEY)) || {};
-  const logKeys = await scanKeys(redis, SPEND_LOG_PREFIX + "*");
-  const snapUpdates = {};
-  for (const k of logKeys) {
-    const custKey = k.slice(SPEND_LOG_PREFIX.length);
-    const log = (await redis.hgetall(k)) || {};
-    const s = sumSpendLog(log, windowStart);
-    const adj = sumAdjust(parseAdjustEntries(await redis.hget(CUSTOMER_ADJUST_KEY, custKey)), windowStart);
-    const windowSpend = s.window + adj.window;
-    const badge = badgeForSpend(windowSpend);
-    const curN = badge ? badge.n : 0;
-    const prevN = snap[custKey] === undefined ? null : (Number(snap[custKey]) || 0);
-
-    if (prevN === null) { snapUpdates[custKey] = String(curN); continue; } // first sight — no notice
-    if (curN === prevN) continue;
-
-    if (curN < prevN && canDM(custKey)) {
-      const next = nextBadge(windowSpend);
-      let text = badge
-        ? `📉 Your badge is now ${emojiForBadge(badge)} <b>${badge.name}</b> (Badge Tier ${badge.n}). Spend in the last 6 months: <b>${money(windowSpend)}</b>.`
-        : `📉 Your loyalty badge has lapsed — your spend in the last 6 months fell below the first badge.`;
-      if (next && next.badge) text += `\n${money(next.needed)} more to reach ${emojiForBadge(next.badge)} <b>${next.badge.name}</b>.`;
-      await telegramCall("sendMessage", { chat_id: String(custKey), parse_mode: "HTML", disable_web_page_preview: true, text });
-      lapseNotices += 1;
-    }
-    snapUpdates[custKey] = String(curN); // record the change (up or down) either way
-  }
-  if (Object.keys(snapUpdates).length) await redis.hset(BADGE_SNAPSHOT_KEY, snapUpdates);
-
-  return { expiryReminders, lapseNotices, vouchers: Object.keys(vraw).length, customers: logKeys.length };
+  return { expiryReminders, vouchers: Object.keys(vraw).length };
 }
 
 export default async function handler(req, res) {
