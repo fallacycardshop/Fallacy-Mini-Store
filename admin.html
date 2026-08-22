@@ -4588,7 +4588,9 @@ async function adjustCustomerSpend(custKey, handle) {
   try {
     const data = await postSpend("adjustSpend", { custKey, delta: amt, date: dateStr.trim(), reason });
     if (!data) return;
-    spendResultEl.textContent = `Adjusted ${handle} by ${fmtMoney(amt)} (dated ${dateStr.trim() || today}).`;
+    const vn = (data.vouchers && data.vouchers.length) || 0;
+    spendResultEl.textContent = `Adjusted ${handle} by ${fmtMoney(amt)} (dated ${dateStr.trim() || today}).` +
+      (vn ? ` Crossed a tier — issued ${vn} voucher(s) and DM'd the customer.` : "");
     spendResultEl.className = "success";
     const report = await postSpend("spendReport");
     if (report) { spendRows = report.rows || []; renderSpendTable(); }
