@@ -194,7 +194,7 @@ async function issueVouchersFor(redis, ckey, handle, now = Date.now(), windowSpe
         // Entry tier (Boulder) — no voucher yet. Welcome them and point to the
         // first voucher tier.
         const next = nextBadge(windowSpend);
-        let text = `🎉 You've earned the ${badgeEmoji(statusBadge.n)} <b>${statusBadge.name} Badge</b> — welcome to our loyalty programme!`;
+        let text = `🎉 You've earned the ${badgeEmoji(statusBadge.n)} <b>${statusBadge.name} Badge</b> — welcome to Badge Rewards!`;
         if (next && next.badge && Number(next.badge.pct) > 0) {
           text += `\n\nSpend $${Number(next.needed).toFixed(2)} more to reach ${badgeEmoji(next.badge.n || 9)} <b>${next.badge.name}</b> and unlock your first voucher: ${Number(next.badge.pct)}% off (up to $${Number(next.badge.cap)}).`;
         }
