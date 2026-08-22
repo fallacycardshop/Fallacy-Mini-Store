@@ -173,11 +173,12 @@ async function badgeStatusText(userId) {
 
   let msg = "🎖 <b>Your Badges</b>\n\n";
   msg += badge
-    ? `Current badge: <b>${badge.name}</b> (#${badge.n})\n`
+    ? `Current badge: <b>${badge.name}</b> (Badge Tier ${badge.n})\n`
     : "You haven't earned a badge yet.\n";
   msg += `Spend in the last 6 months: <b>${money(windowSpend)}</b>\n`;
   if (next && next.badge) {
-    msg += `\n${money(next.needed)} more to reach <b>${next.badge.name}</b>.`;
+    const tier = next.badge.n ? ` (Badge Tier ${next.badge.n})` : "";
+    msg += `\n${money(next.needed)} more to reach <b>${next.badge.name}</b>${tier}.`;
   }
   msg += "\n\n<i>Vouchers will appear here once rewards launch.</i>";
   return msg;
