@@ -21,6 +21,8 @@ import {
   VOUCHER_DAYS,
   customerVouchersKey,
   issuedBadgesKey,
+  CUSTOMER_ALIAS_KEY,
+  resolveCustomerKey,
 } from "./_inventory.js";
 
 // Loyalty launch gate — vouchers only auto-issue once live, or for the owner's
@@ -133,7 +135,10 @@ export default async function handler(req, res) {
       if (!entry) return res.status(404).json({ error: "Order not found in the stored list." });
 
       const record = entry.record || entry;
-      const ckey = customerKey(record);
+      // Route through any identity merge so a payment for a merged secondary key
+      // credits the canonical customer's log and vouchers.
+      const aliasMap = (await redis.hgetall(CUSTOMER_ALIAS_KEY)) || {};
+      const ckey = resolveCustomerKey(aliasMap, customerKey(record));
       const amt = orderAmount(record);
       const target = !!paid;
 
@@ -184,6 +189,7 @@ export default async function handler(req, res) {
     if (action === "backfillSpend") {
       const orders = await readAllOrders();
       const paidMap = (await redis.hgetall(ORDER_PAID_KEY)) || {};
+      const aliasMap = (await redis.hgetall(CUSTOMER_ALIAS_KEY)) || {};
 
       // Rebuild each customer's dated spend log (the bot's O(1) source) from the
       // stored orders. Idempotent — it OVERWRITES each log, so running it twice
@@ -199,7 +205,7 @@ export default async function handler(req, res) {
         if (id && Object.prototype.hasOwnProperty.call(paidMap, id)) paid = String(paidMap[id]) === "1";
         else { paid = true; if (id) seededPaid[id] = "1"; }
         if (!paid) continue;
-        const ckey = customerKey(record);
+        const ckey = resolveCustomerKey(aliasMap, customerKey(record));
         const when = Number(e.savedAt) || Number(record.Order_ID) || 0;
         const amt = orderAmount(record);
         if (!logs.has(ckey)) logs.set(ckey, {});
@@ -233,7 +239,11 @@ export default async function handler(req, res) {
     // customer's lifetime spend, kept apart from organic spend (so the organic
     // figure stays verifiable) and logged with a reason for audit.
     if (action === "adjustSpend") {
-      const custKey = String((req.body || {}).custKey || "").trim();
+      const rawKey = String((req.body || {}).custKey || "").trim();
+      // If this key was merged into another, the correction belongs on the
+      // canonical customer.
+      const aliasMap = (await redis.hgetall(CUSTOMER_ALIAS_KEY)) || {};
+      const custKey = resolveCustomerKey(aliasMap, rawKey);
       const amt = Number((req.body || {}).delta);
       const reason = String((req.body || {}).reason || "").slice(0, 200);
       const dateRaw = (req.body || {}).date;
@@ -275,21 +285,35 @@ export default async function handler(req, res) {
       const orders = await readAllOrders();
       const paidMap = (await redis.hgetall(ORDER_PAID_KEY)) || {};
       const adjustMap = (await redis.hgetall(CUSTOMER_ADJUST_KEY)) || {};
+      const aliasMap = (await redis.hgetall(CUSTOMER_ALIAS_KEY)) || {};
       const windowStart = windowStartMs();
 
       // Recompute from the SAME orders + paid states Recent Orders reads, so the
       // panel reconciles with it by construction. One pass yields both the
       // cumulative (all-time) total and the rolling 6-month window figure that
       // sets badge status. This is the ONE place spend and badge are derived.
-      const { byCustomer } = aggregateSpend(orders, paidMap, windowStart);
+      // aliasMap folds a merged secondary identity's orders onto its primary.
+      const { byCustomer } = aggregateSpend(orders, paidMap, windowStart, aliasMap);
 
-      const keys = new Set([...byCustomer.keys(), ...Object.keys(adjustMap)]);
+      // Adjustments are physically moved onto the primary at merge time, but fold
+      // by canonical here too so a correction written before a merge still lands
+      // on the right row.
+      const adjustByCanon = new Map(); // canonKey -> { cumulative, window }
+      for (const [k, raw] of Object.entries(adjustMap)) {
+        const canon = resolveCustomerKey(aliasMap, k);
+        const a = sumAdjust(parseAdjustEntries(raw), windowStart);
+        const cur = adjustByCanon.get(canon) || { cumulative: 0, window: 0 };
+        cur.cumulative += a.cumulative; cur.window += a.window;
+        adjustByCanon.set(canon, cur);
+      }
+
+      const keys = new Set([...byCustomer.keys(), ...adjustByCanon.keys()]);
       const rows = [];
       for (const key of keys) {
         const c = byCustomer.get(key);
         // Dated manual corrections: the all-time sum moves the cumulative total,
         // and any entry dated inside the window moves window spend (and badge).
-        const adj = sumAdjust(parseAdjustEntries(adjustMap[key]), windowStart);
+        const adj = adjustByCanon.get(key) || { cumulative: 0, window: 0 };
         const cumulative = Number(((c ? c.spend : 0) + adj.cumulative).toFixed(2));
         const windowSpend = Number(((c ? c.windowSpend : 0) + adj.window).toFixed(2));
         const orderCount = c ? c.orders : 0;
@@ -371,6 +395,76 @@ export default async function handler(req, res) {
         if (v.badgeN !== undefined && v.badgeN !== null) await redis.srem(issuedBadgesKey(v.customer), String(v.badgeN));
       }
       return res.status(200).json({ ok: true, code });
+    }
+
+    // --------------------------------------------------------- mergeCustomers
+    // Combine two customer identities (the numeric Telegram id from the Mini App
+    // and the "@username" from a browser are the same person). The mutable data
+    // is physically moved onto the primary, and an alias folds the immutable
+    // order history and routes any future orders — see resolveCustomerKey.
+    //
+    // Direction matters: the bot keys badges off the numeric Telegram id, so the
+    // caller should pass that as `into`. Idempotent — merging an already-merged
+    // pair is a no-op.
+    if (action === "mergeCustomers") {
+      const fromRaw = String((req.body || {}).from || "").trim();
+      const intoRaw = String((req.body || {}).into || "").trim();
+      if (!fromRaw || !intoRaw) return res.status(400).json({ error: "Provide both a 'from' and an 'into' customer key." });
+
+      const aliasMap = (await redis.hgetall(CUSTOMER_ALIAS_KEY)) || {};
+      const into = resolveCustomerKey(aliasMap, intoRaw); // canonical primary (kept)
+      const from = resolveCustomerKey(aliasMap, fromRaw); // canonical secondary (folded in)
+      if (into === from) {
+        return res.status(200).json({ ok: true, merged: false, canonical: into, note: "Already the same identity." });
+      }
+
+      // 1) Spend log — Order_IDs are globally unique, so fields never collide.
+      const logFrom = (await redis.hgetall(spendLogKey(from))) || {};
+      if (Object.keys(logFrom).length) await redis.hset(spendLogKey(into), logFrom);
+      await redis.del(spendLogKey(from));
+
+      // 2) Adjustments — concat the two dated arrays under the primary.
+      const adjFrom = parseAdjustEntries(await redis.hget(CUSTOMER_ADJUST_KEY, from));
+      if (adjFrom.length) {
+        const adjInto = parseAdjustEntries(await redis.hget(CUSTOMER_ADJUST_KEY, into));
+        await redis.hset(CUSTOMER_ADJUST_KEY, { [into]: JSON.stringify(adjInto.concat(adjFrom)) });
+      }
+      await redis.hdel(CUSTOMER_ADJUST_KEY, from);
+
+      // 3) Issued-badge set — union, so a badge earned under either key stays
+      //    "already issued" and can't pay out a second voucher.
+      const badgesFrom = (await redis.smembers(issuedBadgesKey(from))) || [];
+      if (badgesFrom.length) await redis.sadd(issuedBadgesKey(into), ...badgesFrom);
+      await redis.del(issuedBadgesKey(from));
+
+      // 4) Vouchers — move each code to the primary's set and re-point its record.
+      const vouchersFrom = (await redis.smembers(customerVouchersKey(from))) || [];
+      for (const code of vouchersFrom) {
+        const raw = await redis.hget(VOUCHERS_KEY, code);
+        if (raw) {
+          let v = null;
+          try { v = typeof raw === "string" ? JSON.parse(raw) : raw; } catch (e) { v = null; }
+          if (v) { v.customer = into; await redis.hset(VOUCHERS_KEY, { [code]: JSON.stringify(v) }); }
+        }
+        await redis.sadd(customerVouchersKey(into), code);
+      }
+      await redis.del(customerVouchersKey(from));
+
+      // 5) Record the alias, and re-point anything that previously aliased TO
+      //    `from` so the chain stays one hop deep.
+      const repoint = { [from]: into };
+      for (const [k, val] of Object.entries(aliasMap)) {
+        if (String(val) === from) repoint[k] = into;
+      }
+      await redis.hset(CUSTOMER_ALIAS_KEY, repoint);
+
+      // The combined window spend may now cross a badge neither identity reached
+      // alone — issue those vouchers (leapfrog, once-ever, gated + wrapped).
+      let vouchers = [];
+      try { vouchers = await issueVouchersFor(redis, into, into); }
+      catch (e) { console.error("merge voucher issuance failed:", e); }
+
+      return res.status(200).json({ ok: true, merged: true, from, into, movedVouchers: vouchersFrom.length, vouchers });
     }
 
     // ------------------------------------------------------- default: read --

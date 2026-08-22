@@ -712,6 +712,33 @@ export function orderHandle(record) {
   return id ? "TG:" + id : UNATTRIBUTED_KEY;
 }
 
+// ---------------------------------------------------------------------------
+// Manual identity merge. The SAME person can hold two customer keys — the
+// numeric Telegram id (Mini App) and the "@username" (browser) — so their
+// orders, badge and vouchers split across two rows. This one hash aliases a
+// secondary key to its canonical primary; every place a customer key is derived
+// for spend/badge/vouchers resolves through it, folding the two into one
+// identity. One key, one HGETALL — O(1), no per-order lookup.
+//
+// The mutable data (spend log, adjustments, voucher sets) is physically moved
+// onto the primary at merge time; the alias is what folds the IMMUTABLE order
+// history and routes any future orders from the secondary identity to the
+// primary's log. Both are needed — see api/orders.js `mergeCustomers`.
+export const CUSTOMER_ALIAS_KEY = "customer:aliases"; // hash: secondaryKey -> primaryKey
+
+// Follow the alias chain to the canonical key. Guards against a cycle (returns
+// where it started looping) and a self-alias, so a malformed map can never spin.
+export function resolveCustomerKey(aliasMap, key) {
+  const map = aliasMap || {};
+  let k = String(key);
+  const seen = new Set();
+  while (map[k] !== undefined && map[k] !== null && map[k] !== "" && String(map[k]) !== k && !seen.has(k)) {
+    seen.add(k);
+    k = String(map[k]);
+  }
+  return k;
+}
+
 // Total is a display string like "$50.67" (occasionally with a thousands comma).
 // Parse to a number; a blank or unparseable value yields 0 so it can never
 // NaN-poison a running sum.
@@ -731,7 +758,7 @@ export function orderAmount(record) {
 // order:paid entry — returning them in `seededPaid` so the backfill can credit
 // each exactly once and write the explicit "1". New orders carry an explicit
 // "0" from confirm time, so "no entry" unambiguously means "historical".
-export function aggregateSpend(orderEntries, paidMap, windowStart = 0) {
+export function aggregateSpend(orderEntries, paidMap, windowStart = 0, aliasMap = null) {
   const map = paidMap || {};
   const byCustomer = new Map();
   const seededPaid = {};
@@ -747,7 +774,9 @@ export function aggregateSpend(orderEntries, paidMap, windowStart = 0) {
       if (id) seededPaid[id] = "1";
     }
     if (!paid) continue;
-    const key = customerKey(record);
+    // Fold a merged secondary identity onto its canonical primary, so both
+    // sets of orders roll up into one badge/spend row.
+    const key = resolveCustomerKey(aliasMap, customerKey(record));
     const amt = orderAmount(record);
     const when = Number(entry && entry.savedAt) || Number(record.Order_ID) || 0;
     const cur = byCustomer.get(key) ||
