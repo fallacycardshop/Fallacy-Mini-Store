@@ -23,6 +23,7 @@ import {
   issuedBadgesKey,
   CUSTOMER_ALIAS_KEY,
   resolveCustomerKey,
+  badgeEmoji,
 } from "./_inventory.js";
 
 // Loyalty launch gate — vouchers only auto-issue once live, or for the owner's
@@ -83,7 +84,7 @@ async function issueVouchersFor(redis, ckey, handle, now = Date.now()) {
   }
   // One DM summarising every voucher this payment unlocked (Mini App users only).
   if (out.length) {
-    const lines = out.map(r => `🎖 <b>${r.badgeName}</b> — <code>${r.code}</code>, ${r.pct}% off${r.cap ? ` (up to $${r.cap})` : ""}, valid ${VOUCHER_DAYS} days.`);
+    const lines = out.map(r => `${badgeEmoji(r.badgeN)} <b>${r.badgeName}</b> — <code>${r.code}</code>, ${r.pct}% off${r.cap ? ` (up to $${r.cap})` : ""}, valid ${VOUCHER_DAYS} days.`);
     await notifyTelegram(ckey,
       `Congrats! You've unlocked a new reward:\n\n${lines.join("\n")}\n\nEnter the code in the cart's promo box, or tap 🎖 My Badges.`);
   }

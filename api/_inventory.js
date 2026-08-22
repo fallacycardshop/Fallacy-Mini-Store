@@ -822,6 +822,17 @@ export const BADGES = [
 // Beyond Earth: a fresh Champion badge every +$250, without limit.
 export const CHAMPION = { step: 250, pct: 12, cap: 30, color: "#caa63a" };
 
+// Emoji that stands in for each badge inside a Telegram message (a bot message
+// is plain text — a custom image can't sit inline, so these are the inline mark
+// that pairs with the name). Chosen to match the painted badge art: rock, drop,
+// bolt, rainbow, heart, gold disc, flame, leaf; crown for every Champion tier.
+export const BADGE_EMOJI = { 1: "🪨", 2: "💧", 3: "⚡", 4: "🌈", 5: "💗", 6: "🟡", 7: "🔥", 8: "🍃" };
+export function badgeEmoji(n) {
+  const k = Number(n);
+  if (k >= 9) return "👑"; // Champion and beyond
+  return BADGE_EMOJI[k] || "🎖";
+}
+
 // The badge a spend qualifies for: null below Boulder, one of BADGES, or a
 // Champion tier ($1,650, $1,900, …). Champion tier k is badge number 8+k.
 export function badgeForSpend(spend) {
