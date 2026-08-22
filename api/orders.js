@@ -43,6 +43,13 @@ function loyaltyTestIds() {
 // Mini App identity) — a browser "@handle" has no chat id to message. Swallows
 // its own errors so a push can never break the caller (a voucher is still
 // issued even if the notification fails).
+// Short SGT date like "22 Oct" for a voucher's expiry line in a DM.
+function fmtVoucherDate(ms) {
+  const d = new Date((Number(ms) || 0) + 8 * 3600000);
+  const mon = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getUTCMonth()];
+  return `${d.getUTCDate()} ${mon}`;
+}
+
 async function notifyTelegram(chatId, text, photoUrl) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const id = String(chatId || "");
@@ -91,6 +98,19 @@ async function issueVouchersFor(redis, ckey, handle, now = Date.now()) {
   const earned = earnedBadges(windowSpend);
   if (!earned.length) return [];
   const issued = new Set((await redis.smembers(issuedBadgesKey(ckey))) || []);
+  // Belt-and-suspenders against duplicates: a badge the customer ALREADY HOLDS a
+  // voucher for counts as issued too, so even a desynced issued-set can never
+  // mint a second voucher for the same badge. (One voucher per badge, ever.)
+  const heldCodes = (await redis.smembers(customerVouchersKey(ckey))) || [];
+  if (heldCodes.length) {
+    const raws = await redis.hmget(VOUCHERS_KEY, ...heldCodes);
+    const arr = Array.isArray(raws) ? raws : heldCodes.map(c => raws && raws[c]);
+    arr.forEach(raw => {
+      if (!raw) return;
+      let v; try { v = typeof raw === "string" ? JSON.parse(raw) : raw; } catch (e) { return; }
+      if (v && v.badgeN !== undefined && v.badgeN !== null) issued.add(String(v.badgeN));
+    });
+  }
   const toIssue = earned.filter(b => !issued.has(String(b.n)));
   const out = [];
   for (const b of toIssue) {
@@ -109,7 +129,7 @@ async function issueVouchersFor(redis, ckey, handle, now = Date.now()) {
   }
   // One DM summarising every voucher this payment unlocked (Mini App users only).
   if (out.length) {
-    const lines = out.map(r => `${badgeEmoji(r.badgeN)} <b>${r.badgeName}</b> — ${r.pct}% off${r.cap ? ` (up to $${r.cap})` : ""}, valid ${VOUCHER_DAYS} days\nYour code: <code>${r.code}</code>`);
+    const lines = out.map(r => `${badgeEmoji(r.badgeN)} <b>${r.badgeName}</b> — ${r.pct}% off${r.cap ? ` (up to $${r.cap})` : ""}\nYour code: <code>${r.code}</code> (expires ${fmtVoucherDate(r.expiresAt)})`);
     // Headline the highest badge just earned with its "New badge earned!" banner.
     const top = out[out.length - 1];
     await notifyTelegram(ckey,
@@ -593,7 +613,7 @@ export default async function handler(req, res) {
         // Tell the customer their reward is waiting (numeric Telegram id + gate).
         if (/^\d+$/.test(key) && canDM(key)) {
           await notifyTelegram(key,
-            `🎉 Your loyalty reward is ready!\n\nAs a thank-you for reaching ${badgeEmoji(current.n)} <b>${current.name} Badge</b>, here's your voucher:\nYour code: <code>${code}</code>\n${current.pct}% off${current.cap ? ` (up to $${current.cap})` : ""}, valid ${VOUCHER_DAYS} days.\n\nTap the code to copy it, then use it in the cart's promo box at checkout.`,
+            `🎉 Your loyalty reward is ready!\n\nAs a thank-you for reaching ${badgeEmoji(current.n)} <b>${current.name} Badge</b>, here's your voucher:\nYour code: <code>${code}</code> (expires ${fmtVoucherDate(rec.expiresAt)})\n${current.pct}% off${current.cap ? ` (up to $${current.cap})` : ""}\n\nTap the code to copy it, then use it in the cart's promo box at checkout.`,
             badgeBannerUrl(current.n));
           notified += 1;
         }
@@ -627,6 +647,53 @@ export default async function handler(req, res) {
       }
       if (ids.size) await redis.sadd(WELCOME_SEEN_KEY, ...ids);
       return res.status(200).json({ ok: true, excluded: ids.size });
+    }
+
+    // --------------------------------------------------------- dedupeVouchers
+    // Cleanup for historical duplicates (one badge should only ever have one
+    // voucher). Groups every voucher by customer + badge and, for any group with
+    // more than one, keeps a single voucher — a USED one first (a real
+    // redemption), otherwise the one that stays valid longest — and removes the
+    // rest. Then makes sure each kept badge is in the customer's issued-badge set
+    // so the once-ever lock covers it. Idempotent.
+    if (action === "dedupeVouchers") {
+      const raw = (await redis.hgetall(VOUCHERS_KEY)) || {};
+      const groups = new Map(); // `${customer} ${badgeN}` -> [{code, v}]
+      for (const [code, val] of Object.entries(raw)) {
+        let v;
+        try { v = typeof val === "string" ? JSON.parse(val) : val; } catch (e) { continue; }
+        if (!v || !v.customer || v.badgeN === undefined || v.badgeN === null) continue;
+        const gk = v.customer + " " + v.badgeN;
+        if (!groups.has(gk)) groups.set(gk, []);
+        groups.get(gk).push({ code, v });
+      }
+      let removed = 0;
+      const keptByCustomer = new Map(); // customer -> Set(badgeN)
+      for (const [gk, list] of groups) {
+        const customer = gk.slice(0, gk.indexOf(" "));
+        list.sort((a, b) => {
+          const au = (a.v.status === "used" || a.v.usedAt) ? 1 : 0;
+          const bu = (b.v.status === "used" || b.v.usedAt) ? 1 : 0;
+          if (au !== bu) return bu - au;                                  // used first
+          const ax = Number(a.v.expiresAt) || 0, bx = Number(b.v.expiresAt) || 0;
+          if (ax !== bx) return bx - ax;                                  // longest-valid next
+          return (Number(a.v.issuedAt) || 0) - (Number(b.v.issuedAt) || 0); // earliest issued
+        });
+        const keep = list[0];
+        if (!keptByCustomer.has(customer)) keptByCustomer.set(customer, new Set());
+        keptByCustomer.get(customer).add(String(keep.v.badgeN));
+        for (let i = 1; i < list.length; i++) {
+          await redis.hdel(VOUCHERS_KEY, list[i].code);
+          await redis.srem(customerVouchersKey(customer), list[i].code);
+          removed += 1;
+        }
+      }
+      // Ensure the once-ever lock covers every kept badge (never removes entries —
+      // a backdated customer may hold lock entries with no voucher on purpose).
+      for (const [customer, badges] of keptByCustomer) {
+        if (badges.size) await redis.sadd(issuedBadgesKey(customer), ...badges);
+      }
+      return res.status(200).json({ ok: true, removed, customers: keptByCustomer.size });
     }
 
     // ------------------------------------------------------- default: read --
