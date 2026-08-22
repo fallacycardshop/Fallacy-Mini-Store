@@ -722,8 +722,8 @@
   .cust-key { font-size: 10px; color: #999; font-variant-numeric: tabular-nums; margin-top: 1px; cursor: help; }
   .badge-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; border-radius: 999px; padding: 2px 8px 2px 6px; white-space: nowrap; border: 1px solid transparent; }
   .badge-chip svg { display: block; flex: 0 0 auto; }
-  .spend-adjust { font-size: 11px; padding: 3px 8px; border: 1px solid #ccc; background: #fff; border-radius: 6px; cursor: pointer; color: #333; }
-  .spend-adjust:hover { background: #f3f3f3; }
+  .spend-adjust, .spend-merge { font-size: 11px; padding: 3px 8px; border: 1px solid #ccc; background: #fff; border-radius: 6px; cursor: pointer; color: #333; white-space: nowrap; }
+  .spend-adjust:hover, .spend-merge:hover { background: #f3f3f3; }
   .order-head { font-size: 14px; font-weight: 700; }
   .order-meta { font-size: 12px; color: #777; margin: 3px 0 8px; }
   .order-block pre {
@@ -4453,7 +4453,7 @@ function renderSpendTable() {
               <td class="num">${r.orders}</td>
               <td class="num">${fmtMoney(r.aov)}</td>
               <td class="num">${fmtSpendDate(r.lastOrder)}</td>
-              <td class="num"><button class="spend-adjust" data-key="${escapeHtml(r.key)}" data-handle="${escapeHtml(r.handle)}">Adjust</button></td>
+              <td class="num"><button class="spend-adjust" data-key="${escapeHtml(r.key)}" data-handle="${escapeHtml(r.handle)}">Adjust</button> <button class="spend-merge" data-key="${escapeHtml(r.key)}" data-handle="${escapeHtml(r.handle)}">Merge…</button></td>
             </tr>`).join("")}
         </tbody>
       </table>
@@ -4471,6 +4471,54 @@ function renderSpendTable() {
   spendReportEl.querySelectorAll(".spend-adjust").forEach(btn => {
     btn.onclick = () => adjustCustomerSpend(btn.dataset.key, btn.dataset.handle);
   });
+
+  spendReportEl.querySelectorAll(".spend-merge").forEach(btn => {
+    btn.onclick = () => mergeCustomerSpend(btn.dataset.key, btn.dataset.handle);
+  });
+}
+
+// Combine two customer identities — the numeric Telegram id (Mini App) and the
+// "@username" (browser) are often the same person, split across two rows. The
+// primary is oriented to the numeric Telegram id when possible, because the bot
+// keys badges off that; all spend, badges and vouchers fold onto it.
+async function mergeCustomerSpend(rowKey, rowHandle) {
+  const other = prompt(
+    `Combine another identity into ${rowHandle}.\n\nThis row's key: ${rowKey}\n\n` +
+    `Enter the OTHER customer key to fold in — copy it from the small grey key under a row (a Telegram id or an @handle):`,
+    ""
+  );
+  if (other === null) return;
+  const o = other.trim();
+  if (!o) return;
+  if (o === rowKey) { alert("That's the same key as this row."); return; }
+
+  // Keep the numeric Telegram id as the primary so the Mini App bot reads the
+  // combined badge. If exactly one side is all-digits, that side wins.
+  const isId = k => /^\d+$/.test(k);
+  let into = rowKey, from = o;
+  if (isId(o) && !isId(rowKey)) { into = o; from = rowKey; }
+
+  if (!confirm(
+    `Combine  ${from}  →  ${into}\n\n` +
+    `${into} keeps all spend, badges and vouchers from both. ${from} stops appearing as a separate customer, and its future orders count toward ${into}.\n\n` +
+    `Proceed?`
+  )) return;
+
+  spendResultEl.textContent = "Merging…";
+  spendResultEl.className = "";
+  try {
+    const data = await postSpend("mergeCustomers", { from, into });
+    if (!data) return;
+    spendResultEl.textContent = data.merged === false
+      ? `Already one identity (${data.canonical}).`
+      : `Merged ${from} into ${into}.${data.vouchers && data.vouchers.length ? ` Issued ${data.vouchers.length} new voucher(s) from the combined spend.` : ""}`;
+    spendResultEl.className = "success";
+    const report = await postSpend("spendReport");
+    if (report) { spendRows = report.rows || []; renderSpendTable(); }
+  } catch (e) {
+    spendResultEl.textContent = "Network error — please try again.";
+    spendResultEl.className = "error";
+  }
 }
 
 // Manual lifetime correction — the escape hatch for spend that can't be

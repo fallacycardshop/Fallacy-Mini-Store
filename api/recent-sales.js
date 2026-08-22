@@ -8,6 +8,8 @@ import {
   windowStartMs,
   badgeForSpend,
   nextBadge,
+  CUSTOMER_ALIAS_KEY,
+  resolveCustomerKey,
 } from "./_inventory.js";
 
 const redis = Redis.fromEnv();
@@ -170,7 +172,11 @@ function money(n) { return "$" + (Number(n) || 0).toFixed(2); }
 // orders list. Figures use the same window + badge helpers the admin panel does,
 // so the two agree.
 async function badgeStatusText(userId) {
-  const key = String(userId || "");
+  // If this Telegram identity was merged into another, read the canonical
+  // customer's spend so the bot shows the combined badge. Normally the numeric
+  // Telegram id is the primary, so this is a cheap no-op resolve.
+  const aliasMap = (await redis.hgetall(CUSTOMER_ALIAS_KEY)) || {};
+  const key = resolveCustomerKey(aliasMap, String(userId || ""));
   const windowStart = windowStartMs();
   const log = key ? (await redis.hgetall(spendLogKey(key))) || {} : {};
   const s = sumSpendLog(log, windowStart);

@@ -100,6 +100,10 @@ runtime:
 - `stats:lifetime` — hash: hand-entered shopfront proof figures
 - `restock:counts` — hash: how many times each listing has been restocked
 - `audit:adjustments` — hash: manual audit corrections, with a reason
+- `customer:aliases` — hash: secondary customer key → canonical primary, so the
+  same person's two identities (numeric Telegram id + browser `@handle`) fold
+  into one badge/spend/voucher row. Resolve every customer key through
+  `resolveCustomerKey` before reading/writing spend.
 
 Note that each multi-item feature uses **one** key holding a JSON object, not
 one key per item. That is deliberate: one key per hidden card or per scheduled
