@@ -71,9 +71,14 @@ export default async function handler(req, res) {
     // admin page. Two commands per order (never per page load).
     try {
       if (record && typeof record === "object") {
+        // Store the reserved items (key + quantity) alongside the record — the
+        // exact set that just incremented the sold counters. An admin deleting
+        // the order uses these to return that stock to the store (deleteOrder in
+        // api/orders.js); orders placed before this fall back to the paste block.
+        const soldItems = items.map(it => ({ key: it.key, quantity: Number(it.quantity) || 0 }));
         await redis.lpush(
           "orders",
-          JSON.stringify({ savedAt: Date.now(), record })
+          JSON.stringify({ savedAt: Date.now(), record, items: soldItems })
         );
         await redis.ltrim("orders", 0, MAX_STORED_ORDERS - 1);
 
@@ -160,6 +165,10 @@ export default async function handler(req, res) {
           name: (group && group.name) || item.name || item.key,
           set: (group && group.set) || "",
           timestamp: now,
+          // Stamp the order id so an admin who deletes an order can also pull
+          // that order's cards out of the recent-sales ticker (see deleteOrder
+          // in api/orders.js). Older entries predate this and carry no id.
+          orderId: String((record && record.Order_ID) || ""),
         });
       });
 

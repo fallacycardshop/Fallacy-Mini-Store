@@ -706,6 +706,9 @@
   }
   .pay-toggle:hover { background: #f3f3f3; }
   .pay-toggle:disabled { opacity: .6; cursor: default; }
+  .order-del { border-color: #e0b4b4; color: #b3261e; }
+  .order-del:hover { background: #fdecea; }
+  .del-restore-lbl { margin-left: auto; font-size: 11px; color: #555; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
   /* Customer Spend panel */
   .spend-caveat { font-size: 12px; color: #8a5a1a; background: #fff6e9; border-radius: 8px; padding: 8px 10px; }
   .spend-totals { font-size: 13px; font-weight: 600; margin: 8px 0; color: #444; }
@@ -4320,6 +4323,8 @@ function renderOrdersBody() {
             <button class="pay-toggle" data-pay-id="${escapeHtml(oid)}" data-pay-target="${paid ? "0" : "1"}">
               ${paid ? "Mark unpaid" : "Mark paid — credit spend"}
             </button>
+            <label class="del-restore-lbl" title="Return this order's cards to stock when deleting"><input type="checkbox" class="del-restore" checked> restore stock</label>
+            <button class="pay-toggle order-del" data-del-id="${escapeHtml(oid)}" title="Remove this order and pull its cards from the recent-sales ticker">Delete</button>
           </div>
           <div class="order-meta">
             saved ${new Date(entry.savedAt).toLocaleString("en-SG", { dateStyle: "medium", timeStyle: "short" })}<br>
@@ -4397,6 +4402,74 @@ function renderOrdersBody() {
           window.__orderPaid = window.__orderPaid || {};
           window.__orderPaid[id] = target ? "1" : "0";
           renderOrdersBody(); // redraws this order (and the awaiting count) in place
+        } catch (e) {
+          ordersResultEl.textContent = "Network error — please try again.";
+          ordersResultEl.className = "error";
+          btn.disabled = false;
+          btn.textContent = prev;
+        }
+      };
+    });
+
+    // Permanently delete an order: removes it from the stored list AND pulls its
+    // cards from the storefront's recent-sales ticker (see deleteOrder in
+    // api/orders.js). Stock is not restored.
+    ordersListEl.querySelectorAll(".order-del").forEach(btn => {
+      btn.onclick = async () => {
+        const id = btn.dataset.delId;
+        const key = ordersPassphraseEl.value.trim();
+        if (!key) {
+          ordersResultEl.textContent = "Enter the passphrase first, then delete.";
+          ordersResultEl.className = "error";
+          return;
+        }
+        const restoreEl = btn.closest(".pay-row") && btn.closest(".pay-row").querySelector(".del-restore");
+        const restore = restoreEl ? restoreEl.checked : true;
+        const msg = restore
+          ? `Delete order #${id}?\n\nThis removes it from the orders list, pulls its cards from the storefront's recent-sales ticker, and RESTORES its cards to stock (they'll show as available again). This cannot be undone.`
+          : `Delete order #${id}?\n\nThis removes it from the orders list and pulls its cards from the recent-sales ticker. Stock will NOT be restored. This cannot be undone.`;
+        if (!window.confirm(msg)) return;
+        const prev = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "Deleting…";
+        try {
+          const res = await fetch("/api/orders", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key, action: "deleteOrder", orderId: id, restoreStock: restore }),
+          });
+          const raw = await res.text();
+          let data;
+          try {
+            data = JSON.parse(raw);
+          } catch (e) {
+            ordersResultEl.textContent = raw.trim().startsWith("<")
+              ? `The /api/orders endpoint isn't deployed (HTTP ${res.status}).`
+              : `Unexpected response from the server (HTTP ${res.status}).`;
+            ordersResultEl.className = "error";
+            btn.disabled = false;
+            btn.textContent = prev;
+            return;
+          }
+          if (!res.ok) {
+            ordersResultEl.textContent = data.error || `Couldn't delete the order (HTTP ${res.status}).`;
+            ordersResultEl.className = "error";
+            btn.disabled = false;
+            btn.textContent = prev;
+            return;
+          }
+          // Drop it locally and redraw, then report (renderOrders sets its own
+          // summary line, so overwrite it afterwards).
+          window.__allOrders = (window.__allOrders || []).filter(e => String((e.record || {}).Order_ID || "") !== String(id));
+          if (window.__orderPaid) delete window.__orderPaid[id];
+          renderOrders();
+          const n = Number(data.removedRecentSales) || 0;
+          const rc = Number(data.restoredCards) || 0;
+          const bits = [];
+          if (rc) bits.push(`restored ${rc} card${rc === 1 ? "" : "s"} to stock`);
+          if (n) bits.push(`removed ${n} from the ticker`);
+          ordersResultEl.textContent = `Deleted order #${id}${bits.length ? " — " + bits.join(" · ") : ""}.`;
+          ordersResultEl.className = "success";
         } catch (e) {
           ordersResultEl.textContent = "Network error — please try again.";
           ordersResultEl.className = "error";
