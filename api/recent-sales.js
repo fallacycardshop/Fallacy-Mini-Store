@@ -120,20 +120,20 @@ Still stuck? Message @fallacytcg and we'll help.`;
 // Shown by the "How badges work" button / /howbadges.
 const HOW_BADGES_TEXT = `🎴 <b>Fallacy Badge Rewards</b> 🎖
 
-Every purchase from our Mini Store earns you Badges — and each Badge comes with its own reward voucher. The more you collect, the more you save 💛
+Every purchase from our Mini Store earns you Badges — and each Badge comes with its own reward voucher. The more you collect, the more you save!
 
 🎁 <b>Welcome Reward — for ALL new &amp; existing customers</b>
 • spend $30+ and get <b>$3 off</b>, applied automatically in your cart
 • one-time per customer · min spend $30
-• ONLY applicable for purchases made through our Mini App — click on the button beside the chat box to launch
+• Mini App only — click the button beside the chat box to launch
 
 🏅 <b>How Badges work</b>
 • your very first purchase enrols you in 🪨 <b>Boulder</b> tier — you're in! (your Welcome Reward order counts as spend too)
-• from there, your lifetime spend unlocks higher Badges, each with a voucher
-• Badges are yours to keep — your tier never drops
+• from there, your lifetime spend unlocks higher Badges, each with its own voucher
 • vouchers last 60 days, single-use, min $10 spend to redeem
+• Badges are yours to keep — lifetime, your tier never drops
 
-<b>Badge Tiers</b> — spend to earn a voucher, redeem it on a later order
+<b>The Badge Tiers</b> (spend to earn a voucher — redeem it on a later order)
 🪨 Boulder — any purchase → you're in!
 💧 Cascade — spend $80 from Boulder → earn a 5% voucher (up to $8)
 ⚡️ Thunder — spend $120 from Cascade → earn an 8% voucher (up to $16)
@@ -142,13 +142,13 @@ Every purchase from our Mini Store earns you Badges — and each Badge comes wit
 🟡 Marsh — spend $200 from Soul → earn a 10% voucher (up to $25)
 🔥 Volcano — spend $200 from Marsh → earn a 10% voucher (up to $25)
 🍃 Earth — spend $200 from Volcano → earn a 12% voucher (up to $30)
-👑 Champion — every +$250 past Earth → a 12% voucher (up to $30), unlimited ♾️
+👑 Champion — every +$250 past Earth → a 12% voucher (up to $30) every time! (♾️ unlimited)
 
-<b>Good to know</b>
-• jump several Tiers in one order? you get a voucher for EACH Badge unlocked 🎁
-• been shopping with us already? you'll receive vouchers for every Tier you've reached — ready to use
-• each Badge unlocks its voucher once; Tiers are lifetime and never drop
-• to redeem: pop your code into your Mini Store cart's promo box at checkout (min $10 spend). the welcome reward can't be combined with a voucher
+❓ <b>Good to know</b>
+• jump several Tiers in one order? you get a voucher for EACH Badge unlocked
+• been shopping with us already? we backdate your rewards — a stack of vouchers for every Tier your spend has already reached, ready to use
+• to redeem: copy your code into the Mini Store promo box at checkout (min $10 spend)
+• badge vouchers can't be stacked with your welcome reward — use your welcome reward first
 
 <b>Track your progress</b> — Tap on the buttons below:
 🎖 <b>My Badges</b> — your tier, spend &amp; vouchers
