@@ -124,7 +124,7 @@ Every purchase from our Mini Store earns you Badges — and each Badge comes wit
 
 🎁 <b>Welcome Reward — for ALL new &amp; existing customers</b>
 • spend $30+ and get <b>$3 off</b>, applied automatically in your cart
-• one-time per customer, on your next order
+• one-time per customer · min spend $30
 • ONLY applicable for purchases made through our Mini App — click on the button beside the chat box to launch
 
 🏅 <b>How Badges work</b>
@@ -133,16 +133,16 @@ Every purchase from our Mini Store earns you Badges — and each Badge comes wit
 • Badges are yours to keep — your tier never drops
 • vouchers last 60 days, single-use, min $10 spend to redeem
 
-<b>Badge Tiers</b>
+<b>Badge Tiers</b> — spend to earn a voucher, redeem it on a later order
 🪨 Boulder — any purchase → you're in!
-💧 Cascade — next $80 from Boulder → 5% off (up to $8)
-⚡️ Thunder — next $120 from Cascade → 8% off (up to $16)
-🌈 Rainbow — next $200 from Thunder → 10% off (up to $20)
-💗 Soul — next $200 from Rainbow → 10% off (up to $20)
-🟡 Marsh — next $200 from Soul → 10% off (up to $25)
-🔥 Volcano — next $200 from Marsh → 10% off (up to $25)
-🍃 Earth — next $200 from Volcano → 12% off (up to $30)
-👑 Champion — every +$250 past Earth → 12% off (up to $30)
+💧 Cascade — spend $80 from Boulder → earn a 5% voucher (up to $8)
+⚡️ Thunder — spend $120 from Cascade → earn an 8% voucher (up to $16)
+🌈 Rainbow — spend $200 from Thunder → earn a 10% voucher (up to $20)
+💗 Soul — spend $200 from Rainbow → earn a 10% voucher (up to $20)
+🟡 Marsh — spend $200 from Soul → earn a 10% voucher (up to $25)
+🔥 Volcano — spend $200 from Marsh → earn a 10% voucher (up to $25)
+🍃 Earth — spend $200 from Volcano → earn a 12% voucher (up to $30)
+👑 Champion — every +$250 past Earth → a 12% voucher (up to $30), unlimited ♾️
 
 <b>Good to know</b>
 • jump several Tiers in one order? you get a voucher for EACH Badge unlocked 🎁
