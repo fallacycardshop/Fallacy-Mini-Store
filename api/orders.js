@@ -230,6 +230,31 @@ function progressMessage(amt, windowSpend) {
   return { text, photo: badgeProgressBannerUrl(badge.n, pct) };
 }
 
+// Preview of the DM a payment produces, picking the SAME branch markPaid would:
+// if it crosses a new voucher tier the buyer gets the "New Badge Unlocked" earn
+// message (banner + one voucher line per newly-crossed tier); otherwise the
+// "Badge Progressed" status message. `spendBefore`/`spendAfter` are the lifetime
+// spend without / with this order credited. The voucher CODE is only minted when
+// the order is actually marked paid, so it's shown masked here.
+function paidDmPreview(purchase, spendBefore, spendAfter) {
+  const before = new Set(earnedBadges(spendBefore).map(b => b.n));
+  const newTiers = earnedBadges(spendAfter).filter(b => !before.has(b.n));
+  if (newTiers.length) {
+    const lines = newTiers.map(t =>
+      `${badgeEmoji(t.n)} <b>${t.name}</b> — ${t.pct}% off (up to $${t.cap}), valid 60 days\n` +
+      `Your code: <code>${String(t.name).slice(0, 3).toUpperCase()}-•••••</code>`);
+    const top = newTiers[newTiers.length - 1];
+    return {
+      kind: "unlocked",
+      photo: badgeBannerUrl(top.n),
+      text: `Congrats! You've unlocked a new reward:\n\n${lines.join("\n\n")}\n\n` +
+        `Tap a code to copy it, then enter it in the cart's promo box at checkout.`,
+    };
+  }
+  const pm = progressMessage(purchase, spendAfter);
+  return pm ? { kind: "progress", photo: pm.photo, text: pm.text } : null;
+}
+
 const redis = Redis.fromEnv();
 
 const DEFAULT_LIMIT = 25;
@@ -906,10 +931,21 @@ export default async function handler(req, res) {
         spendByKey[ck] = (sumSpendLog(logs[i] || {}, 0).cumulative || 0) + (adjustByCanon[ck] || 0);
       });
       orders.forEach(e => {
+        const rec = e.record || {};
         const ck = canonOf(e);
         const sp = Math.round((spendByKey[ck] || 0) * 100) / 100;
         const b = badgeForSpend(sp);
         e.custSpend = { key: ck, spend: sp, badgeN: b ? b.n : 0, badgeName: b ? b.name : "None" };
+        // Preview of the "Badge Progressed" DM the customer receives when this
+        // order is marked paid — banner + caption, exactly as Telegram shows it.
+        // Computed for the AFTER-paid spend so it's stable regardless of the
+        // current paid state. Only numeric Telegram ids receive a DM.
+        const oid = String(rec.Order_ID || "");
+        const isPaid = Object.prototype.hasOwnProperty.call(paidMap, oid) ? String(paidMap[oid]) === "1" : true;
+        const purchase = orderAmount(rec);
+        const after = (spendByKey[ck] || 0) + (isPaid ? 0 : purchase);
+        const before = after - purchase;
+        e.paidPreview = /^\d+$/.test(ck) ? paidDmPreview(purchase, before, after) : null;
       });
     } catch (e) { console.error("orders spend enrich failed:", e); }
 

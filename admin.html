@@ -715,6 +715,17 @@
   .cust-rank { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #555; margin: 3px 0 7px; }
   .cust-rank img { border-radius: 4px; }
   .cust-spend-amt { font-weight: 700; color: #a8305f; }
+  /* Preview of the exact DM the customer receives on mark-paid (banner + caption
+     on a Telegram-like chat background). */
+  .dm-toggle { margin: 2px 0 8px; font-size: 12px; }
+  .dm-none { font-size: 11px; color: #999; margin: 2px 0 8px; }
+  .dm-preview { margin: 0 0 10px; background: #e7ebf2; border-radius: 12px; padding: 12px; }
+  .dm-preview[hidden] { display: none; }
+  .dm-bubble { max-width: 330px; background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+  .dm-banner { display: block; width: 100%; height: auto; }
+  .dm-caption { padding: 10px 13px; font-size: 13px; line-height: 1.5; color: #1e1e20; }
+  .dm-caption code { background: #eef0f3; border-radius: 5px; padding: 1px 5px; font-family: Consolas, monospace; font-size: 12px; }
+  .dm-foot { font-size: 10.5px; color: #8a8a8f; margin: 6px 2px 0; max-width: 330px; }
   /* Customer Spend panel */
   .spend-caveat { font-size: 12px; color: #8a5a1a; background: #fff6e9; border-radius: 8px; padding: 8px 10px; }
   .spend-totals { font-size: 13px; font-weight: 600; margin: 8px 0; color: #444; }
@@ -4290,6 +4301,33 @@ function renderOrdersChecklist(dateFiltered) {
   };
 }
 
+// --- Customer DM preview (banner + caption, exactly as Telegram shows it) ---
+function dmPreviewEl(oid) {
+  return [...ordersListEl.querySelectorAll(".dm-preview")].find(el => el.dataset.dmBody === String(oid));
+}
+function renderDmBubble(container, dm) {
+  // dm.text is trusted bot copy (badge names + numbers, no user input); newlines
+  // become <br> and the <b>/<code> tags render as in Telegram.
+  const foot = dm.kind === "unlocked"
+    ? `<div class="dm-foot">This payment unlocks a new badge, so the buyer gets this “New Badge Unlocked” message. The code shown is masked — the real voucher code is generated when you mark the order paid (and appears in the Vouchers panel).</div>`
+    : "";
+  container.innerHTML =
+    `<div class="dm-bubble"><img class="dm-banner" src="${dm.photo}" alt="badge banner" loading="lazy">` +
+    `<div class="dm-caption">${dm.text.replace(/\n/g, "<br>")}</div></div>` + foot;
+}
+function toggleDmPreview(oid) {
+  const c = dmPreviewEl(oid); const dm = (window.__dmPreview || {})[oid];
+  if (!c || !dm) return;
+  if (c.hidden) { if (!c.innerHTML) renderDmBubble(c, dm); c.hidden = false; }
+  else c.hidden = true;
+}
+function openDmPreview(oid) {
+  const c = dmPreviewEl(oid); const dm = (window.__dmPreview || {})[oid];
+  if (!c || !dm) return;
+  if (!c.innerHTML) renderDmBubble(c, dm);
+  c.hidden = false;
+}
+
 // Full render: checklist plus everything below. Used after a fetch or a date
 // change.
 function renderOrders() {
@@ -4332,6 +4370,10 @@ function renderOrdersBody() {
 
   renderDaySummary(orders, wanted);
 
+  // Per-order preview of the customer DM (banner + caption), keyed by Order_ID.
+  window.__dmPreview = {};
+  orders.forEach(e => { const id = String((e.record || {}).Order_ID || ""); if (id) window.__dmPreview[id] = e.paidPreview || null; });
+
   ordersListEl.innerHTML = orders.map((entry, i) => {
       const r = entry.record || {};
       const blockA = r["PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition"] || "";
@@ -4358,6 +4400,9 @@ function renderOrdersBody() {
             <button class="pay-toggle order-del" data-del-id="${escapeHtml(oid)}" title="Remove this order and pull its cards from the recent-sales ticker">Delete</button>
             <label class="del-restore-lbl" title="Return this order's cards to stock when deleting"><input type="checkbox" class="del-restore" checked> restore stock</label>
           </div>
+          ${entry.paidPreview
+            ? `<button class="btn dm-toggle" data-dm-oid="${escapeHtml(oid)}">👁 Preview customer DM</button><div class="dm-preview" data-dm-body="${escapeHtml(oid)}" hidden></div>`
+            : `<div class="dm-none">No Telegram DM — this order has no Telegram ID (browser-only customer).</div>`}
           <div class="order-meta">
             saved ${new Date(entry.savedAt).toLocaleString("en-SG", { dateStyle: "medium", timeStyle: "short" })}<br>
             ${escapeHtml(r.Telegram_Username)}<br>
@@ -4377,6 +4422,10 @@ function renderOrdersBody() {
     }).join("");
 
     wireAddressChips(ordersListEl);
+
+    ordersListEl.querySelectorAll(".dm-toggle").forEach(btn => {
+      btn.onclick = () => toggleDmPreview(btn.dataset.dmOid);
+    });
 
     ordersListEl.querySelectorAll(".copy-btn").forEach(btn => {
       btn.onclick = () => {
@@ -4441,6 +4490,7 @@ function renderOrdersBody() {
             });
           }
           renderOrdersBody(); // redraws this order (and the awaiting count) in place
+          if (target) openDmPreview(id); // show what the customer was just sent
         } catch (e) {
           ordersResultEl.textContent = "Network error — please try again.";
           ordersResultEl.className = "error";
