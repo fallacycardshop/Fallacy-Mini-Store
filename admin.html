@@ -708,11 +708,24 @@
   .pay-toggle:disabled { opacity: .6; cursor: default; }
   .order-del { border-color: #e0b4b4; color: #b3261e; }
   .order-del:hover { background: #fdecea; }
-  .del-restore-lbl { margin-left: auto; font-size: 11px; color: #555; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
+  /* Restore-stock toggle + Delete stay together as one right-aligned cluster,
+     wrapping to their own line as a unit on narrow phones. */
+  .del-group { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .del-restore-lbl { font-size: 11px; color: #555; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
+  .cust-rank { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #555; margin: 3px 0 7px; }
+  .cust-rank img { border-radius: 4px; }
+  .cust-spend-amt { font-weight: 700; color: #a8305f; }
   /* Customer Spend panel */
   .spend-caveat { font-size: 12px; color: #8a5a1a; background: #fff6e9; border-radius: 8px; padding: 8px 10px; }
   .spend-totals { font-size: 13px; font-weight: 600; margin: 8px 0; color: #444; }
-  .spend-table-wrap { overflow-x: auto; }
+  .spend-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* Keep the actions column (Re-issue / Void / Adjust) pinned to the right edge
+     so it stays inside the panel on a phone instead of scrolling off-screen. */
+  .spend-table th:last-child, .spend-table td:last-child { position: sticky; right: 0; z-index: 1; }
+  .spend-table td:last-child { background: #fff; box-shadow: -6px 0 6px -4px rgba(0,0,0,.08); }
+  .spend-table th:last-child { background: #faf5f8; box-shadow: -6px 0 6px -4px rgba(0,0,0,.08); }
+  .spend-table tbody tr:hover td:last-child { background: #fbfbfb; }
+  .spend-table tr.spend-flagged td:last-child { background: #fdf3ef; }
   .spend-table { border-collapse: collapse; width: 100%; font-size: 13px; }
   .spend-table th, .spend-table td { padding: 7px 10px; border-bottom: 1px solid #eee; text-align: left; }
   .spend-table th { cursor: pointer; user-select: none; white-space: nowrap; background: #faf5f8; }
@@ -4315,16 +4328,20 @@ function renderOrdersBody() {
         "";
       const oid = String(r.Order_ID || "");
       const paid = isOrderPaidClient(oid);
+      const cs = entry.custSpend || {};
       return `
         <div class="order-block${paid ? "" : " unpaid"}">
           <div class="order-head">#${escapeHtml(r.Order_ID)} — ${escapeHtml(r.Buyer_Name)} — ${escapeHtml(r.Total)}</div>
+          ${entry.custSpend ? `<div class="cust-rank" data-rank-key="${escapeHtml(cs.key || "")}">${cs.badgeN ? badgeImg(cs.badgeN, 15) + " " : ""}<b>${escapeHtml(cs.badgeName || "None")}</b> · <span class="cust-spend-amt">$${Number(cs.spend || 0).toFixed(2)}</span> lifetime spend</div>` : ""}
           <div class="pay-row">
             <span class="pay-badge ${paid ? "paid" : "awaiting"}">${paid ? "✓ Paid" : "● Awaiting payment"}</span>
             <button class="pay-toggle" data-pay-id="${escapeHtml(oid)}" data-pay-target="${paid ? "0" : "1"}">
               ${paid ? "Mark unpaid" : "Mark paid — credit spend"}
             </button>
-            <label class="del-restore-lbl" title="Return this order's cards to stock when deleting"><input type="checkbox" class="del-restore" checked> restore stock</label>
-            <button class="pay-toggle order-del" data-del-id="${escapeHtml(oid)}" title="Remove this order and pull its cards from the recent-sales ticker">Delete</button>
+            <span class="del-group">
+              <label class="del-restore-lbl" title="Return this order's cards to stock when deleting"><input type="checkbox" class="del-restore" checked> restore stock</label>
+              <button class="pay-toggle order-del" data-del-id="${escapeHtml(oid)}" title="Remove this order and pull its cards from the recent-sales ticker">Delete</button>
+            </span>
           </div>
           <div class="order-meta">
             saved ${new Date(entry.savedAt).toLocaleString("en-SG", { dateStyle: "medium", timeStyle: "short" })}<br>
@@ -4401,6 +4418,13 @@ function renderOrdersBody() {
           }
           window.__orderPaid = window.__orderPaid || {};
           window.__orderPaid[id] = target ? "1" : "0";
+          // Push the customer's refreshed spend/badge onto every loaded order of
+          // theirs, so their rank updates everywhere it shows.
+          if (data.custSpend && data.custSpend.key) {
+            (window.__allOrders || []).forEach(e => {
+              if (e.custSpend && e.custSpend.key === data.custSpend.key) e.custSpend = data.custSpend;
+            });
+          }
           renderOrdersBody(); // redraws this order (and the awaiting count) in place
         } catch (e) {
           ordersResultEl.textContent = "Network error — please try again.";
