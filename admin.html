@@ -4308,10 +4308,12 @@ function dmPreviewEl(oid) {
 function renderDmBubble(container, dm) {
   // dm.text is trusted bot copy (badge names + numbers, no user input); newlines
   // become <br> and the <b>/<code> tags render as in Telegram.
+  const foot = dm.kind === "unlocked"
+    ? `<div class="dm-foot">This payment unlocks a new badge, so the buyer gets this “New Badge Unlocked” message. The code shown is masked — the real voucher code is generated when you mark the order paid (and appears in the Vouchers panel).</div>`
+    : "";
   container.innerHTML =
     `<div class="dm-bubble"><img class="dm-banner" src="${dm.photo}" alt="badge banner" loading="lazy">` +
-    `<div class="dm-caption">${dm.text.replace(/\n/g, "<br>")}</div></div>` +
-    `<div class="dm-foot">Preview of the “Badge Progressed” message. If this payment reaches a NEW badge tier, the customer instead gets a “New Badge Unlocked” message with the voucher code.</div>`;
+    `<div class="dm-caption">${dm.text.replace(/\n/g, "<br>")}</div></div>` + foot;
 }
 function toggleDmPreview(oid) {
   const c = dmPreviewEl(oid); const dm = (window.__dmPreview || {})[oid];
