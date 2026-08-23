@@ -61,7 +61,7 @@
   .promo-banner .promo-code.copied{background:var(--fresh-bg);border-color:var(--fresh);color:var(--fresh)}
   .promo-banner .promo-copy-hint{display:block;font-style:italic;font-weight:500;color:var(--ink-soft);font-size:11.5px;margin-top:5px}
 
-  .scroller{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;position:relative}
+  .scroller{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;position:relative}
   .tgbar{display:flex;align-items:center;gap:10px;padding:7px 14px;background:var(--surface)}
   .tgbar .logo{height:32px;flex:0 0 auto;display:flex;align-items:center}
   .tgbar .logo img{height:32px;width:auto;display:block}
@@ -91,6 +91,13 @@
   .chips .toggle.on{color:var(--on-accent);background:var(--accent);border-color:var(--accent)}.chips .toggle.on .sw{background:rgba(255,255,255,.5)}.chips .toggle.on .sw::after{left:12px}
 
   .content{padding-bottom:16px}
+  /* Directional slide when navigating between the home rails and a "see all"
+     list. Forward (see all) enters from the right; back enters from the left.
+     Disabled automatically under prefers-reduced-motion (see media query below). */
+  @keyframes slideFromRight{from{transform:translateX(100%);opacity:.35}to{transform:translateX(0);opacity:1}}
+  @keyframes slideFromLeft{from{transform:translateX(-100%);opacity:.35}to{transform:translateX(0);opacity:1}}
+  .content.slide-right{animation:slideFromRight .32s cubic-bezier(.22,.61,.36,1) backwards}
+  .content.slide-left{animation:slideFromLeft .32s cubic-bezier(.22,.61,.36,1) backwards}
   .sec{margin-top:16px}
   /* rails read clearly as a horizontal "shelf": tinted band, hairline borders, and a right-edge fade cueing more content */
   .sec.railsec{background:var(--rail-bg);padding-top:2px;padding-bottom:8px;margin-top:14px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);position:relative}
@@ -640,6 +647,15 @@ function wireActs(scope){
   scope.querySelectorAll("[data-back]").forEach(b=>b.onclick=clearFilters);
   const sm=scope.querySelector("[data-showsold]");if(sm)sm.onclick=()=>{$("#soldHidden").style.display="grid";sm.remove();wireActs($("#soldHidden"))};
 }
+// Restart-safe directional slide on the browsing area. Removing then re-adding
+// the class (with a forced reflow) makes the animation replay even when the same
+// direction is triggered twice in a row.
+function slideContent(dir){
+  const c=$("#content");
+  c.classList.remove("slide-right","slide-left");
+  void c.offsetWidth;
+  c.classList.add(dir==="right"?"slide-right":"slide-left");
+}
 function seeAll(kind){savedScroll=$("#scroller").scrollTop;
   if(kind==="new")only="new";
   else if(kind==="sar")$("#rarity").value="SAR";
@@ -648,8 +664,8 @@ function seeAll(kind){savedScroll=$("#scroller").scrollTop;
   else if(kind==="disc")only="disc";
   else if(kind==="wotc")only="wotc";
   else if(kind==="eseries")only="eseries";
-  render()}
-function clearFilters(){only=null;$("#q").value="";$("#rarity").value="";$("#set").value="";$("#sort").value="curated";render();$("#scroller").scrollTop=savedScroll;savedScroll=0}
+  render();slideContent("right")}
+function clearFilters(){only=null;$("#q").value="";$("#rarity").value="";$("#set").value="";$("#sort").value="curated";render();$("#scroller").scrollTop=savedScroll;savedScroll=0;slideContent("left")}
 
 // back-to-top
 const scrollEl=$("#scroller"),toTop=$("#totop");
