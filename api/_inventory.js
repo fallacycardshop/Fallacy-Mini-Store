@@ -774,12 +774,22 @@ export function resolveCustomerKey(aliasMap, key) {
   return k;
 }
 
-// Total is a display string like "$50.67" (occasionally with a thousands comma).
-// Parse to a number; a blank or unparseable value yields 0 so it can never
-// NaN-poison a running sum.
+// Loyalty spend that counts toward badge tiers. Derived in this ONE place so
+// every caller (markPaid, backfillSpend, spendReport) agrees.
+//
+// It is the value of the CARDS after any discount — the mailing/postage fee is
+// NOT counted. Total in the order record is `subtotal - discount + shipping`,
+// so subtracting Shipping back out gives exactly the after-discount card value.
+// Fields are display strings like "$50.67" (occasionally with a thousands
+// comma); a blank or unparseable value yields 0 so it can never NaN-poison a
+// running sum. Historical orders that predate the Shipping field parse it as 0,
+// leaving their amount unchanged.
 export function orderAmount(record) {
-  const n = Number(String((record && record.Total) || "").replace(/[^0-9.]/g, ""));
-  return Number.isFinite(n) ? n : 0;
+  const num = f => {
+    const n = Number(String((record && record[f]) || "").replace(/[^0-9.]/g, ""));
+    return Number.isFinite(n) ? n : 0;
+  };
+  return num("Total") - num("Shipping");
 }
 
 // Sum per-customer spend/count/last-order/handle over the orders currently in
