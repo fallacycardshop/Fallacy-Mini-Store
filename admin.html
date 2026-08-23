@@ -4868,9 +4868,12 @@ document.getElementById("vouchersFilter").onchange = renderVouchers;
 document.getElementById("vouchersBackdateButton").onclick = async () => {
   if (!confirm(
     "Backdate launch vouchers for ALL existing customers?\n\n" +
-    "Each customer gets ONE voucher for the badge they currently hold; lower " +
-    "badges are marked issued so they don't stack. No messages are sent. Safe " +
-    "to run more than once (already-issued customers are skipped)."
+    "Each customer gets a voucher for EVERY tier their lifetime spend has reached " +
+    "(Cascade $80 and up, plus each Champion step) — one per tier.\n\n" +
+    "When the programme is LIVE this DMs each Mini App customer once: an " +
+    "earned-voucher message, or a Boulder welcome if they haven't reached a " +
+    "voucher tier yet. Safe to run more than once — already-issued tiers are " +
+    "skipped and no one is re-notified."
   )) return;
   vouchersResultEl.textContent = "Backdating…";
   vouchersResultEl.className = "";
@@ -4878,7 +4881,7 @@ document.getElementById("vouchersBackdateButton").onclick = async () => {
     const data = await postVouchers("backdateVouchers");
     if (!data) return;
     vouchersResultEl.textContent =
-      `Enrolled ${data.customers} customer(s) — issued ${data.issued} new voucher(s). Existing customers weren't re-notified.`;
+      `Enrolled ${data.customers} customer(s) — issued ${data.issued} new voucher(s) (one per tier reached). Re-running won't re-notify anyone.`;
     vouchersResultEl.className = "success";
     const report = await postVouchers("vouchersReport");
     if (report) { voucherRows = report.rows || []; renderVouchers(); }
