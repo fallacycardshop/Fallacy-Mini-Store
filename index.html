@@ -94,10 +94,18 @@
   /* Directional slide when navigating between the home rails and a "see all"
      list. Forward (see all) enters from the right; back enters from the left.
      Disabled automatically under prefers-reduced-motion (see media query below). */
-  @keyframes slideFromRight{from{transform:translateX(100%);opacity:.35}to{transform:translateX(0);opacity:1}}
-  @keyframes slideFromLeft{from{transform:translateX(-100%);opacity:.35}to{transform:translateX(0);opacity:1}}
+  @keyframes slideFromRight{from{transform:translateX(100%)}to{transform:translateX(0)}}
+  @keyframes slideFromLeft{from{transform:translateX(-100%)}to{transform:translateX(0)}}
   .content.slide-right{animation:slideFromRight .32s cubic-bezier(.22,.61,.36,1) backwards}
   .content.slide-left{animation:slideFromLeft .32s cubic-bezier(.22,.61,.36,1) backwards}
+  /* Outgoing "ghost" of the previous screen for a cross-slide: the old content
+     slides out the opposite way as the new content slides in. Pinned over the
+     content region (below the sticky search bar) and removed on animation end. */
+  .slide-ghost{position:fixed;overflow:hidden;z-index:15;pointer-events:none;background:var(--ground);will-change:transform}
+  @keyframes ghostOutLeft{from{transform:translateX(0)}to{transform:translateX(-100%)}}
+  @keyframes ghostOutRight{from{transform:translateX(0)}to{transform:translateX(100%)}}
+  .ghost-out-left{animation:ghostOutLeft .32s cubic-bezier(.22,.61,.36,1) forwards}
+  .ghost-out-right{animation:ghostOutRight .32s cubic-bezier(.22,.61,.36,1) forwards}
   .sec{margin-top:16px}
   /* rails read clearly as a horizontal "shelf": tinted band, hairline borders, and a right-edge fade cueing more content */
   .sec.railsec{background:var(--rail-bg);padding-top:2px;padding-bottom:8px;margin-top:14px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);position:relative}
@@ -647,25 +655,66 @@ function wireActs(scope){
   scope.querySelectorAll("[data-back]").forEach(b=>b.onclick=clearFilters);
   const sm=scope.querySelector("[data-showsold]");if(sm)sm.onclick=()=>{$("#soldHidden").style.display="grid";sm.remove();wireActs($("#soldHidden"))};
 }
-// Restart-safe directional slide on the browsing area. Removing then re-adding
-// the class (with a forced reflow) makes the animation replay even when the same
-// direction is triggered twice in a row.
+const reducedMotion=()=>window.matchMedia&&window.matchMedia("(prefers-reduced-motion:reduce)").matches;
+
+// Restart-safe directional slide of the incoming browsing area. Removing then
+// re-adding the class (with a forced reflow) makes it replay on repeat taps.
 function slideContent(dir){
   const c=$("#content");
   c.classList.remove("slide-right","slide-left");
   void c.offsetWidth;
   c.classList.add(dir==="right"?"slide-right":"slide-left");
 }
-function seeAll(kind){savedScroll=$("#scroller").scrollTop;
-  if(kind==="new")only="new";
-  else if(kind==="sar")$("#rarity").value="SAR";
-  else if(kind==="ar")$("#rarity").value="AR";
-  else if(kind==="s")$("#rarity").value="S";
-  else if(kind==="disc")only="disc";
-  else if(kind==="wotc")only="wotc";
-  else if(kind==="eseries")only="eseries";
-  render();slideContent("right")}
-function clearFilters(){only=null;$("#q").value="";$("#rarity").value="";$("#set").value="";$("#sort").value="curated";render();$("#scroller").scrollTop=savedScroll;savedScroll=0;slideContent("left")}
+
+// Cross-slide between the home rails and a "see all" list. `apply` performs the
+// state change + re-render (it replaces #content and adjusts scroll). We snapshot
+// the OLD content into a ghost pinned over the content region first, then let the
+// NEW content slide in (slideContent) while the ghost slides out the other way.
+// dir "right" = forward (see all): new enters from right, old exits left.
+// dir "left"  = back:              new enters from left,  old exits right.
+function crossSlide(dir,apply){
+  if(reducedMotion()){apply();return;}
+  const scroller=$("#scroller"),content=$("#content"),stick=document.querySelector(".stick");
+  const sr=scroller.getBoundingClientRect();
+  const kb=stick?stick.getBoundingClientRect().bottom:sr.top;   // sticky bar bottom = top of content region
+  const cr=content.getBoundingClientRect();
+  const top=Math.max(kb,sr.top,cr.top);                          // visible content region top
+  const innerOffset=top-cr.top;                                  // how far into #content the visible slice starts
+  // Snapshot the current content (strip id + any lingering slide class) as the ghost.
+  const clone=content.cloneNode(true);
+  clone.removeAttribute("id");
+  clone.classList.remove("slide-right","slide-left");
+  clone.style.margin="0";clone.style.transform="translateY("+(-innerOffset)+"px)";
+  const ghost=document.createElement("div");
+  ghost.className="slide-ghost "+(dir==="right"?"ghost-out-left":"ghost-out-right");
+  ghost.style.left=sr.left+"px";ghost.style.top=top+"px";ghost.style.width=sr.width+"px";ghost.style.height=(sr.bottom-top)+"px";
+  ghost.appendChild(clone);
+  apply();                          // render the new screen underneath
+  document.body.appendChild(ghost);
+  const done=()=>{if(ghost.parentNode)ghost.remove();};
+  ghost.addEventListener("animationend",done,{once:true});
+  setTimeout(done,600);             // safety net if animationend never fires
+  slideContent(dir);                // new content slides in
+}
+
+function seeAll(kind){
+  savedScroll=$("#scroller").scrollTop;
+  crossSlide("right",()=>{
+    if(kind==="new")only="new";
+    else if(kind==="sar")$("#rarity").value="SAR";
+    else if(kind==="ar")$("#rarity").value="AR";
+    else if(kind==="s")$("#rarity").value="S";
+    else if(kind==="disc")only="disc";
+    else if(kind==="wotc")only="wotc";
+    else if(kind==="eseries")only="eseries";
+    render();
+  });
+}
+function clearFilters(){
+  crossSlide("left",()=>{
+    only=null;$("#q").value="";$("#rarity").value="";$("#set").value="";$("#sort").value="curated";render();$("#scroller").scrollTop=savedScroll;savedScroll=0;
+  });
+}
 
 // back-to-top
 const scrollEl=$("#scroller"),toTop=$("#totop");
