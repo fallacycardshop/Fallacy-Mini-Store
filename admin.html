@@ -708,10 +708,10 @@
   .pay-toggle:disabled { opacity: .6; cursor: default; }
   .order-del { border-color: #e0b4b4; color: #b3261e; }
   .order-del:hover { background: #fdecea; }
-  /* Restore-stock toggle + Delete stay together as one right-aligned cluster,
-     wrapping to their own line as a unit on narrow phones. */
-  .del-group { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .del-restore-lbl { font-size: 11px; color: #555; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
+  /* Delete sits on its own line just under Mark paid/unpaid, with the restore
+     toggle to its right on a single line. */
+  .del-row { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; }
+  .del-restore-lbl { font-size: 11px; color: #555; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; white-space: nowrap; }
   .cust-rank { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #555; margin: 3px 0 7px; }
   .cust-rank img { border-radius: 4px; }
   .cust-spend-amt { font-weight: 700; color: #a8305f; }
@@ -734,6 +734,21 @@
   .spend-table tbody tr:hover { background: #fbfbfb; }
   .spend-flag-banner { font-size: 12px; color: #8a2b1a; background: #fdeae4; border: 1px solid #f0b9a8; border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
   .spend-table tr.spend-flagged td { background: #fdf3ef; }
+  /* Phones: collapse the wide tables into stacked label:value cards so every
+     field is visible without horizontal scrolling. */
+  @media (max-width: 600px) {
+    .spend-table-wrap { overflow-x: visible; }
+    .spend-table { font-size: 12px; }
+    .spend-table thead { display: none; }
+    .spend-table, .spend-table tbody { display: block; width: 100%; }
+    .spend-table tr { display: block; border: 1px solid #eee; border-radius: 10px; margin: 0 0 8px; padding: 2px 0; background: #fff; }
+    .spend-table td { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; border: none !important; padding: 5px 12px; text-align: right; }
+    .spend-table td::before { content: attr(data-label); font-weight: 600; color: #9a8f95; font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; flex: 0 0 auto; text-align: left; }
+    .spend-table td.acts { justify-content: flex-start; gap: 8px; flex-wrap: wrap; padding-top: 8px; }
+    .spend-table td.acts::before { content: none; }
+    .spend-table th:last-child, .spend-table td:last-child { position: static; box-shadow: none; z-index: auto; }
+    .spend-table .cust-key { text-align: right; }
+  }
   .adj-note { color: #7b4bab; font-weight: 700; cursor: help; }
   .cust-key { font-size: 10px; color: #999; font-variant-numeric: tabular-nums; margin-top: 1px; cursor: help; }
   .badge-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; border-radius: 999px; padding: 2px 8px 2px 6px; white-space: nowrap; border: 1px solid transparent; }
@@ -4338,10 +4353,10 @@ function renderOrdersBody() {
             <button class="pay-toggle" data-pay-id="${escapeHtml(oid)}" data-pay-target="${paid ? "0" : "1"}">
               ${paid ? "Mark unpaid" : "Mark paid — credit spend"}
             </button>
-            <span class="del-group">
-              <label class="del-restore-lbl" title="Return this order's cards to stock when deleting"><input type="checkbox" class="del-restore" checked> restore stock</label>
-              <button class="pay-toggle order-del" data-del-id="${escapeHtml(oid)}" title="Remove this order and pull its cards from the recent-sales ticker">Delete</button>
-            </span>
+          </div>
+          <div class="del-row">
+            <button class="pay-toggle order-del" data-del-id="${escapeHtml(oid)}" title="Remove this order and pull its cards from the recent-sales ticker">Delete</button>
+            <label class="del-restore-lbl" title="Return this order's cards to stock when deleting"><input type="checkbox" class="del-restore" checked> restore stock</label>
           </div>
           <div class="order-meta">
             saved ${new Date(entry.savedAt).toLocaleString("en-SG", { dateStyle: "medium", timeStyle: "short" })}<br>
@@ -4591,13 +4606,13 @@ function renderSpendTable() {
         <tbody>
           ${sorted.map(r => `
             <tr>
-              <td>${escapeHtml(r.handle)}${r.adjust ? ` <span class="adj-note" title="includes a ${fmtMoney(r.adjust)} manual adjustment">±</span>` : ""}${r.key && r.key !== r.handle ? `<div class="cust-key" title="Mini App orders are keyed by this Telegram ID; browser orders by the typed @handle">${escapeHtml(r.key)}</div>` : ""}</td>
-              <td class="num">${r.badge ? badgeChip(r.badge) : '<span class="muted">—</span>'}</td>
-              <td class="num">${fmtMoney(r.spend)}</td>
-              <td class="num">${r.orders}</td>
-              <td class="num">${fmtMoney(r.aov)}</td>
-              <td class="num">${fmtSpendDate(r.lastOrder)}</td>
-              <td class="num"><button class="spend-adjust" data-key="${escapeHtml(r.key)}" data-handle="${escapeHtml(r.handle)}">Adjust</button> <button class="spend-merge" data-key="${escapeHtml(r.key)}" data-handle="${escapeHtml(r.handle)}">Merge…</button></td>
+              <td data-label="Customer">${escapeHtml(r.handle)}${r.adjust ? ` <span class="adj-note" title="includes a ${fmtMoney(r.adjust)} manual adjustment">±</span>` : ""}${r.key && r.key !== r.handle ? `<div class="cust-key" title="Mini App orders are keyed by this Telegram ID; browser orders by the typed @handle">${escapeHtml(r.key)}</div>` : ""}</td>
+              <td class="num" data-label="Badge">${r.badge ? badgeChip(r.badge) : '<span class="muted">—</span>'}</td>
+              <td class="num" data-label="Lifetime">${fmtMoney(r.spend)}</td>
+              <td class="num" data-label="Orders">${r.orders}</td>
+              <td class="num" data-label="Avg">${fmtMoney(r.aov)}</td>
+              <td class="num" data-label="Last order">${fmtSpendDate(r.lastOrder)}</td>
+              <td class="num acts"><button class="spend-adjust" data-key="${escapeHtml(r.key)}" data-handle="${escapeHtml(r.handle)}">Adjust</button> <button class="spend-merge" data-key="${escapeHtml(r.key)}" data-handle="${escapeHtml(r.handle)}">Merge…</button></td>
             </tr>`).join("")}
         </tbody>
       </table>
@@ -4836,14 +4851,14 @@ function renderVouchers() {
               (r.statusNow === "expired" ? `<button class="spend-adjust" data-reissue="${escapeHtml(r.code)}">Re-issue</button> ` : "") +
               `<button class="spend-adjust" data-void="${escapeHtml(r.code)}">Void</button>`;
             return `<tr>
-              <td>${escapeHtml(r.handle || r.customer)}</td>
-              <td>${badgeImg(r.badgeN, 15)} ${r.badgeN ? r.badgeN + "·" : ""}${escapeHtml(r.badgeName || "")}</td>
-              <td><code>${escapeHtml(r.code)}</code></td>
-              <td class="num">${r.pct}% · $${Number(r.cap).toFixed(0)}</td>
-              <td class="num">${fmtSpendDate(r.issuedAt)}</td>
-              <td class="num">${usedInfo}</td>
-              <td>${voucherStatusChip(r.statusNow)}</td>
-              <td class="num">${actions}</td>
+              <td data-label="Customer">${escapeHtml(r.handle || r.customer)}</td>
+              <td data-label="Badge">${badgeImg(r.badgeN, 15)} ${r.badgeN ? r.badgeN + "·" : ""}${escapeHtml(r.badgeName || "")}</td>
+              <td data-label="Code"><code>${escapeHtml(r.code)}</code></td>
+              <td class="num" data-label="Value">${r.pct}% · $${Number(r.cap).toFixed(0)}</td>
+              <td class="num" data-label="Issued">${fmtSpendDate(r.issuedAt)}</td>
+              <td class="num" data-label="Expires / used">${usedInfo}</td>
+              <td data-label="Status">${voucherStatusChip(r.statusNow)}</td>
+              <td class="num acts">${actions}</td>
             </tr>`;
           }).join("")}
         </tbody>
