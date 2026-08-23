@@ -230,6 +230,23 @@ function progressMessage(amt, windowSpend) {
   return { text, photo: badgeProgressBannerUrl(badge.n, pct) };
 }
 
+// A customer's FIRST-EVER purchase (they had no badge before) that only reaches
+// the Boulder entry tier: a warm welcome rather than the generic "progressed"
+// copy. Uses the Boulder welcome banner.
+function welcomeMessage(amt, windowSpend) {
+  const badge = badgeForSpend(windowSpend);
+  if (!badge) return null;
+  const next = nextBadge(windowSpend);
+  const m = n => "$" + (Number(n) || 0).toFixed(2);
+  let text = `🎉 Welcome to Badge Rewards — you've earned your ${badgeEmoji(badge.n)} <b>${badge.name} Badge</b>!\n\n`;
+  text += `Your purchase of <b>${m(amt)}</b> has been credited — total spend <b>${m(windowSpend)}</b>.`;
+  if (next && next.badge) {
+    const nc = Number(next.badge.cap) || 0;
+    text += `\n\nSpend ${m(next.needed)} more to reach ${badgeEmoji(next.badge.n || 9)} <b>${next.badge.name}</b> and unlock your first voucher: ${Number(next.badge.pct) || 0}% off${nc ? `, up to $${nc}` : ""}.`;
+  }
+  return { text, photo: badgeBannerUrl(badge.n) };
+}
+
 // Preview of the DM a payment produces, picking the SAME branch markPaid would:
 // if it crosses a new voucher tier the buyer gets the "New Badge Unlocked" earn
 // message (banner + one voucher line per newly-crossed tier); otherwise the
@@ -250,6 +267,11 @@ function paidDmPreview(purchase, spendBefore, spendAfter) {
       text: `Congrats! You've unlocked a new reward:\n\n${lines.join("\n\n")}\n\n` +
         `Tap a code to copy it, then enter it in the cart's promo box at checkout.`,
     };
+  }
+  // First-ever purchase (no badge before) that only reaches Boulder — welcome.
+  if (!badgeForSpend(spendBefore)) {
+    const wm = welcomeMessage(purchase, spendAfter);
+    if (wm) return { kind: "welcome", photo: wm.photo, text: wm.text };
   }
   const pm = progressMessage(purchase, spendAfter);
   return pm ? { kind: "progress", photo: pm.photo, text: pm.text } : null;
@@ -362,9 +384,11 @@ export default async function handler(req, res) {
         if (vouchers.length === 0 && (loyaltyLive() || loyaltyTestIds().has(ckey))) {
           try {
             const ws = await customerWindowSpend(redis, ckey);
-            const pm = progressMessage(amt, ws);
-            if (pm) await notifyTelegram(ckey, pm.text, pm.photo);
-          } catch (e) { console.error("progress DM failed:", e); }
+            // First-ever purchase (no badge before this order) → warm welcome;
+            // otherwise the standard "Badge Progressed" push.
+            const dm = badgeForSpend(ws - amt) ? progressMessage(amt, ws) : welcomeMessage(amt, ws);
+            if (dm) await notifyTelegram(ckey, dm.text, dm.photo);
+          } catch (e) { console.error("progress/welcome DM failed:", e); }
         }
       } else {
         // Un-paying drops window spend (badge status can fall) but never revokes
