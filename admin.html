@@ -195,9 +195,20 @@
      divs previously gave them different baselines. */
   .date-row {
     display: flex;
+    flex-wrap: wrap;
     gap: 10px;
     align-items: stretch;
     margin-bottom: 12px;
+  }
+  .panel-search {
+    width: 100%;
+    box-sizing: border-box;
+    height: 42px;
+    margin: 0 0 10px;
+    padding: 0 12px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font: inherit;
   }
   .date-row input {
     flex: 1;
@@ -710,7 +721,7 @@
   .order-del:hover { background: #fdecea; }
   /* Delete sits on its own line just under Mark paid/unpaid, with the restore
      toggle to its right on a single line. */
-  .del-row { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; }
+  .del-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 8px; }
   .del-restore-lbl { font-size: 11px; color: #555; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; white-space: nowrap; }
   .cust-rank { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #555; margin: 3px 0 7px; }
   .cust-rank img { border-radius: 4px; }
@@ -1017,6 +1028,7 @@
     <button id="spendBackfillButton" class="btn-neutral">Rebuild from orders</button>
   </div>
   <p id="spendResultText"></p>
+  <input type="search" id="spendSearch" class="panel-search" placeholder="Search buyer username…" autocomplete="off">
   <div id="spendReport"></div>
 </div>
 
@@ -1039,6 +1051,7 @@
     </select>
   </div>
   <p id="vouchersResultText"></p>
+  <input type="search" id="vouchersSearch" class="panel-search" placeholder="Search buyer username…" autocomplete="off">
   <div id="vouchersReport"></div>
   <div style="margin-top:14px;padding-top:12px;border-top:1px solid #eee;">
     <p style="font-size:12px;color:#666;margin:0 0 6px;">
@@ -4366,7 +4379,7 @@ function renderOrdersBody() {
             <label class="del-restore-lbl" title="Return this order's cards to stock when deleting"><input type="checkbox" class="del-restore" checked> restore stock</label>
           </div>
           ${entry.paidPreview
-            ? `<button class="btn dm-toggle" data-dm-oid="${escapeHtml(oid)}">👁 Preview customer DM</button><div class="dm-preview" data-dm-body="${escapeHtml(oid)}" hidden></div>`
+            ? `<button class="btn dm-toggle" data-dm-oid="${escapeHtml(oid)}">Preview customer DM</button><div class="dm-preview" data-dm-body="${escapeHtml(oid)}" hidden></div>`
             : `<div class="dm-none">No Telegram DM — this order has no Telegram ID (browser-only customer).</div>`}
           <div class="order-meta">
             saved ${new Date(entry.savedAt).toLocaleString("en-SG", { dateStyle: "medium", timeStyle: "short" })}<br>
@@ -4594,19 +4607,22 @@ function badgeChip(b) {
 
 function renderSpendTable() {
   if (!spendRows.length) { spendReportEl.innerHTML = ""; return; }
+  const q = ((document.getElementById("spendSearch") || {}).value || "").trim().toLowerCase();
+  const base = q ? spendRows.filter(r => (String(r.handle || "") + " " + String(r.key || "")).toLowerCase().includes(q)) : spendRows;
+  if (!base.length) { spendReportEl.innerHTML = `<div class="muted" style="font-size:12px;margin-top:8px;">No customer matches &ldquo;${escapeHtml(q)}&rdquo;.</div>`; return; }
   const { col, dir } = spendSort;
-  const sorted = [...spendRows].sort((a, b) => {
+  const sorted = [...base].sort((a, b) => {
     if (col === "handle") {
       return dir * String(a.handle).toLowerCase().localeCompare(String(b.handle).toLowerCase());
     }
     return dir * ((Number(a[col]) || 0) - (Number(b[col]) || 0));
   });
   const arrow = c => (spendSort.col === c ? (spendSort.dir < 0 ? " ▼" : " ▲") : "");
-  const totalSpend = spendRows.reduce((s, r) => s + r.spend, 0);
-  const totalOrders = spendRows.reduce((s, r) => s + r.orders, 0);
+  const totalSpend = base.reduce((s, r) => s + r.spend, 0);
+  const totalOrders = base.reduce((s, r) => s + r.orders, 0);
 
   spendReportEl.innerHTML = `
-    <div class="spend-totals">${spendRows.length} customer(s) · ${totalOrders} paid order(s) · ${fmtMoney(totalSpend)} lifetime spend</div>
+    <div class="spend-totals">${base.length} customer(s) · ${totalOrders} paid order(s) · ${fmtMoney(totalSpend)} lifetime spend</div>
     <div class="spend-table-wrap">
       <table class="spend-table">
         <thead><tr>
@@ -4848,8 +4864,10 @@ function voucherStatusChip(s) {
 function renderVouchers() {
   if (!voucherRows.length) { vouchersReportEl.innerHTML = ""; return; }
   const filter = document.getElementById("vouchersFilter").value;
-  const rows = filter === "all" ? voucherRows : voucherRows.filter(r => r.statusNow === filter);
-  if (!rows.length) { vouchersReportEl.innerHTML = '<div class="muted" style="font-size:12px;margin-top:8px;">None with that status.</div>'; return; }
+  const byStatus = filter === "all" ? voucherRows : voucherRows.filter(r => r.statusNow === filter);
+  const q = ((document.getElementById("vouchersSearch") || {}).value || "").trim().toLowerCase();
+  const rows = q ? byStatus.filter(r => (String(r.handle || "") + " " + String(r.customer || "") + " " + String(r.code || "")).toLowerCase().includes(q)) : byStatus;
+  if (!rows.length) { vouchersReportEl.innerHTML = `<div class="muted" style="font-size:12px;margin-top:8px;">${q ? `No vouchers match &ldquo;${escapeHtml(q)}&rdquo;.` : "None with that status."}</div>`; return; }
   vouchersReportEl.innerHTML = `
     <div class="spend-table-wrap">
       <table class="spend-table">
@@ -4918,6 +4936,8 @@ document.getElementById("vouchersLoadButton").onclick = async () => {
   }
 };
 document.getElementById("vouchersFilter").onchange = renderVouchers;
+document.getElementById("vouchersSearch").oninput = renderVouchers;
+document.getElementById("spendSearch").oninput = renderSpendTable;
 
 document.getElementById("vouchersBackdateButton").onclick = async () => {
   if (!confirm(
