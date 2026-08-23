@@ -160,6 +160,10 @@ export default async function handler(req, res) {
           name: (group && group.name) || item.name || item.key,
           set: (group && group.set) || "",
           timestamp: now,
+          // Stamp the order id so an admin who deletes an order can also pull
+          // that order's cards out of the recent-sales ticker (see deleteOrder
+          // in api/orders.js). Older entries predate this and carry no id.
+          orderId: String((record && record.Order_ID) || ""),
         });
       });
 

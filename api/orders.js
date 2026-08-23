@@ -350,6 +350,59 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, orderId: id, paid: target, changed: true, vouchers });
     }
 
+    // ------------------------------------------------------------- deleteOrder
+    // Permanently remove one order from the stored backup, AND pull its cards
+    // out of the recent-sales ticker. Also drops the order's paid flag and its
+    // contribution to the customer's loyalty spend log (same effect as un-paying
+    // it, so badge tiers stay consistent with what a backfill would compute).
+    //
+    // NOT reversed: physical stock / sold counters (deleting the record doesn't
+    // decide whether the cards are back on sale), and any voucher already issued
+    // (vouchers pay out once, ever — matching markPaid's un-pay behaviour).
+    if (action === "deleteOrder") {
+      const id = String(orderId || "");
+      if (!id) return res.status(400).json({ error: "Missing orderId." });
+
+      // --- remove from the orders list (read all, rewrite without the target) ---
+      const raw = await redis.lrange(ORDERS_KEY, 0, MAX_LIMIT - 1);
+      const asStr = e => (typeof e === "string" ? e : JSON.stringify(e));
+      const kept = [];
+      let removed = null;
+      for (const e of raw || []) {
+        let o; try { o = typeof e === "string" ? JSON.parse(e) : e; } catch (err) { kept.push(e); continue; }
+        const rid = String(((o && o.record) || o || {}).Order_ID || "");
+        if (rid === id && !removed) { removed = o; } else { kept.push(e); }
+      }
+      if (!removed) return res.status(404).json({ error: "Order not found in the stored list." });
+      await redis.del(ORDERS_KEY);
+      if (kept.length) await redis.rpush(ORDERS_KEY, ...kept.map(asStr));
+
+      // --- pull this order's cards from the recent-sales ticker (by orderId) ---
+      let removedSales = 0;
+      try {
+        const rs = await redis.lrange("recent_sales", 0, -1);
+        const rsKept = (rs || []).filter(e => {
+          try { const s = typeof e === "string" ? JSON.parse(e) : e; if (String((s && s.orderId) || "") === id) { removedSales++; return false; } } catch (err) {}
+          return true;
+        });
+        if (removedSales) {
+          await redis.del("recent_sales");
+          if (rsKept.length) await redis.rpush("recent_sales", ...rsKept.map(asStr));
+        }
+      } catch (e) { console.error("recent_sales cleanup failed:", e); }
+
+      // --- housekeeping: paid flag + the customer's spend-log entry for this order ---
+      try { await redis.hdel(ORDER_PAID_KEY, id); } catch (e) { console.error("paid-flag cleanup failed:", e); }
+      try {
+        const record = (removed && removed.record) || removed || {};
+        const aliasMap = (await redis.hgetall(CUSTOMER_ALIAS_KEY)) || {};
+        const ckey = resolveCustomerKey(aliasMap, customerKey(record));
+        if (ckey) await redis.hdel(spendLogKey(ckey), id);
+      } catch (e) { console.error("spend-log cleanup failed:", e); }
+
+      return res.status(200).json({ ok: true, orderId: id, deleted: true, removedRecentSales: removedSales });
+    }
+
     // --------------------------------------------------------- backfillSpend
     // Seed LIFETIME spend from history — additive and idempotent. Spend is
     // banked permanently in customer:spend as orders are marked paid; this
