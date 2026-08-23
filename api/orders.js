@@ -906,10 +906,25 @@ export default async function handler(req, res) {
         spendByKey[ck] = (sumSpendLog(logs[i] || {}, 0).cumulative || 0) + (adjustByCanon[ck] || 0);
       });
       orders.forEach(e => {
+        const rec = e.record || {};
         const ck = canonOf(e);
         const sp = Math.round((spendByKey[ck] || 0) * 100) / 100;
         const b = badgeForSpend(sp);
         e.custSpend = { key: ck, spend: sp, badgeN: b ? b.n : 0, badgeName: b ? b.name : "None" };
+        // Preview of the "Badge Progressed" DM the customer receives when this
+        // order is marked paid — banner + caption, exactly as Telegram shows it.
+        // Computed for the AFTER-paid spend so it's stable regardless of the
+        // current paid state. Only numeric Telegram ids receive a DM.
+        const oid = String(rec.Order_ID || "");
+        const isPaid = Object.prototype.hasOwnProperty.call(paidMap, oid) ? String(paidMap[oid]) === "1" : true;
+        const purchase = orderAmount(rec);
+        const after = (spendByKey[ck] || 0) + (isPaid ? 0 : purchase);
+        if (/^\d+$/.test(ck)) {
+          const pm = progressMessage(purchase, after);
+          e.paidPreview = pm ? { text: pm.text, photo: pm.photo } : null;
+        } else {
+          e.paidPreview = null;
+        }
       });
     } catch (e) { console.error("orders spend enrich failed:", e); }
 
