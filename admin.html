@@ -4117,23 +4117,9 @@ function renderDaySummary(orders, wantedDate) {
   };
   const joinLines = (list, fn) => list.map(fn).filter(Boolean).join("\n");
 
-  // Split by SGT clock time: everything up to 23:00, then the last hour of the
-  // day separately. Orders placed just before midnight often belong with the
-  // next day's paperwork, so they're kept apart while the full-day blocks stay
-  // available.
-  const lateHour = e => new Date(e.savedAt + 8 * 3600000).getUTCHours() === 23;
-  const early = chronological.filter(e => !lateHour(e));
-  const late = chronological.filter(lateHour);
-
   const blockA = joinLines(chronological, lineA);
   const blockF = joinLines(chronological, lineF);
-  const blockAEarly = joinLines(early, lineA);
-  const blockFEarly = joinLines(early, lineF);
-  const blockALate = joinLines(late, lineA);
-  const blockFLate = joinLines(late, lineF);
-
   const cardCount = blockA ? blockA.split("\n").filter(Boolean).length : 0;
-  const countLines = b => (b ? b.split("\n").filter(Boolean).length : 0);
 
   // Readable rundown — laid out for reading and packing rather than pasting.
   const rundown = orders
@@ -4176,39 +4162,18 @@ function renderDaySummary(orders, wantedDate) {
 
       <div class="summary-orders">${rundown}</div>
 
-      <div class="split-label">Whole day</div>
       <p class="split-note">${orders.length} order(s) · ${cardCount} card(s)</p>
       <button class="btn copy-btn" data-daycopy="a">Copy all columns A–C</button>
       <pre id="day-a">${escapeHtml(blockA)}</pre>
       <button class="btn copy-btn" data-daycopy="f">Copy all columns F–H</button>
       <pre id="day-f">${escapeHtml(blockF)}</pre>
-
-      ${late.length ? `
-        <div class="split-label">00:00 – 23:00</div>
-        <p class="split-note">${early.length} order(s) · ${countLines(blockAEarly)} card(s)</p>
-        <button class="btn copy-btn" data-daycopy="ae">Copy columns A–C</button>
-        <pre id="day-ae">${escapeHtml(blockAEarly)}</pre>
-        <button class="btn copy-btn" data-daycopy="fe">Copy columns F–H</button>
-        <pre id="day-fe">${escapeHtml(blockFEarly)}</pre>
-
-        <div class="split-label">23:01 – 23:59</div>
-        <p class="split-note">${late.length} order(s) · ${countLines(blockALate)} card(s)</p>
-        <button class="btn copy-btn" data-daycopy="al">Copy columns A–C</button>
-        <pre id="day-al">${escapeHtml(blockALate)}</pre>
-        <button class="btn copy-btn" data-daycopy="fl">Copy columns F–H</button>
-        <pre id="day-fl">${escapeHtml(blockFLate)}</pre>
-      ` : `<p class="split-note">No orders in the 23:01–23:59 window, so no split needed.</p>`}
     </div>`;
 
   wireAddressChips(slot);
 
   slot.querySelectorAll(".copy-btn").forEach(btn => {
     btn.onclick = () => {
-      const map = {
-        a: "day-a", f: "day-f",
-        ae: "day-ae", fe: "day-fe",
-        al: "day-al", fl: "day-fl",
-      };
+      const map = { a: "day-a", f: "day-f" };
       const target = document.getElementById(map[btn.dataset.daycopy]);
       if (target) copyText(target.textContent, btn);
     };
