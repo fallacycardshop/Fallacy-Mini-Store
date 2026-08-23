@@ -4421,7 +4421,7 @@ function renderOrdersBody() {
           ordersResultEl.className = "error";
           return;
         }
-        if (!window.confirm(`Delete order #${id}?\n\nThis removes it from the orders list and pulls its cards from the storefront's recent-sales ticker. Physical stock is NOT restored. This cannot be undone.`)) return;
+        if (!window.confirm(`Delete order #${id}?\n\nThis removes it from the orders list, pulls its cards from the storefront's recent-sales ticker, and RESTORES its cards to stock (they'll show as available again). This cannot be undone.`)) return;
         const prev = btn.textContent;
         btn.disabled = true;
         btn.textContent = "Deleting…";
@@ -4457,7 +4457,11 @@ function renderOrdersBody() {
           if (window.__orderPaid) delete window.__orderPaid[id];
           renderOrders();
           const n = Number(data.removedRecentSales) || 0;
-          ordersResultEl.textContent = `Deleted order #${id}${n ? ` and removed ${n} card${n === 1 ? "" : "s"} from the recent-sales ticker` : ""}.`;
+          const rc = Number(data.restoredCards) || 0;
+          const bits = [];
+          if (rc) bits.push(`restored ${rc} card${rc === 1 ? "" : "s"} to stock`);
+          if (n) bits.push(`removed ${n} from the ticker`);
+          ordersResultEl.textContent = `Deleted order #${id}${bits.length ? " — " + bits.join(" · ") : ""}.`;
           ordersResultEl.className = "success";
         } catch (e) {
           ordersResultEl.textContent = "Network error — please try again.";

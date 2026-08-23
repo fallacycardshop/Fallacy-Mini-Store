@@ -377,6 +377,43 @@ export default async function handler(req, res) {
       await redis.del(ORDERS_KEY);
       if (kept.length) await redis.rpush(ORDERS_KEY, ...kept.map(asStr));
 
+      // --- restore stock: undo this order's sold-counter increments (default on) ---
+      // sold:<CardID>::<Condition> is what confirm-order.js bumped; decrement by
+      // the same amounts so the cards go back on sale. The storefront recomputes
+      // availability (CSV stock - sold) on every products fetch, so they reappear
+      // automatically. Clamp at 0 so a counter can never go negative.
+      let restoredCards = 0;
+      if ((req.body || {}).restoreStock !== false) {
+        try {
+          const rec = (removed && removed.record) || removed || {};
+          let toReverse = [];
+          if (Array.isArray(removed && removed.items) && removed.items.length) {
+            toReverse = removed.items
+              .map(it => ({ key: String((it && it.key) || ""), qty: Number(it && it.quantity) || 0 }))
+              .filter(it => it.key && it.qty > 0);
+          } else {
+            // Fallback for orders saved before items were stored: parse the A–C
+            // paste block ("date | CardID | Condition", one row per physical card).
+            const counts = new Map();
+            String(rec["PASTE_INTO_COLUMNS_A_to_C_Date_CardID_Condition"] || "")
+              .split("\n").map(l => l.trim()).filter(Boolean)
+              .forEach(line => {
+                const parts = line.split("|").map(s => s.trim());
+                if (parts.length >= 3 && parts[1] && parts[2]) {
+                  const k = `${parts[1]}::${parts[2]}`;
+                  counts.set(k, (counts.get(k) || 0) + 1);
+                }
+              });
+            toReverse = [...counts].map(([key, qty]) => ({ key, qty }));
+          }
+          for (const { key, qty } of toReverse) {
+            const nv = await redis.decrby(`sold:${key}`, qty);
+            if (nv < 0) await redis.set(`sold:${key}`, 0);
+            restoredCards += qty;
+          }
+        } catch (e) { console.error("stock restore failed:", e); }
+      }
+
       // --- pull this order's cards from the recent-sales ticker (by orderId) ---
       let removedSales = 0;
       try {
@@ -400,7 +437,7 @@ export default async function handler(req, res) {
         if (ckey) await redis.hdel(spendLogKey(ckey), id);
       } catch (e) { console.error("spend-log cleanup failed:", e); }
 
-      return res.status(200).json({ ok: true, orderId: id, deleted: true, removedRecentSales: removedSales });
+      return res.status(200).json({ ok: true, orderId: id, deleted: true, removedRecentSales: removedSales, restoredCards });
     }
 
     // --------------------------------------------------------- backfillSpend
