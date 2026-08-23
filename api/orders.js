@@ -347,7 +347,16 @@ export default async function handler(req, res) {
         await redis.hdel(spendLogKey(ckey), id);
       }
 
-      return res.status(200).json({ ok: true, orderId: id, paid: target, changed: true, vouchers });
+      // Refreshed spend + badge for this customer, so the Orders panel can update
+      // their rank in place after the toggle.
+      let custSpend = null;
+      try {
+        const ws = await customerWindowSpend(redis, ckey);
+        const b = badgeForSpend(ws);
+        custSpend = { key: ckey, spend: Math.round(ws * 100) / 100, badgeN: b ? b.n : 0, badgeName: b ? b.name : "None" };
+      } catch (e) { console.error("spend summary failed:", e); }
+
+      return res.status(200).json({ ok: true, orderId: id, paid: target, changed: true, vouchers, custSpend });
     }
 
     // ------------------------------------------------------------- deleteOrder
@@ -872,6 +881,37 @@ export default async function handler(req, res) {
     const raw = await redis.lrange(ORDERS_KEY, 0, count - 1);
     const orders = parseOrders(raw);
     const paidMap = (await redis.hgetall(ORDER_PAID_KEY)) || {};
+
+    // Enrich each order with its buyer's authoritative lifetime spend + badge, so
+    // the panel shows their rank at a glance. Reads each DISTINCT customer's spend
+    // log once, in a single pipeline (admin action, off the storefront hot path).
+    try {
+      const aliasMap = (await redis.hgetall(CUSTOMER_ALIAS_KEY)) || {};
+      const adjustMap = (await redis.hgetall(CUSTOMER_ADJUST_KEY)) || {};
+      const canonOf = e => resolveCustomerKey(aliasMap, customerKey(e.record || e));
+      const distinct = [...new Set(orders.map(canonOf).filter(Boolean))];
+      let logs = [];
+      if (distinct.length) {
+        const pipe = redis.pipeline();
+        distinct.forEach(ck => pipe.hgetall(spendLogKey(ck)));
+        logs = await pipe.exec();
+      }
+      const adjustByCanon = {};
+      for (const [k, rawA] of Object.entries(adjustMap)) {
+        const canon = resolveCustomerKey(aliasMap, k);
+        adjustByCanon[canon] = (adjustByCanon[canon] || 0) + sumAdjust(parseAdjustEntries(rawA), 0).cumulative;
+      }
+      const spendByKey = {};
+      distinct.forEach((ck, i) => {
+        spendByKey[ck] = (sumSpendLog(logs[i] || {}, 0).cumulative || 0) + (adjustByCanon[ck] || 0);
+      });
+      orders.forEach(e => {
+        const ck = canonOf(e);
+        const sp = Math.round((spendByKey[ck] || 0) * 100) / 100;
+        const b = badgeForSpend(sp);
+        e.custSpend = { key: ck, spend: sp, badgeN: b ? b.n : 0, badgeName: b ? b.name : "None" };
+      });
+    } catch (e) { console.error("orders spend enrich failed:", e); }
 
     return res.status(200).json({ ok: true, orders, paid: paidMap });
   } catch (err) {
