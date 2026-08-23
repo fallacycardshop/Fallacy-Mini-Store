@@ -912,6 +912,14 @@ export function badgeStatusBannerUrl(n, progressPercent) {
   const bucket = Math.max(0, Math.min(100, Math.round((Number(progressPercent) || 0) / 10) * 10));
   return BADGE_IMAGE_BASE + "status/" + s + "_p" + bucket + ".png" + BADGE_V;
 }
+// Same art as the My Badges status banner but captioned "Badge Progressed" — the
+// push sent every time an order is marked paid without crossing a new tier.
+export function badgeProgressBannerUrl(n, progressPercent) {
+  const s = badgeSlug(n);
+  if (!s) return "";
+  const bucket = Math.max(0, Math.min(100, Math.round((Number(progressPercent) || 0) / 10) * 10));
+  return BADGE_IMAGE_BASE + "progress/" + s + "_p" + bucket + ".png" + BADGE_V;
+}
 // The "trophy case" grid card for the bot's My Collection photo. Because badge
 // thresholds are monotonic, a collection is always the first k badges, so there
 // are just 10 pre-rendered states (0..9 collected).

@@ -26,6 +26,7 @@ import {
   resolveCustomerKey,
   badgeEmoji,
   badgeBannerUrl,
+  badgeProgressBannerUrl,
   WELCOME_CONFIG_KEY,
   WELCOME_GRANTED_KEY,
   parseWelcomeConfig,
@@ -118,7 +119,7 @@ function voucherLine(v) {
 // (markPaid), a manual correction (adjustSpend), or a merge. Also DMs a summary
 // when a customer climbs back into a tier they'd dropped out of (no new voucher,
 // but their held rewards are worth re-surfacing).
-async function issueVouchersFor(redis, ckey, handle, now = Date.now(), windowSpendOverride) {
+async function issueVouchersFor(redis, ckey, handle, now = Date.now(), windowSpendOverride, opts = {}) {
   if (!ckey || !(loyaltyLive() || loyaltyTestIds().has(ckey))) return [];
   const windowSpend = windowSpendOverride !== undefined
     ? windowSpendOverride
@@ -176,8 +177,10 @@ async function issueVouchersFor(redis, ckey, handle, now = Date.now(), windowSpe
     await notifyTelegram(ckey,
       `Congrats! You've unlocked a new reward:\n\n${out.map(voucherLine).join("\n\n")}\n\nTap a code to copy it, then enter it in the cart's promo box at checkout.`,
       badgeBannerUrl(top.badgeN));
-  } else if (curTier > 0 && statusBadge) {
-    // No new voucher this time. DM only on an UPWARD crossing.
+  } else if (opts.statusDM !== false && curTier > 0 && statusBadge) {
+    // No new voucher this time. DM only on an UPWARD crossing. markPaid opts out
+    // of this branch (statusDM:false) because it sends its own "Badge Progressed"
+    // push on every payment instead.
     const firstSight = prevTier === null;
     const crossedUp = firstSight ? true : curTier > prevTier;
     if (crossedUp) {
@@ -203,6 +206,28 @@ async function issueVouchersFor(redis, ckey, handle, now = Date.now(), windowSpe
     }
   }
   return out;
+}
+
+// The "Badge Progressed" push: My Badges-style banner + a caption with the
+// credited amount, the current badge, lifetime spend, and the gap to the next
+// tier. Sent on every markPaid that doesn't cross a new voucher tier.
+function progressMessage(amt, windowSpend) {
+  const badge = badgeForSpend(windowSpend);
+  if (!badge) return null;
+  const next = nextBadge(windowSpend);
+  const m = n => "$" + (Number(n) || 0).toFixed(2);
+  let pct = 0;
+  if (next && next.badge) {
+    const span = Number(next.badge.spend) - Number(badge.spend);
+    pct = span > 0 ? Math.max(0, Math.min(100, Math.round((windowSpend - Number(badge.spend)) / span * 100))) : 100;
+  }
+  let text = `✅ Your purchase of <b>${m(amt)}</b> has been credited — your badge has progressed!\n\n`;
+  text += `Current badge: ${badgeEmoji(badge.n)} <b>${badge.name}</b>\nTotal spend: <b>${m(windowSpend)}</b>`;
+  if (next && next.badge) {
+    const nc = Number(next.badge.cap) || 0;
+    text += `\n\n${m(next.needed)} more to reach ${badgeEmoji(next.badge.n || 9)} <b>${next.badge.name}</b> — ${Number(next.badge.pct) || 0}% off${nc ? `, up to $${nc}` : ""}.`;
+  }
+  return { text, photo: badgeProgressBannerUrl(badge.n, pct) };
 }
 
 const redis = Redis.fromEnv();
@@ -302,9 +327,20 @@ export default async function handler(req, res) {
       if (target) {
         await redis.hset(spendLogKey(ckey), { [id]: `${when}:${amt}` });
         // Paying may cross new badge thresholds — issue their vouchers (leapfrog,
-        // once-ever). Wrapped so a voucher hiccup can't fail the payment toggle.
-        try { vouchers = await issueVouchersFor(redis, ckey, orderHandle(record)); }
+        // once-ever). statusDM:false because when NO new voucher is earned we send
+        // the "Badge Progressed" push below instead of the welcome/re-attain DM.
+        // Wrapped so a voucher hiccup can't fail the payment toggle.
+        try { vouchers = await issueVouchersFor(redis, ckey, orderHandle(record), undefined, undefined, { statusDM: false }); }
         catch (e) { console.error("voucher issuance failed:", e); }
+        // Badge Progressed push — every paid order that didn't unlock a new
+        // voucher tier (those get the "New Badge Unlocked" DM from issueVouchersFor).
+        if (vouchers.length === 0 && (loyaltyLive() || loyaltyTestIds().has(ckey))) {
+          try {
+            const ws = await customerWindowSpend(redis, ckey);
+            const pm = progressMessage(amt, ws);
+            if (pm) await notifyTelegram(ckey, pm.text, pm.photo);
+          } catch (e) { console.error("progress DM failed:", e); }
+        }
       } else {
         // Un-paying drops window spend (badge status can fall) but never revokes
         // a voucher already issued — vouchers pay out once, ever.
