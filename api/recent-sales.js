@@ -147,7 +147,7 @@ Every purchase from our Mini Store earns you Badges — and each Badge comes wit
 ❓ <b>Good to know</b>
 • jump several Tiers in one order? you get a voucher for EACH Badge unlocked
 • been shopping with us already? we backdate your rewards — a stack of vouchers for every Tier your spend has already reached, ready to use
-• to redeem: copy your code into the Mini Store promo box at checkout (min $10 spend)
+• to redeem: your voucher code is issued by the bot — find it in your DM or under 🎖 <b>My Badges</b>, then paste it into the Mini Store cart's promo box at checkout (min $10 spend)
 • badge vouchers can't be stacked with your welcome reward — use your welcome reward first
 
 <b>Track your progress</b> — Tap on the buttons below:
