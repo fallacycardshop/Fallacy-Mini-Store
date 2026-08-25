@@ -2680,18 +2680,28 @@ const IMAGE_BASE = "https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mi
 
 // Card ID -> image URL.
 //
-// Filenames embed the Card ID (PsyduckAR + M2A199 + .jpg), so the folder is
-// listed once and matched on that. Cached for the page's lifetime; the GitHub
-// contents API allows 60 unauthenticated calls an hour, and this needs one.
+// Filenames embed the Card ID (PsyduckAR + M2A199 + .jpg), so the images folder
+// is listed once and matched on that. We use the git TREES API (not the contents
+// API): the contents API truncates a folder listing at 1,000 files, which silently
+// hid every image past the 1,000th (alphabetically) — so cards near the end of the
+// alphabet reported "no image found" even though the file existed. The recursive
+// trees API returns the whole tree (up to 100,000 entries), so nothing is missed.
+// Cached for the page's lifetime; one unauthenticated call (60/hour limit).
 let imageIndexPromise = null;
 
 function fetchImageIndex() {
   if (!imageIndexPromise) {
     imageIndexPromise = fetch(
-      "https://api.github.com/repos/fallacycardshop/Fallacy-Mini-Store/contents/images"
+      "https://api.github.com/repos/fallacycardshop/Fallacy-Mini-Store/git/trees/main?recursive=1"
     )
       .then(r => (r.ok ? r.json() : Promise.reject(new Error("listing failed"))))
-      .then(list => (Array.isArray(list) ? list.map(f => f.name) : []))
+      .then(data => {
+        const tree = (data && data.tree) || [];
+        // Top-level images/ files only (skip images/thumbs/ and images/badges/).
+        return tree
+          .filter(e => e.type === "blob" && /^images\/[^/]+\.(jpe?g|png|webp)$/i.test(e.path))
+          .map(e => e.path.split("/").pop());
+      })
       .catch(() => []);
   }
   return imageIndexPromise;
