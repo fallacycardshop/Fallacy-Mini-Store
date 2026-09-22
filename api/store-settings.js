@@ -4,12 +4,18 @@ import {
   saveStoreSettings,
   DEFAULT_FEATURED_TITLE,
   DEFAULT_NEW_TITLE,
+  loadInventoryGroups,
+  getPriceOverrides,
+  savePriceOverrides,
+  effectivePrice,
+  PRICE_OVERRIDES_KEY,
 } from "./_inventory.js";
 
 const redis = Redis.fromEnv();
 
 const MAX_TITLE_LENGTH = 60;
 const MAX_PROMO_LENGTH = 300;
+const MAX_PRICE = 100000; // sanity ceiling so a typo can't set an absurd price
 
 // Actions:
 //   get   — read current settings (1 Redis command)
@@ -93,6 +99,95 @@ export default async function handler(req, res) {
 
       await saveStoreSettings(redis, settings);
       return res.status(200).json({ ok: true, settings });
+    }
+
+    // ------------------------------------------------------------- prices ---
+    // Quick price editing without a CSV commit + rebuild. Overrides live in one
+    // JSON key (price:overrides) applied on top of the CSV price at request time.
+
+    // List every UNSOLD (in-stock) listing with its CSV price and any override.
+    // Two Redis commands: one MGET of the sold counters, one GET of the overrides.
+    if (action === "getPrices") {
+      const groups = loadInventoryGroups();
+      const overrides = await getPriceOverrides(redis);
+      const entries = Array.from(groups.entries());
+
+      // Batch every sold counter into a single MGET (never a loop of gets).
+      const soldValues = entries.length
+        ? await redis.mget(...entries.map(([groupKey]) => `sold:${groupKey}`))
+        : [];
+
+      const prices = [];
+      entries.forEach(([groupKey, group], i) => {
+        const sold = Number(soldValues[i]) || 0;
+        const available = Math.max((Number(group.baseStock) || 0) - sold, 0);
+        if (available <= 0) return; // only cards still in stock (unsold)
+        const csvPrice = Number(group.price) || 0;
+        const override = overrides[groupKey];
+        const overridden = Number.isFinite(Number(override)) && Number(override) > 0;
+        prices.push({
+          groupKey,
+          cardId: group.cardId,
+          name: group.name,
+          set: group.set,
+          condition: group.condition || "",
+          csvPrice,
+          price: effectivePrice(overrides, groupKey, csvPrice),
+          overridden,
+          stock: available,
+        });
+      });
+      prices.sort(
+        (a, b) =>
+          (a.name || "").localeCompare(b.name || "") ||
+          (a.condition || "").localeCompare(b.condition || "")
+      );
+      return res.status(200).json({
+        ok: true,
+        prices,
+        overrideCount: Object.keys(overrides).length,
+      });
+    }
+
+    // Set (or update) the override for one listing.
+    if (action === "setPrice") {
+      const groupKey = String((req.body && req.body.groupKey) || "");
+      const price = Number(req.body && req.body.price);
+      if (!groupKey) return res.status(400).json({ error: "Missing listing." });
+      if (!Number.isFinite(price) || price <= 0) {
+        return res.status(400).json({ error: "Enter a price greater than 0." });
+      }
+      if (price > MAX_PRICE) {
+        return res.status(400).json({ error: "That price looks too high." });
+      }
+      // Reject overrides for listings that no longer exist, so the map can't
+      // collect orphans. Pure CSV read, no Redis.
+      if (!loadInventoryGroups().has(groupKey)) {
+        return res.status(400).json({ error: "That listing no longer exists." });
+      }
+      const rounded = Math.round(price * 100) / 100;
+      const overrides = await getPriceOverrides(redis);
+      overrides[groupKey] = rounded;
+      await savePriceOverrides(redis, overrides);
+      return res.status(200).json({ ok: true, groupKey, price: rounded });
+    }
+
+    // Remove one override — the listing reverts to its CSV price.
+    if (action === "resetPrice") {
+      const groupKey = String((req.body && req.body.groupKey) || "");
+      if (!groupKey) return res.status(400).json({ error: "Missing listing." });
+      const overrides = await getPriceOverrides(redis);
+      if (Object.prototype.hasOwnProperty.call(overrides, groupKey)) {
+        delete overrides[groupKey];
+        await savePriceOverrides(redis, overrides);
+      }
+      return res.status(200).json({ ok: true, groupKey, reset: true });
+    }
+
+    // Drop every override at once — the whole store reverts to CSV prices.
+    if (action === "clearPrices") {
+      await redis.del(PRICE_OVERRIDES_KEY);
+      return res.status(200).json({ ok: true, cleared: true });
     }
 
     return res.status(400).json({ error: "Unknown action." });

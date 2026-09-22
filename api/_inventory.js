@@ -47,7 +47,7 @@ function parseCSV(text) {
   return rows;
 }
 
-// Returns a Map<groupKey, { cardId, name, price, photo, description, category, baseStock }>
+// Returns a Map<groupKey, { cardId, condition, name, price, photo, description, category, baseStock }>
 // Rows sharing the same CardID + Condition are merged (their Stock values summed).
 export function loadInventoryGroups() {
   const filePath = path.join(process.cwd(), "ministore-inventory.csv");
@@ -100,6 +100,7 @@ export function loadInventoryGroups() {
     } else {
       groups.set(groupKey, {
         cardId,
+        condition,
         firstRowIndex: index,
         lastRowIndex: index,
         name: row.Name || "",
@@ -209,6 +210,12 @@ export async function getActiveReservedMap(redis) {
 
 export const HIDDEN_CARDS_KEY = "hidden:cards";
 export const STORE_SETTINGS_KEY = "store:settings";
+// Manual price overrides: ONE JSON object, groupKey ("CardID::Condition") ->
+// price in dollars. A single key (like hidden:cards / store:settings) so the
+// whole map is read in the same MGET as the rest of the store state — zero extra
+// cost per page load and O(1) as the catalogue grows. An override replaces the
+// CSV price for that exact listing until it's reset; the CSV stays the base.
+export const PRICE_OVERRIDES_KEY = "price:overrides";
 
 // Editable copy shown above the featured row. Falls back to this if unset.
 export const DEFAULT_FEATURED_TITLE = "\u{1F525} Popular this week";
@@ -433,6 +440,60 @@ export function parseStoreSettings(raw) {
   return settings;
 }
 
+// ---------------------------------------------------------------------------
+// Manual price overrides.
+//
+// Prices fluctuate, and editing the CSV means a commit + full rebuild. Instead a
+// single JSON key holds groupKey -> dollars, applied on top of the CSV price at
+// request time. Invalid or non-positive entries are dropped on read AND write so
+// a corrupt value can never zero out a card's price or make it free.
+// ---------------------------------------------------------------------------
+
+export function parsePriceOverrides(raw) {
+  if (!raw) return {};
+  let data;
+  try {
+    data = typeof raw === "string" ? JSON.parse(raw) : raw;
+  } catch (e) {
+    console.error("Corrupted price overrides:", e);
+    return {};
+  }
+  if (!data || typeof data !== "object") return {};
+  const out = {};
+  for (const [groupKey, value] of Object.entries(data)) {
+    const price = Number(value);
+    if (Number.isFinite(price) && price > 0) out[groupKey] = price;
+  }
+  return out;
+}
+
+// The price a listing actually sells at: a manual override if one is set for this
+// exact groupKey, otherwise the CSV price. This is the SINGLE source of the
+// effective price — the storefront reads it here so the cart and the stored order
+// record can never disagree with what's displayed (see products.js).
+export function effectivePrice(overrides, groupKey, csvPrice) {
+  const o = overrides && overrides[groupKey];
+  const n = Number(o);
+  return Number.isFinite(n) && n > 0 ? n : csvPrice;
+}
+
+export async function getPriceOverrides(redis) {
+  return parsePriceOverrides(await redis.get(PRICE_OVERRIDES_KEY));
+}
+
+export async function savePriceOverrides(redis, overrides) {
+  const clean = {};
+  for (const [k, v] of Object.entries(overrides || {})) {
+    const n = Number(v);
+    if (k && Number.isFinite(n) && n > 0) clean[k] = n;
+  }
+  if (Object.keys(clean).length === 0) {
+    await redis.del(PRICE_OVERRIDES_KEY);
+    return;
+  }
+  await redis.set(PRICE_OVERRIDES_KEY, JSON.stringify(clean));
+}
+
 export async function getStoreSettings(redis) {
   return parseStoreSettings(await redis.get(STORE_SETTINGS_KEY));
 }
@@ -442,18 +503,20 @@ export async function saveStoreSettings(redis, settings) {
 }
 
 // One MGET returns everything the storefront needs beyond the CSV:
-// hidden cards, editable headings, and the drip-release schedule.
-// Three keys, one Redis command.
+// hidden cards, editable headings, the drip-release schedule, and manual price
+// overrides. Four keys, one Redis command.
 export async function getStoreState(redis) {
-  const [hiddenRaw, settingsRaw, dripRaw] = await redis.mget(
+  const [hiddenRaw, settingsRaw, dripRaw, priceRaw] = await redis.mget(
     HIDDEN_CARDS_KEY,
     STORE_SETTINGS_KEY,
-    DRIP_STATE_KEY
+    DRIP_STATE_KEY,
+    PRICE_OVERRIDES_KEY
   );
   return {
     hiddenCardIds: new Set(Object.keys(parseHiddenCards(hiddenRaw))),
     settings: parseStoreSettings(settingsRaw),
     drip: parseDripState(dripRaw),
+    priceOverrides: parsePriceOverrides(priceRaw),
   };
 }
 

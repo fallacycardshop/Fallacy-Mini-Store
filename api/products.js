@@ -11,6 +11,7 @@ import {
   seededShuffle,
   getTodaySeed,
   promoTextIfActive,
+  effectivePrice,
 } from "./_inventory.js";
 
 const redis = Redis.fromEnv();
@@ -23,7 +24,7 @@ export default async function handler(req, res) {
     // ONE MGET returns both the hidden-card list (auction protection) and the
     // store settings (editable featured heading). Same command count as before
     // the heading existed.
-    const { hiddenCardIds, settings, drip } = await getStoreState(redis);
+    const { hiddenCardIds, settings, drip, priceOverrides } = await getStoreState(redis);
     const now = Date.now();
 
     // Two filters, both free (no extra Redis): temporarily hidden cards, and
@@ -83,7 +84,9 @@ export default async function handler(req, res) {
           csvIndex: group.lastRowIndex !== undefined ? group.lastRowIndex : catalogueIndex,
           releaseAt: getLastReleaseMoment(drip, groupKey, now) || 0,
           name: group.name,
-          price: group.price,
+          // Manual override wins over the CSV price for this exact listing;
+          // computed here in ONE place so cart + order totals can't disagree.
+          price: effectivePrice(priceOverrides, groupKey, group.price),
           photo: group.photo,
           description: group.description,
           stock: Math.max(publishedStock - sold - reserved, 0),
