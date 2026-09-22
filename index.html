@@ -647,7 +647,7 @@ function render(){
     const notNew=CARDS.filter(p=>!p.isNew);
     c.innerHTML=
       railSection("&#10024; Newly in stock","Fresh drops &amp; restocks &mdash; swipe &rarr;",news,"new","best")+
-      railSection("&#127942; The Top Chases","Our biggest cards!",notNew.filter(isTopChase),"chase","best")+
+      railSection("&#127942; The Top Chases","Our biggest cards! &mdash; swipe &rarr;",notNew.filter(isTopChase),"chase","best")+
       featSection(notNew)+
       railSection("&#128101; Tag Team GX","&ldquo;X &amp; Y GX&rdquo; duos from the SM era &mdash; swipe &rarr;",notNew.filter(isTagTeam),"tagteam","best")+
       railSection("&#128142; Special Art Rares","The chase cards &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="SAR"),"sar","best")+
