@@ -637,7 +637,7 @@ function render(){
   if(activeFilters()){
     const res=sortList(CARDS.filter(matchP));const liveR=res.filter(p=>!isSold(p)),soldR=res.filter(isSold);
     const ctx=only==="disc"?"deal":"best";
-    let label="Results";if(only==="new")label="Newly in stock &amp; restocked";else if(only==="disc")label="Discounted";else if($("#rarity").value==="SAR")label="Special Art Rares";else if($("#rarity").value==="AR")label="Art Rares";else if($("#rarity").value==="S")label="Baby Shinies";else if(only==="wotc")label="WOTC Old Back Vintage";else if(only==="eseries")label="e-Series Vintage";else if(only==="tagteam")label="Tag Team GX";else if(only==="chase")label="Top Chase";else if(!$("#q").value.trim()&&!$("#set").value)label="All cards";
+    let label="Results";if(only==="new")label="Newly in stock &amp; restocked";else if(only==="disc")label="Discounted";else if($("#rarity").value==="SAR")label="Special Art Rares";else if($("#rarity").value==="AR")label="Art Rares";else if($("#rarity").value==="S")label="Baby Shinies";else if(only==="wotc")label="WOTC Old Back Vintage";else if(only==="eseries")label="e-Series Vintage";else if(only==="tagteam")label="Tag Team GX";else if(only==="chase")label="The Top Chases";else if(!$("#q").value.trim()&&!$("#set").value)label="All cards";
     c.innerHTML=`<div class="results-head"><button class="backbtn" data-back>&#8592; Back</button><h2>${label} (${res.length})</h2></div>
       ${res.length?`<div class="grid">${liveR.map(p=>cardHTML(p,ctx)).join("")}</div>${soldBlock(soldR)}`:`<div class="empty">No cards match &mdash; try clearing a filter.</div>`}
       <div class="results-foot"><button class="backbtn" data-back>&#8592; Back to browsing</button></div>`;
@@ -647,7 +647,7 @@ function render(){
     const notNew=CARDS.filter(p=>!p.isNew);
     c.innerHTML=
       railSection("&#10024; Newly in stock","Fresh drops &amp; restocks &mdash; swipe &rarr;",news,"new","best")+
-      railSection("&#127942; Top Chase","Our highest-value cards &mdash; $49.90 &amp; up &mdash; swipe &rarr;",notNew.filter(isTopChase),"chase","best")+
+      railSection("&#127942; The Top Chases","Our biggest cards!",notNew.filter(isTopChase),"chase","best")+
       featSection(notNew)+
       railSection("&#128101; Tag Team GX","&ldquo;X &amp; Y GX&rdquo; duos from the SM era &mdash; swipe &rarr;",notNew.filter(isTagTeam),"tagteam","best")+
       railSection("&#128142; Special Art Rares","The chase cards &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="SAR"),"sar","best")+
