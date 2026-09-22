@@ -404,6 +404,12 @@ const WOTC_SETS=new Set(["BAS","FOS","GYM1","GYM2","JUN","NGEN","NDES","NDIS","V
 const ESERIES_SETS=new Set(["VS","BEP","TTONM","WFTS","TLVS","SE","P","MM"]);
 const isWOTC=p=>WOTC_SETS.has(setCode(p));
 const isEseries=p=>ESERIES_SETS.has(setCode(p));
+// Tag Team GX: the SM-era "X & Y GX" duos/trios. Primary signal is the rarity
+// carrying the TTGX marker ("RR (TTGX)", "HR (TTGX)"); a handful of promo/starter
+// copies are filed under other rarities (e.g. "N.A."), so also match the name
+// shape — an ampersand plus GX — which across the whole catalogue only ever hits
+// genuine Tag Teams. Either signal alone would miss a few; together they're exact.
+const isTagTeam=p=>/TTGX/i.test(p.rarity||"")||(/&/.test(p.name||"")&&/GX/i.test(p.name||""));
 // Escape a URL for a single-quoted JS string inside an inline onerror handler.
 // Card filenames contain apostrophes (e.g. Chuck'sRhydon…) which would close the
 // string early and blank the image — same fix as admin.html's jsAttrUrl.
@@ -614,6 +620,7 @@ function matchP(p){
   if(only==="disc"&&!hasDeal(p))return false;
   if(only==="wotc"&&!isWOTC(p))return false;
   if(only==="eseries"&&!isEseries(p))return false;
+  if(only==="tagteam"&&!isTagTeam(p))return false;
   return true;
 }
 function sortList(list){const s=$("#sort").value;const key=p=>{const d=bestCond(p)||conds(p)[0];return d.price};
@@ -624,7 +631,7 @@ function render(){
   if(activeFilters()){
     const res=sortList(CARDS.filter(matchP));const liveR=res.filter(p=>!isSold(p)),soldR=res.filter(isSold);
     const ctx=only==="disc"?"deal":"best";
-    let label="Results";if(only==="new")label="Newly in stock &amp; restocked";else if(only==="disc")label="Discounted";else if($("#rarity").value==="SAR")label="Special Art Rares";else if($("#rarity").value==="AR")label="Art Rares";else if($("#rarity").value==="S")label="Baby Shinies";else if(only==="wotc")label="WOTC Old Back Vintage";else if(only==="eseries")label="e-Series Vintage";else if(!$("#q").value.trim()&&!$("#set").value)label="All cards";
+    let label="Results";if(only==="new")label="Newly in stock &amp; restocked";else if(only==="disc")label="Discounted";else if($("#rarity").value==="SAR")label="Special Art Rares";else if($("#rarity").value==="AR")label="Art Rares";else if($("#rarity").value==="S")label="Baby Shinies";else if(only==="wotc")label="WOTC Old Back Vintage";else if(only==="eseries")label="e-Series Vintage";else if(only==="tagteam")label="Tag Team GX";else if(!$("#q").value.trim()&&!$("#set").value)label="All cards";
     c.innerHTML=`<div class="results-head"><button class="backbtn" data-back>&#8592; Back</button><h2>${label} (${res.length})</h2></div>
       ${res.length?`<div class="grid">${liveR.map(p=>cardHTML(p,ctx)).join("")}</div>${soldBlock(soldR)}`:`<div class="empty">No cards match &mdash; try clearing a filter.</div>`}
       <div class="results-foot"><button class="backbtn" data-back>&#8592; Back to browsing</button></div>`;
@@ -635,6 +642,7 @@ function render(){
     c.innerHTML=
       railSection("&#10024; Newly in stock","Fresh drops &amp; restocks &mdash; swipe &rarr;",news,"new","best")+
       featSection(notNew)+
+      railSection("&#128101; Tag Team GX","&ldquo;X &amp; Y GX&rdquo; duos from the SM era &mdash; swipe &rarr;",notNew.filter(isTagTeam),"tagteam","best")+
       railSection("&#128142; Special Art Rares","The chase cards &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="SAR"),"sar","best")+
       railSection("&#127912; Art Rares","Full-art alt prints &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="AR"),"ar","best")+
       railSection("&#127760; WOTC Old Back Vintage","Original WOTC-era classics &mdash; swipe &rarr;",notNew.filter(isWOTC),"wotc","best")+
@@ -707,6 +715,7 @@ function seeAll(kind){
     else if(kind==="disc")only="disc";
     else if(kind==="wotc")only="wotc";
     else if(kind==="eseries")only="eseries";
+    else if(kind==="tagteam")only="tagteam";
     render();
   });
 }
