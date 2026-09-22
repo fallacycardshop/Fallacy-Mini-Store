@@ -410,6 +410,11 @@ const isEseries=p=>ESERIES_SETS.has(setCode(p));
 // shape — an ampersand plus GX — which across the whole catalogue only ever hits
 // genuine Tag Teams. Either signal alone would miss a few; together they're exact.
 const isTagTeam=p=>/TTGX/i.test(p.rarity||"")||(/&/.test(p.name||"")&&/GX/i.test(p.name||""));
+// Top Chase: the shop's highest-value cards. A card qualifies if any of its
+// condition listings is priced $49.90+, using the same max-price convention as
+// Featured (Math.max over conds), so a premium NM copy still headlines the card
+// even when a cheaper played copy exists.
+const isTopChase=p=>Math.max(...p.conds.map(c=>c.price))>=49.9;
 // Escape a URL for a single-quoted JS string inside an inline onerror handler.
 // Card filenames contain apostrophes (e.g. Chuck'sRhydon…) which would close the
 // string early and blank the image — same fix as admin.html's jsAttrUrl.
@@ -621,6 +626,7 @@ function matchP(p){
   if(only==="wotc"&&!isWOTC(p))return false;
   if(only==="eseries"&&!isEseries(p))return false;
   if(only==="tagteam"&&!isTagTeam(p))return false;
+  if(only==="chase"&&!isTopChase(p))return false;
   return true;
 }
 function sortList(list){const s=$("#sort").value;const key=p=>{const d=bestCond(p)||conds(p)[0];return d.price};
@@ -631,7 +637,7 @@ function render(){
   if(activeFilters()){
     const res=sortList(CARDS.filter(matchP));const liveR=res.filter(p=>!isSold(p)),soldR=res.filter(isSold);
     const ctx=only==="disc"?"deal":"best";
-    let label="Results";if(only==="new")label="Newly in stock &amp; restocked";else if(only==="disc")label="Discounted";else if($("#rarity").value==="SAR")label="Special Art Rares";else if($("#rarity").value==="AR")label="Art Rares";else if($("#rarity").value==="S")label="Baby Shinies";else if(only==="wotc")label="WOTC Old Back Vintage";else if(only==="eseries")label="e-Series Vintage";else if(only==="tagteam")label="Tag Team GX";else if(!$("#q").value.trim()&&!$("#set").value)label="All cards";
+    let label="Results";if(only==="new")label="Newly in stock &amp; restocked";else if(only==="disc")label="Discounted";else if($("#rarity").value==="SAR")label="Special Art Rares";else if($("#rarity").value==="AR")label="Art Rares";else if($("#rarity").value==="S")label="Baby Shinies";else if(only==="wotc")label="WOTC Old Back Vintage";else if(only==="eseries")label="e-Series Vintage";else if(only==="tagteam")label="Tag Team GX";else if(only==="chase")label="Top Chase";else if(!$("#q").value.trim()&&!$("#set").value)label="All cards";
     c.innerHTML=`<div class="results-head"><button class="backbtn" data-back>&#8592; Back</button><h2>${label} (${res.length})</h2></div>
       ${res.length?`<div class="grid">${liveR.map(p=>cardHTML(p,ctx)).join("")}</div>${soldBlock(soldR)}`:`<div class="empty">No cards match &mdash; try clearing a filter.</div>`}
       <div class="results-foot"><button class="backbtn" data-back>&#8592; Back to browsing</button></div>`;
@@ -641,6 +647,7 @@ function render(){
     const notNew=CARDS.filter(p=>!p.isNew);
     c.innerHTML=
       railSection("&#10024; Newly in stock","Fresh drops &amp; restocks &mdash; swipe &rarr;",news,"new","best")+
+      railSection("&#127942; Top Chase","Our highest-value cards &mdash; $49.90 &amp; up &mdash; swipe &rarr;",notNew.filter(isTopChase),"chase","best")+
       featSection(notNew)+
       railSection("&#128101; Tag Team GX","&ldquo;X &amp; Y GX&rdquo; duos from the SM era &mdash; swipe &rarr;",notNew.filter(isTagTeam),"tagteam","best")+
       railSection("&#128142; Special Art Rares","The chase cards &mdash; swipe &rarr;",notNew.filter(p=>p.rarity==="SAR"),"sar","best")+
@@ -716,6 +723,7 @@ function seeAll(kind){
     else if(kind==="wotc")only="wotc";
     else if(kind==="eseries")only="eseries";
     else if(kind==="tagteam")only="tagteam";
+    else if(kind==="chase")only="chase";
     render();
   });
 }
