@@ -589,8 +589,11 @@ function railSection(title,sub,list,kind,ctx){
 function featSection(list){
   // Featured = 20 IN-STOCK cards priced $9.90+, randomised daily. No sold-out
   // block here — as cards sell, fresh ones take their place.
-  const pool=list.filter(p=>!isSold(p)&&Math.max(...p.conds.map(c=>c.price))>=9.9);
-  const picked=dailyShuffle(pool).slice(0,10);
+  const price=p=>Math.max(...p.conds.map(c=>c.price));
+  const pool=list.filter(p=>!isSold(p)&&price(p)>=9.9);
+  // Which 10 cards appear is still a daily-random pick from the pool; they're
+  // then ordered most-expensive first so the shelf leads with the priciest cards.
+  const picked=dailyShuffle(pool).slice(0,10).sort((a,b)=>price(b)-price(a));
   if(!picked.length)return"";
   return `<div class="sec"><div class="sec-head"><h2>&#128293; Featured</h2><span class="count">${picked.length} cards</span></div>
     <div class="grid">${picked.map(p=>cardHTML(p,"best")).join("")}</div></div>`;
