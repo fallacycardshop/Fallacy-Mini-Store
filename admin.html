@@ -1206,6 +1206,44 @@
 </div>
 
 <div class="card">
+  <h1>Store Cover Photo</h1>
+  <p>
+    A polished cover to promote the store &mdash; a branded hero with a few
+    showcase cards, ready to forward on Telegram or post daily. Reads the same
+    public catalogue shoppers see, so no passphrase is needed. The
+    <strong>Daily store mix</strong> changes each day, so you can post a fresh one.
+  </p>
+  <div class="field-row">
+    <div>
+      <label class="field-label">Show</label>
+      <select id="coverSource">
+        <option value="mix">Daily store mix</option>
+        <option value="chase">Biggest cards ($49.90+)</option>
+        <option value="new">Newly in stock</option>
+      </select>
+    </div>
+    <div>
+      <label class="field-label">Shape</label>
+      <select id="coverFormat">
+        <option value="portrait">Portrait (4:5)</option>
+        <option value="square">Square (1:1)</option>
+        <option value="landscape">Landscape (16:9)</option>
+      </select>
+    </div>
+  </div>
+  <label class="field-label">Tagline (blank for none)</label>
+  <input type="text" id="coverTagline" maxlength="60" value="Pokémon singles · new drops daily">
+  <label class="field-label">
+    Logo URL (leave as-is once your logo is in the repo &mdash; blank for no logo)
+  </label>
+  <input type="text" id="coverLogo"
+    value="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ministore-logo.jpg">
+  <button id="coverBuildButton">Build Cover Photo</button>
+  <p id="coverResultText"></p>
+  <div id="coverSlot" class="card-image-slot"></div>
+</div>
+
+<div class="card">
   <h1>Slow Release Scheduling</h1>
   <p>
     Upload all your new stock to the CSV at once, then release it gradually.
@@ -3254,6 +3292,305 @@ document.getElementById("promoBuildButton").onclick = async () => {
     resultEl.className = notes.length ? "error" : "success";
   } catch (err) {
     resultEl.textContent = "Couldn't build the image — please try again.";
+    resultEl.className = "error";
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Store Cover Photo — a branded hero (logo, title, tagline, a fanned showcase of
+// a few cards, a supporting strip, and a Shop-now footer) for forwarding as the
+// day's promo. Reuses the promo generator's brand palette + card drawing; only
+// the composition is new.
+// ---------------------------------------------------------------------------
+const COVER_SIZES = {
+  portrait: { w: 1080, h: 1350 },
+  square:   { w: 1080, h: 1080 },
+};
+
+// SGT day number, so the "daily mix" is stable through the trading day and
+// changes overnight.
+function coverDailySeed() {
+  const d = new Date(Date.now() + 8 * 3600000);
+  return Number(`${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`);
+}
+
+function coverShuffle(arr, seed) {
+  const rnd = seededRandom(seed || 1);
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Reorder a priority-sorted list so the strongest card sits in the middle of the
+// fan (best centre, next flanking, weakest on the ends): [D,B,A,C,E] from [A..E].
+function coverCenterOut(items) {
+  if (items.length <= 1) return items.slice();
+  const left = [], right = [];
+  items.forEach((it, i) => {
+    if (i === 0) return;
+    (i % 2 === 1 ? left : right).push(it);
+  });
+  return [...left.reverse(), items[0], ...right];
+}
+
+// A JPEG/PNG logo feathered into the pink (compact version of the promo mask),
+// centred horizontally on cx at top y.
+function coverDrawLogo(ctx, logoImg, cx, ty, logoH) {
+  const logoW = Math.round(logoH * (logoImg.width / logoImg.height));
+  const lx = Math.round(cx - logoW / 2);
+  const mask = document.createElement("canvas");
+  mask.width = logoW; mask.height = logoH;
+  const m = mask.getContext("2d");
+  m.drawImage(logoImg, 0, 0, logoW, logoH);
+  m.globalCompositeOperation = "destination-in";
+  const fx = Math.round(logoW * 0.14), fy = Math.round(logoH * 0.14);
+  const hf = m.createLinearGradient(0, 0, logoW, 0);
+  hf.addColorStop(0, "rgba(0,0,0,0)"); hf.addColorStop(fx / logoW, "rgba(0,0,0,1)");
+  hf.addColorStop(1 - fx / logoW, "rgba(0,0,0,1)"); hf.addColorStop(1, "rgba(0,0,0,0)");
+  m.fillStyle = hf; m.fillRect(0, 0, logoW, logoH);
+  const vmask = document.createElement("canvas");
+  vmask.width = logoW; vmask.height = logoH;
+  const v = vmask.getContext("2d");
+  v.drawImage(mask, 0, 0);
+  v.globalCompositeOperation = "destination-in";
+  const vf = v.createLinearGradient(0, 0, 0, logoH);
+  vf.addColorStop(0, "rgba(0,0,0,0)"); vf.addColorStop(fy / logoH, "rgba(0,0,0,1)");
+  vf.addColorStop(1 - fy / logoH, "rgba(0,0,0,1)"); vf.addColorStop(1, "rgba(0,0,0,0)");
+  v.fillStyle = vf; v.fillRect(0, 0, logoW, logoH);
+  ctx.drawImage(vmask, lx, ty, logoW, logoH);
+}
+
+// A centred rounded pill of text.
+function coverPill(ctx, cx, cy, text, font, padX, h, bg, fg) {
+  ctx.font = font;
+  const w = ctx.measureText(text).width + padX * 2;
+  const x = cx - w / 2, y = cy - h / 2, r = h / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+  ctx.fillStyle = bg; ctx.fill();
+  ctx.fillStyle = fg; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(text, cx, cy + 1);
+  ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+}
+
+document.getElementById("coverBuildButton").onclick = async () => {
+  const resultEl = document.getElementById("coverResultText");
+  const slot = document.getElementById("coverSlot");
+  const source = document.getElementById("coverSource").value;
+  const format = document.getElementById("coverFormat").value;
+  const tagline = document.getElementById("coverTagline").value.trim();
+  const logoUrl = document.getElementById("coverLogo").value.trim();
+
+  resultEl.textContent = "Fetching cards…"; resultEl.className = "";
+  slot.innerHTML = "";
+
+  try {
+    const res = await fetch("/api/products");
+    const payload = await res.json();
+    const products = Array.isArray(payload) ? payload : payload.products || [];
+
+    // One entry per card (dedupe conditions), keeping the highest-priced listing
+    // so the showcase leads with the best copy. In-stock only — a promo shouldn't
+    // headline sold-out cards.
+    const byCard = new Map();
+    for (const p of products) {
+      if (!p.photo || Number(p.stock || 0) <= 0) continue;
+      const key = p.cardId || p.photo;
+      const prev = byCard.get(key);
+      if (!prev || (Number(p.price) || 0) > (Number(prev.price) || 0)) byCard.set(key, p);
+    }
+    let cards = [...byCard.values()];
+    let label;
+    if (source === "new") {
+      cards = cards.filter(p => p.isNew);
+      label = "NEW IN STOCK";
+    } else if (source === "chase") {
+      cards = cards.filter(p => (Number(p.price) || 0) >= 49.9)
+                   .sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0));
+      label = "THE TOP CHASES";
+    } else {
+      cards = coverShuffle(cards, coverDailySeed());
+      label = "IN THE STORE TODAY";
+    }
+
+    if (!cards.length) {
+      resultEl.textContent = source === "new"
+        ? "Nothing is in the Newly in stock row right now."
+        : source === "chase"
+          ? "No in-stock cards are $49.90 or above right now."
+          : "No in-stock cards to show right now.";
+      resultEl.className = "error";
+      return;
+    }
+
+    const heroCards = coverCenterOut(cards.slice(0, Math.min(5, cards.length)));
+    const stripCards = cards.slice(Math.min(5, cards.length), Math.min(5, cards.length) + 7);
+
+    resultEl.textContent = "Loading card images…";
+    const heroLoaded = (await Promise.all(heroCards.map(c => loadImage(c.photo))))
+      .map((img, i) => ({ img, card: heroCards[i] })).filter(x => x.img);
+    const stripLoaded = (await Promise.all(stripCards.map(c => loadImage(c.photo))))
+      .map((img, i) => ({ img, card: stripCards[i] })).filter(x => x.img);
+    if (!heroLoaded.length) {
+      resultEl.textContent = "None of those card images could be loaded.";
+      resultEl.className = "error";
+      return;
+    }
+    const logoImg = logoUrl ? await loadImage(logoUrl) : null;
+
+    const { w: W, h: H } = COVER_SIZES[format] || COVER_SIZES.portrait;
+    const sK = W / 1080;
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext("2d");
+
+    // Background: brand pink, a soft white glow behind the hero, and sparkles in
+    // the pink margins.
+    ctx.fillStyle = PROMO_BG; ctx.fillRect(0, 0, W, H);
+    const glowCx = W / 2, glowCy = H * 0.52, glowR = Math.max(W, H) * 0.6;
+    const glow = ctx.createRadialGradient(glowCx, glowCy, glowR * 0.1, glowCx, glowCy, glowR);
+    glow.addColorStop(0, "rgba(255,255,255,0.95)");
+    glow.addColorStop(0.55, "rgba(255,255,255,0.72)");
+    glow.addColorStop(0.82, "rgba(255,255,255,0.22)");
+    glow.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+    const spk = seededRandom(1337);
+    for (let i = 0; i < 54; i++) {
+      const x = spk() * W, yy = spk() * H;
+      if (Math.hypot(x - glowCx, yy - glowCy) / glowR < 0.72) continue;
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(255,255,255,${0.4 + spk() * 0.5})`;
+      ctx.arc(x, yy, (2 + spk() * 4) * sK, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Header: logo, title, tagline, source pill.
+    let y = 40 * sK;
+    if (logoImg) { coverDrawLogo(ctx, logoImg, W / 2, y, Math.round(118 * sK)); y += 118 * sK + 12 * sK; }
+    else y += 8 * sK;
+
+    ctx.textAlign = "center";
+    ctx.fillStyle = PROMO_INK;
+    ctx.shadowColor = "rgba(255,255,255,0.6)"; ctx.shadowBlur = 10 * sK;
+    ctx.font = `800 ${Math.round(60 * sK)}px Poppins, Arial, sans-serif`;
+    ctx.fillText("FALLACY'S MINI STORE", W / 2, y + 52 * sK);
+    ctx.shadowColor = "transparent";
+    y += 76 * sK;
+    if (tagline) {
+      ctx.font = `${Math.round(27 * sK)}px Poppins, Arial, sans-serif`;
+      ctx.fillStyle = "rgba(168,48,95,0.72)";
+      ctx.fillText(tagline, W / 2, y + 22 * sK);
+      y += 44 * sK;
+    }
+    coverPill(ctx, W / 2, y + 22 * sK, label,
+      `bold ${Math.round(24 * sK)}px Poppins, Arial, sans-serif`, 22 * sK, 44 * sK,
+      "rgba(168,48,95,0.92)", "#fff");
+    y += 44 * sK + 22 * sK;
+    ctx.textAlign = "left";
+
+    const footerH = 128 * sK;
+    const stripH = stripLoaded.length ? 150 * sK : 0;
+    const stripGap = stripLoaded.length ? 24 * sK : 0;
+
+    // Hero fan, centred in the space between the header and the strip/footer.
+    const heroTop = y + 6 * sK;
+    const heroBottom = H - footerH - stripH - stripGap;
+    const heroAreaH = Math.max(heroBottom - heroTop, 200 * sK);
+    const n = heroLoaded.length;
+    let cardH = Math.min(heroAreaH * 0.88, W * 0.42);
+    let cardW = cardH / CARD_RATIO;
+    // Desired spacing, then capped so the whole fan fits the width with a margin.
+    const margin = 46 * sK;
+    let step = cardW * (n > 4 ? 0.56 : n > 2 ? 0.66 : 0.82);
+    if (n > 1) {
+      const maxStep = (W / 2 - margin - cardW / 2) / ((n - 1) / 2);
+      step = Math.min(step, Math.max(maxStep, cardW * 0.30));
+    }
+    const arc = cardH * 0.10, maxAngle = 0.22;
+    const heroCx = W / 2, heroCy = heroTop + heroAreaH / 2;
+
+    // Draw outermost first so the centre card lands on top.
+    const drawOrder = heroLoaded.map((e, i) => ({ e, i }))
+      .sort((a, b) => Math.abs(b.i - (n - 1) / 2) - Math.abs(a.i - (n - 1) / 2));
+    drawOrder.forEach(({ e, i }) => {
+      const t = n > 1 ? (i - (n - 1) / 2) / ((n - 1) / 2) : 0;
+      const cx = heroCx + (i - (n - 1) / 2) * step;
+      const cy = heroCy + Math.abs(t) * arc;
+      drawCardTrimmedRotated(ctx, e.img, cx - cardW / 2, cy - cardH / 2, cardW, cardH, 16 * sK, 3, t * maxAngle);
+    });
+
+    // Supporting strip of a few more cards, neat and centred.
+    if (stripLoaded.length) {
+      const sH = stripH, sW = sH / CARD_RATIO, sGap = 12 * sK;
+      const totalW = stripLoaded.length * sW + (stripLoaded.length - 1) * sGap;
+      let sx = (W - totalW) / 2;
+      const sy = heroBottom + stripGap;
+      stripLoaded.forEach(e => { drawCardTrimmed(ctx, e.img, sx, sy, sW, sH, 10 * sK, 3); sx += sW + sGap; });
+    }
+
+    // Footer: shop CTA + handle.
+    coverPill(ctx, W / 2, H - footerH + 40 * sK, "SHOP NOW  ·  OPEN THE MINI STORE",
+      `bold ${Math.round(25 * sK)}px Poppins, Arial, sans-serif`, 26 * sK, 52 * sK,
+      PROMO_INK, "#fff");
+    ctx.textAlign = "center";
+    ctx.font = `${Math.round(23 * sK)}px Poppins, Arial, sans-serif`;
+    ctx.fillStyle = "rgba(168,48,95,0.75)";
+    ctx.fillText("@fallacyministore_bot   ·   t.me/fallacytcg", W / 2, H - footerH + 90 * sK);
+    ctx.textAlign = "left";
+
+    // Preview (as an <img> so iOS offers "Add to Photos") + share/copy/open.
+    const preview = document.createElement("img");
+    preview.src = canvas.toDataURL("image/png");
+    preview.alt = "Store cover";
+    preview.className = "promo-preview";
+    slot.appendChild(preview);
+
+    const hint = document.createElement("p");
+    hint.className = "config-note";
+    hint.textContent = "On iPhone: press and hold the image above, then choose “Add to Photos”. Or use Share below.";
+    slot.appendChild(hint);
+
+    const filename = `store-cover-${source}-${new Date().toISOString().slice(0, 10)}.png`;
+    const toBlob = () => new Promise(r => canvas.toBlob(r, "image/png"));
+    const actions = document.createElement("div");
+    actions.className = "card-image-actions";
+
+    const shareBtn = document.createElement("button");
+    shareBtn.className = "btn"; shareBtn.textContent = "Share / Save";
+    shareBtn.onclick = async () => {
+      try {
+        const blob = await toBlob();
+        const file = new File([blob], filename, { type: "image/png" });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); return; }
+        const link = document.createElement("a"); link.download = filename; link.href = canvas.toDataURL("image/png"); link.click();
+      } catch (e) { /* cancelled */ }
+    };
+    const copyBtn = document.createElement("button");
+    copyBtn.className = "btn btn-neutral"; copyBtn.textContent = "Copy image";
+    copyBtn.onclick = async () => {
+      try { const blob = await toBlob(); await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]); copyBtn.textContent = "Copied"; setTimeout(() => (copyBtn.textContent = "Copy image"), 1500); }
+      catch (e) { copyBtn.textContent = "Use Share instead"; }
+    };
+    const openBtn = document.createElement("button");
+    openBtn.className = "btn btn-neutral"; openBtn.textContent = "Open in new tab";
+    openBtn.onclick = async () => { const blob = await toBlob(); window.open(URL.createObjectURL(blob), "_blank"); };
+
+    actions.appendChild(shareBtn); actions.appendChild(copyBtn); actions.appendChild(openBtn);
+    slot.appendChild(actions);
+
+    const shown = heroLoaded.length + stripLoaded.length;
+    const failed = (heroCards.length + stripCards.length) - shown;
+    resultEl.textContent = `Built a ${format} cover from ${shown} card(s)` + (failed > 0 ? ` — ${failed} image(s) failed to load.` : ".");
+    resultEl.className = failed > 0 ? "error" : "success";
+  } catch (err) {
+    resultEl.textContent = "Couldn't build the cover — please try again.";
     resultEl.className = "error";
   }
 };
