@@ -3562,17 +3562,18 @@ document.getElementById("coverBuildButton").onclick = async () => {
     bScrim.addColorStop(1, "rgba(238,182,205,0.97)");
     ctx.fillStyle = bScrim; ctx.fillRect(0, H - footerClear, W, footerClear);
 
-    // Header: logo, title, tagline.
+    // Header: title + tagline first, then the logo drawn LAST so it always sits
+    // ON TOP of the words (and its reserved height keeps them from overlapping).
     const logoTransparent = /\.png(\?|$)/i.test(logoUrl);
-    let y = 40 * sK;
-    if (logoImg) { coverDrawLogo(ctx, logoImg, W / 2, y, Math.round(118 * sK), !logoTransparent); y += 118 * sK + 12 * sK; }
-    else y += 8 * sK;
+    const logoH = logoImg ? Math.round(118 * sK) : 0;
+    const logoTop = 34 * sK;
+    let y = logoTop + logoH + (logoImg ? 20 * sK : 8 * sK);
 
     ctx.textAlign = "center";
     ctx.fillStyle = PROMO_INK;
     ctx.shadowColor = "rgba(255,255,255,0.95)"; ctx.shadowBlur = 16 * sK;
     ctx.font = `800 ${Math.round(60 * sK)}px Poppins, Arial, sans-serif`;
-    // Two passes so the white halo is strong enough to lift the title off the scatter.
+    // Two passes so the white halo is strong enough to lift the title off the rows.
     ctx.fillText("FALLACY'S MINI STORE", W / 2, y + 52 * sK);
     ctx.fillText("FALLACY'S MINI STORE", W / 2, y + 52 * sK);
     ctx.shadowColor = "transparent";
@@ -3584,6 +3585,7 @@ document.getElementById("coverBuildButton").onclick = async () => {
       ctx.fillText(tagline, W / 2, y + 22 * sK);
       ctx.shadowColor = "transparent";
     }
+    if (logoImg) coverDrawLogo(ctx, logoImg, W / 2, logoTop, logoH, !logoTransparent);
     ctx.textAlign = "left";
 
     const footerH = 150 * sK;
@@ -3593,8 +3595,8 @@ document.getElementById("coverBuildButton").onclick = async () => {
     // whole fan spans ~60% of the width rather than the full canvas.
     const n = fanLoaded.length;
     if (n) {
-      const stepFrac = 0.46;                          // overlap step as a fraction of card width
-      const targetSpan = W * 0.62;
+      const stepFrac = 0.66;                          // higher = less overlap, more spread
+      const targetSpan = W * 0.66;
       let cardW = targetSpan / (1 + (n - 1) * stepFrac);
       let cardH = cardW * CARD_RATIO;
       if (cardH > H * 0.40) { cardH = H * 0.40; cardW = cardH / CARD_RATIO; } // don't get too tall
@@ -3615,14 +3617,14 @@ document.getElementById("coverBuildButton").onclick = async () => {
         });
     }
 
-    // Footer: shop CTA + handle.
-    coverPill(ctx, W / 2, H - footerH + 40 * sK, "SHOP NOW  ·  OPEN THE MINI STORE",
+    // Footer: shop bot in a pill, community channel below.
+    coverPill(ctx, W / 2, H - footerH + 42 * sK, "Shop Now:  @fallacyministore_bot",
       `bold ${Math.round(25 * sK)}px Poppins, Arial, sans-serif`, 26 * sK, 52 * sK,
       PROMO_INK, "#fff");
     ctx.textAlign = "center";
-    ctx.font = `${Math.round(23 * sK)}px Poppins, Arial, sans-serif`;
-    ctx.fillStyle = "rgba(168,48,95,0.75)";
-    ctx.fillText("@fallacyministore_bot   ·   t.me/fallacytcg", W / 2, H - footerH + 90 * sK);
+    ctx.font = `600 ${Math.round(24 * sK)}px Poppins, Arial, sans-serif`;
+    ctx.fillStyle = "rgba(150,35,85,0.85)";
+    ctx.fillText("Join our Community:  @fallacycardshop", W / 2, H - footerH + 98 * sK);
     ctx.textAlign = "left";
 
     // Preview (as an <img> so iOS offers "Add to Photos") + share/copy/open.
