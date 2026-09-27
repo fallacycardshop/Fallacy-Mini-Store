@@ -3462,7 +3462,7 @@ document.getElementById("coverBuildButton").onclick = async () => {
     }
 
     // FAN = eye-catching cards (recognisable/popular Pokémon and big-ticket cards
-    // first). The rest are scattered across the background to show the range.
+    // first). The rest fill the uniform background rows to show the range.
     const ranked = cards.slice().sort((a, b) => coverFanScore(b) - coverFanScore(a));
     const fanN = Math.min(5, ranked.length);
     const fanCards = coverCenterOut(ranked.slice(0, fanN));
@@ -3491,54 +3491,68 @@ document.getElementById("coverBuildButton").onclick = async () => {
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext("2d");
 
-    // Background: individual cards scattered across the whole canvas — spaced out,
-    // lightly tilted, and bleeding off every edge — so the store reads as "lots of
-    // cards, huge variety". A soft wash + a white glow behind the fan keep the fan
-    // and text popping over the busy scatter.
+    // Background: the soft pink gradient look, with uniform ROWS of cards behind
+    // the fan. The rows are vertically centred in the space between the header and
+    // footer — so they never clip top or bottom — and run wider than the canvas so
+    // they bleed off the LEFT and RIGHT edges only — a tidy wall of stock.
     ctx.fillStyle = PROMO_BG; ctx.fillRect(0, 0, W, H);
+
+    const headerClear = (logoImg ? 130 * sK : 20 * sK) + 175 * sK;
+    const footerClear = 150 * sK;
+
     if (bgLoaded.length) {
-      const scW = Math.round(W * 0.155);
-      const scH = Math.round(scW * CARD_RATIO);
-      const cellW = scW * 1.30, cellH = scH * 1.16;   // generous spacing between cards
-      const cols = Math.ceil(W / cellW) + 1;          // +1 row/col each way so the grid
-      const rows = Math.ceil(H / cellH) + 1;          // bleeds off the edges
-      const offX = (W - cols * cellW) / 2;
-      const offY = (H - rows * cellH) / 2;
-      const rnd = seededRandom(cols * rows * 97 + bgLoaded.length * 13 + 5);
-      let bi = 0;
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const e = bgLoaded[bi % bgLoaded.length]; bi++;
-          const cx = offX + c * cellW + cellW / 2 + (rnd() - 0.5) * cellW * 0.34;
-          const cy = offY + r * cellH + cellH / 2 + (rnd() - 0.5) * cellH * 0.28;
-          const rot = (rnd() - 0.5) * 0.28;
-          drawCardTrimmedRotated(ctx, e.img, cx - scW / 2, cy - scH / 2, scW, scH, 9 * sK, 3, rot);
+      const rowCardW = Math.round(W * 0.15);
+      const rowCardH = Math.round(rowCardW * CARD_RATIO);
+      const colGap = 10 * sK, rowGap = 12 * sK;
+      const rowStep = rowCardH + rowGap;
+      const bandTop = headerClear, bandBottom = H - footerClear;
+      const bandH = bandBottom - bandTop;
+      const nRows = Math.max(1, Math.floor((bandH + rowGap) / rowStep));
+      const gridH = nRows * rowCardH + (nRows - 1) * rowGap;
+      const startY = bandTop + (bandH - gridH) / 2;             // centred → no top/bottom clip
+      const perRow = Math.ceil(W / (rowCardW + colGap)) + 1;    // +1 so both ends bleed
+      const rowSpan = perRow * rowCardW + (perRow - 1) * colGap;
+      const startX = (W - rowSpan) / 2;                          // negative → off both sides
+      let idx = 0;
+      for (let r = 0; r < nRows; r++) {
+        const ry = startY + r * rowStep;
+        for (let c = 0; c < perRow; c++) {
+          const e = bgLoaded[idx % bgLoaded.length]; idx++;
+          drawCardTrimmed(ctx, e.img, startX + c * (rowCardW + colGap), ry, rowCardW, rowCardH, 9 * sK, 3);
         }
       }
     }
-    // Soft brand-pink wash to unify the scatter and calm the busyness.
-    ctx.fillStyle = "rgba(197,70,138,0.12)"; ctx.fillRect(0, 0, W, H);
-    // White glow behind the fan so it lifts off the scatter.
-    const glowCx = W / 2, glowCy = H * 0.55, glowR = W * 0.5;
-    const glow = ctx.createRadialGradient(glowCx, glowCy, glowR * 0.08, glowCx, glowCy, glowR);
-    glow.addColorStop(0, "rgba(255,255,255,0.88)");
-    glow.addColorStop(0.5, "rgba(255,255,255,0.44)");
+
+    // Soft white glow over the middle so the fan lifts off the rows — keeps the
+    // airy gradient feel, no heavy tint.
+    const glowCx = W / 2, glowCy = H * 0.55, glowR = Math.max(W, H) * 0.55;
+    const glow = ctx.createRadialGradient(glowCx, glowCy, glowR * 0.12, glowCx, glowCy, glowR);
+    glow.addColorStop(0, "rgba(255,255,255,0.78)");
+    glow.addColorStop(0.5, "rgba(255,255,255,0.34)");
     glow.addColorStop(1, "rgba(255,255,255,0)");
     ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
-    // Top + bottom scrims keep the header and footer readable over the scatter.
-    const topBand = (logoImg ? 118 * sK : 0) + 185 * sK;
-    const tScrim = ctx.createLinearGradient(0, 0, 0, topBand);
-    tScrim.addColorStop(0, "rgba(248,211,226,0.99)");
-    tScrim.addColorStop(0.58, "rgba(248,211,226,0.92)");
-    tScrim.addColorStop(0.82, "rgba(248,211,226,0.55)");
+
+    // Sparkles, only in the clear pink margins above and below the rows.
+    const spk = seededRandom(1337);
+    for (let i = 0; i < 40; i++) {
+      const x = spk() * W, yy = spk() * H;
+      if (yy > headerClear - 30 * sK && yy < H - footerClear + 30 * sK) continue;
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(255,255,255,${0.4 + spk() * 0.5})`;
+      ctx.arc(x, yy, (2 + spk() * 4) * sK, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Gentle pink scrims keep the header and footer crisp where the rows approach.
+    const tScrim = ctx.createLinearGradient(0, 0, 0, headerClear);
+    tScrim.addColorStop(0, "rgba(248,211,226,0.98)");
+    tScrim.addColorStop(0.7, "rgba(248,211,226,0.80)");
     tScrim.addColorStop(1, "rgba(248,211,226,0)");
-    ctx.fillStyle = tScrim; ctx.fillRect(0, 0, W, topBand);
-    const botBand = 150 * sK;
-    const bScrim = ctx.createLinearGradient(0, H - botBand, 0, H);
+    ctx.fillStyle = tScrim; ctx.fillRect(0, 0, W, headerClear);
+    const bScrim = ctx.createLinearGradient(0, H - footerClear, 0, H);
     bScrim.addColorStop(0, "rgba(248,211,226,0)");
     bScrim.addColorStop(0.5, "rgba(248,211,226,0.82)");
     bScrim.addColorStop(1, "rgba(248,211,226,0.97)");
-    ctx.fillStyle = bScrim; ctx.fillRect(0, H - botBand, W, botBand);
+    ctx.fillStyle = bScrim; ctx.fillRect(0, H - footerClear, W, footerClear);
 
     // Header: logo, title, tagline, source pill.
     let y = 40 * sK;
