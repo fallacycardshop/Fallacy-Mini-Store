@@ -211,7 +211,8 @@ export async function getActiveReservedMap(redis) {
 export const HIDDEN_CARDS_KEY = "hidden:cards";
 export const STORE_SETTINGS_KEY = "store:settings";
 // Manual price overrides: ONE JSON object, groupKey ("CardID::Condition") ->
-// price in dollars. A single key (like hidden:cards / store:settings) so the
+// { price, at } (dollars, and the epoch-ms it was last set so the admin can show
+// how old a price is). A single key (like hidden:cards / store:settings) so the
 // whole map is read in the same MGET as the rest of the store state — zero extra
 // cost per page load and O(1) as the catalogue grows. An override replaces the
 // CSV price for that exact listing until it's reset; the CSV stays the base.
@@ -449,6 +450,9 @@ export function parseStoreSettings(raw) {
 // a corrupt value can never zero out a card's price or make it free.
 // ---------------------------------------------------------------------------
 
+// Normalises to { groupKey: { price, at } }. Accepts a legacy bare-number entry
+// (price only, no timestamp) so older data keeps working. Invalid or non-positive
+// prices are dropped, so a corrupt value can never zero a price or make it free.
 export function parsePriceOverrides(raw) {
   if (!raw) return {};
   let data;
@@ -461,8 +465,10 @@ export function parsePriceOverrides(raw) {
   if (!data || typeof data !== "object") return {};
   const out = {};
   for (const [groupKey, value] of Object.entries(data)) {
-    const price = Number(value);
-    if (Number.isFinite(price) && price > 0) out[groupKey] = price;
+    const isObj = value && typeof value === "object";
+    const price = Number(isObj ? value.price : value);
+    const at = isObj ? Number(value.at) || 0 : 0;
+    if (Number.isFinite(price) && price > 0) out[groupKey] = { price, at };
   }
   return out;
 }
@@ -473,7 +479,7 @@ export function parsePriceOverrides(raw) {
 // record can never disagree with what's displayed (see products.js).
 export function effectivePrice(overrides, groupKey, csvPrice) {
   const o = overrides && overrides[groupKey];
-  const n = Number(o);
+  const n = o ? Number(o.price) : NaN;
   return Number.isFinite(n) && n > 0 ? n : csvPrice;
 }
 
@@ -484,8 +490,10 @@ export async function getPriceOverrides(redis) {
 export async function savePriceOverrides(redis, overrides) {
   const clean = {};
   for (const [k, v] of Object.entries(overrides || {})) {
-    const n = Number(v);
-    if (k && Number.isFinite(n) && n > 0) clean[k] = n;
+    const isObj = v && typeof v === "object";
+    const price = Number(isObj ? v.price : v);
+    const at = isObj ? Number(v.at) || 0 : 0;
+    if (k && Number.isFinite(price) && price > 0) clean[k] = { price, at };
   }
   if (Object.keys(clean).length === 0) {
     await redis.del(PRICE_OVERRIDES_KEY);

@@ -123,17 +123,19 @@ export default async function handler(req, res) {
         const available = Math.max((Number(group.baseStock) || 0) - sold, 0);
         if (available <= 0) return; // only cards still in stock (unsold)
         const csvPrice = Number(group.price) || 0;
-        const override = overrides[groupKey];
-        const overridden = Number.isFinite(Number(override)) && Number(override) > 0;
+        const ov = overrides[groupKey];
+        const overridden = !!(ov && Number(ov.price) > 0);
         prices.push({
           groupKey,
           cardId: group.cardId,
           name: group.name,
           set: group.set,
           condition: group.condition || "",
+          photo: group.photo || "",
           csvPrice,
           price: effectivePrice(overrides, groupKey, csvPrice),
           overridden,
+          updatedAt: overridden ? Number(ov.at) || 0 : 0,
           stock: available,
         });
       });
@@ -167,9 +169,10 @@ export default async function handler(req, res) {
       }
       const rounded = Math.round(price * 100) / 100;
       const overrides = await getPriceOverrides(redis);
-      overrides[groupKey] = rounded;
+      const at = Date.now();
+      overrides[groupKey] = { price: rounded, at };
       await savePriceOverrides(redis, overrides);
-      return res.status(200).json({ ok: true, groupKey, price: rounded });
+      return res.status(200).json({ ok: true, groupKey, price: rounded, updatedAt: at });
     }
 
     // Remove one override — the listing reverts to its CSV price.
