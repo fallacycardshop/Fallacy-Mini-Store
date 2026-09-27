@@ -1210,8 +1210,8 @@
   <p>
     A polished cover to promote the store &mdash; a branded hero with a few
     showcase cards, ready to forward on Telegram or post daily. Reads the same
-    public catalogue shoppers see, so no passphrase is needed. The
-    <strong>Daily store mix</strong> changes each day, so you can post a fresh one.
+    public catalogue shoppers see, so no passphrase is needed. Every time you tap
+    <strong>Build</strong> you get a fresh, different image (no repeated cards).
   </p>
   <div class="field-row">
     <div>
@@ -3307,13 +3307,6 @@ const COVER_SIZES = {
   square:   { w: 1080, h: 1080 },
 };
 
-// SGT day number, so the "daily mix" is stable through the trading day and
-// changes overnight.
-function coverDailySeed() {
-  const d = new Date(Date.now() + 8 * 3600000);
-  return Number(`${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`);
-}
-
 function coverShuffle(arr, seed) {
   const rnd = seededRandom(seed || 1);
   const a = arr.slice();
@@ -3484,14 +3477,29 @@ document.getElementById("coverBuildButton").onclick = async () => {
       if (!prev || (Number(p.price) || 0) > (Number(prev.price) || 0)) byCard.set(key, p);
     }
     const all = [...byCard.values()];
-    const seed = coverDailySeed();
+    // A fresh random seed each press, so every generate gives a different result.
+    const seed = Math.floor(Math.random() * 1e9);
     const price = c => Number(c.price) || 0;
     const keyOf = c => c.cardId || c.photo;
     const isPopular = c => coverPopularity(c.name) > 0;
-    // Take up to n cards not already used, marking them used.
-    const take = (arr, n, used) => {
+    // Every card is placed AT MOST ONCE across the whole image (fan + all rows).
+    const used = new Set();
+    // Take up to n unique cards from arr (skipping any already used), marking used.
+    const take = (arr, n) => {
       const out = [];
       for (const c of arr) { if (out.length >= n) break; const k = keyOf(c); if (!used.has(k)) { used.add(k); out.push(c); } }
+      return out;
+    };
+    // Fill exactly n slots from a sequence of pools, each card used at most once.
+    // If the pools run dry, the remaining slots are left EMPTY rather than repeating
+    // a card (the gradient shows through) — so no photo ever appears twice.
+    const fillN = (n, ...pools) => {
+      const out = [];
+      for (const pool of pools) {
+        for (const c of pool) { if (out.length >= n) break; const k = keyOf(c); if (!used.has(k)) { used.add(k); out.push(c); } }
+        if (out.length >= n) break;
+      }
+      while (out.length < n) out.push(null);
       return out;
     };
 
@@ -3502,7 +3510,7 @@ document.getElementById("coverBuildButton").onclick = async () => {
     const headerClear = (logoImg ? 130 * sK : 20 * sK) + 175 * sK;
     const footerClear = 150 * sK;
     const geo = coverGeometry(W, H, sK, headerClear, footerClear);
-    const slots = geo.nRows * geo.perRow;
+    const per = geo.perRow, rows = geo.nRows, slots = rows * per;
 
     let fanCards = [], bgOrder = [], label = "";
 
@@ -3510,53 +3518,40 @@ document.getElementById("coverBuildButton").onclick = async () => {
       label = "NEW IN STOCK";
       const news = all.filter(c => c.isNew);
       if (!news.length) { resultEl.textContent = "Nothing is in the Newly in stock row right now."; resultEl.className = "error"; return; }
-      const used = new Set();
       // Fan = the 5 most valuable newly-in-stock cards.
-      fanCards = take(news.slice().sort((a, b) => price(b) - price(a)), 5, used);
-      // Remaining new cards go into the TOP and BOTTOM rows of the grid.
+      fanCards = take(news.slice().sort((a, b) => price(b) - price(a)), 5);
+      // Remaining new cards fill the TOP and BOTTOM rows; if they run out, those
+      // rows continue with general variety (same spread logic). The middle rows are
+      // general variety. Nothing repeats — fillN pulls each card only once.
       const newRest = coverSpread(news.filter(c => !used.has(keyOf(c))), seed);
-      const per = geo.perRow, rows = geo.nRows;
-      // Split the remaining newly-in-stock cards across BOTH top and bottom rows.
-      const topRow = newRest.splice(0, Math.min(per, Math.ceil(newRest.length / 2)));
-      const bottomRow = newRest.splice(0, Math.min(per, newRest.length));
-      // Middle rows = general variety (all eras/rarities), leftover new cards first.
-      news.forEach(c => used.add(keyOf(c)));
-      const variety = coverSpread(all.filter(c => !used.has(keyOf(c))), seed);
-      const midPool = [...newRest, ...variety];
-      const mid = [];
-      const midNeeded = Math.max(rows - 2, 0) * per;
-      for (let i = 0; i < midNeeded; i++) mid.push(midPool.length ? midPool[i % midPool.length] : null);
-      const pad = row => { let i = 0; while (row.length < per) row.push(variety.length ? variety[i++ % variety.length] : null); };
-      pad(topRow); pad(bottomRow);
+      const variety = coverSpread(all.filter(c => !c.isNew), seed);
+      // Split the leftover new cards across BOTH rows; any excess joins the middle.
+      const topNew = newRest.slice(0, Math.min(per, Math.ceil(newRest.length / 2)));
+      const botNew = newRest.slice(topNew.length, topNew.length + per);
+      const leftoverNew = newRest.slice(topNew.length + botNew.length);
+      const topRow = fillN(per, topNew, variety);
+      const bottomRow = fillN(per, botNew, variety);
+      const mid = fillN(Math.max(rows - 2, 0) * per, leftoverNew, variety);
       bgOrder = rows >= 2 ? [...topRow, ...mid, ...bottomRow] : topRow;
     } else if (source === "chase") {
       label = "THE TOP CHASES";
       const pool = all.filter(c => price(c) >= 49.9).sort((a, b) => price(b) - price(a));
       if (!pool.length) { resultEl.textContent = "No in-stock cards are $49.90 or above right now."; resultEl.className = "error"; return; }
-      const used = new Set();
-      fanCards = take(pool, 5, used);
-      const rest = pool.filter(c => !used.has(keyOf(c)));
-      const restKeys = new Set(rest.map(keyOf));
-      const extra = all.filter(c => !used.has(keyOf(c)) && !restKeys.has(keyOf(c)));
-      bgOrder = coverSpread([...rest, ...extra], seed);
+      fanCards = take(pool, 5);
+      // Rest of the chase cards first, then everything else in stock — spread, unique.
+      bgOrder = fillN(slots, coverSpread(pool, seed), coverSpread(all, seed));
     } else {
       label = "IN THE STORE TODAY";
       if (!all.length) { resultEl.textContent = "No in-stock cards to show right now."; resultEl.className = "error"; return; }
-      const used = new Set();
-      // Fan = 5 random popular Pokémon priced over $20 (daily-stable). Top up if short.
-      fanCards = take(coverShuffle(all.filter(c => isPopular(c) && price(c) > 20), seed), 5, used);
-      if (fanCards.length < 5) fanCards.push(...take(all.filter(isPopular).sort((a, b) => price(b) - price(a)), 5 - fanCards.length, used));
-      if (fanCards.length < 5) fanCards.push(...take(all.slice().sort((a, b) => price(b) - price(a)), 5 - fanCards.length, used));
-      // Background = the rest, spread so eras/rarities don't cluster.
-      bgOrder = coverSpread(all.filter(c => !used.has(keyOf(c))), seed);
+      // Fan = 5 random popular Pokémon priced over $20. Top up if fewer than 5 qualify.
+      fanCards = take(coverShuffle(all.filter(c => isPopular(c) && price(c) > 20), seed), 5);
+      if (fanCards.length < 5) fanCards.push(...take(coverShuffle(all.filter(isPopular), seed + 1), 5 - fanCards.length));
+      if (fanCards.length < 5) fanCards.push(...take(coverShuffle(all.filter(c => price(c) > 20), seed + 2), 5 - fanCards.length));
+      if (fanCards.length < 5) fanCards.push(...take(coverShuffle(all, seed + 3), 5 - fanCards.length));
+      // Background = everything else, spread so eras/rarities don't cluster.
+      bgOrder = fillN(slots, coverSpread(all, seed));
     }
 
-    // Fill the grid: cycle the pool if it is smaller than the number of slots.
-    bgOrder = bgOrder.filter(Boolean);
-    if (bgOrder.length && bgOrder.length < slots) {
-      const base = bgOrder.slice();
-      let i = 0; while (bgOrder.length < slots) { bgOrder.push(base[i % base.length]); i++; }
-    }
     bgOrder = bgOrder.slice(0, slots);
     fanCards = coverCenterOut(fanCards);
 
