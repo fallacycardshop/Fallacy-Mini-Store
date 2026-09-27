@@ -3381,6 +3381,36 @@ function coverPill(ctx, cx, cy, text, font, padX, h, bg, fg) {
   ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
 }
 
+// Recognisable / collectable Pokémon that pull the eye in the fan: starters (all
+// generations), the Eeveelutions, the Pikachu line, popular legendaries and
+// perennial favourites. Matched as a substring of the card name, so a Tag Team
+// ("Pikachu & Zekrom") matches on either name.
+const COVER_POPULAR = [
+  "charizard","charmander","charmeleon","pikachu","raichu","pichu","eevee","umbreon",
+  "espeon","sylveon","vaporeon","jolteon","flareon","leafeon","glaceon","mewtwo","mew",
+  "gengar","lucario","greninja","froakie","frogadier","gardevoir","dragonite","snorlax",
+  "gyarados","blastoise","squirtle","wartortle","venusaur","bulbasaur","ivysaur","rayquaza",
+  "lugia","ho-oh","giratina","dialga","palkia","darkrai","arceus","zekrom","reshiram",
+  "kyurem","necrozma","zacian","zamazenta","calyrex","koraidon","miraidon","garchomp",
+  "tyranitar","absol","zoroark","mimikyu","cinderace","scorbunny","sobble","grookey",
+  "sprigatito","fuecoco","quaxly","cyndaquil","totodile","chikorita","treecko","torchic",
+  "mudkip","turtwig","chimchar","piplup","snivy","tepig","oshawott","chespin","fennekin",
+  "rowlet","litten","popplio","lapras","ninetales","metagross","salamence","gholdengo",
+];
+function coverPopularity(name) {
+  const n = String(name || "").toLowerCase();
+  let score = 0;
+  for (const p of COVER_POPULAR) if (n.includes(p)) score++;
+  return score;
+}
+// Fan ranking: recognisable Pokémon dominate, with a card's price as a strong
+// secondary pull so big-ticket cards still make the cut. Popular cards always
+// outrank non-popular ones; price only decides within each group and lets an
+// expensive non-popular card in when there aren't enough popular ones.
+function coverFanScore(c) {
+  return coverPopularity(c.name) * 250 + Math.min(Number(c.price) || 0, 250);
+}
+
 document.getElementById("coverBuildButton").onclick = async () => {
   const resultEl = document.getElementById("coverResultText");
   const slot = document.getElementById("coverSlot");
@@ -3431,15 +3461,24 @@ document.getElementById("coverBuildButton").onclick = async () => {
       return;
     }
 
-    const heroCards = coverCenterOut(cards.slice(0, Math.min(5, cards.length)));
-    const stripCards = cards.slice(Math.min(5, cards.length), Math.min(5, cards.length) + 7);
+    // FAN = eye-catching cards (recognisable/popular Pokémon and big-ticket cards
+    // first). The rest are scattered across the background to show the range.
+    const ranked = cards.slice().sort((a, b) => coverFanScore(b) - coverFanScore(a));
+    const fanN = Math.min(5, ranked.length);
+    const fanCards = coverCenterOut(ranked.slice(0, fanN));
+    const fanKeys = new Set(ranked.slice(0, fanN).map(c => c.cardId || c.photo));
+    // Background keeps the source order (daily-shuffled for the mix), minus the
+    // fan, capped so the file stays a sensible size.
+    const bgCards = cards.filter(c => !fanKeys.has(c.cardId || c.photo)).slice(0, 60);
 
     resultEl.textContent = "Loading card images…";
-    const heroLoaded = (await Promise.all(heroCards.map(c => loadImage(c.photo))))
-      .map((img, i) => ({ img, card: heroCards[i] })).filter(x => x.img);
-    const stripLoaded = (await Promise.all(stripCards.map(c => loadImage(c.photo))))
-      .map((img, i) => ({ img, card: stripCards[i] })).filter(x => x.img);
-    if (!heroLoaded.length) {
+    const [bgRaw, fanRaw] = await Promise.all([
+      Promise.all(bgCards.map(c => loadImage(c.photo))),
+      Promise.all(fanCards.map(c => loadImage(c.photo))),
+    ]);
+    const bgLoaded = bgRaw.map((img, i) => ({ img, card: bgCards[i] })).filter(x => x.img);
+    const fanLoaded = fanRaw.map((img, i) => ({ img, card: fanCards[i] })).filter(x => x.img);
+    if (!fanLoaded.length && !bgLoaded.length) {
       resultEl.textContent = "None of those card images could be loaded.";
       resultEl.className = "error";
       return;
@@ -3452,24 +3491,54 @@ document.getElementById("coverBuildButton").onclick = async () => {
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext("2d");
 
-    // Background: brand pink, a soft white glow behind the hero, and sparkles in
-    // the pink margins.
+    // Background: individual cards scattered across the whole canvas — spaced out,
+    // lightly tilted, and bleeding off every edge — so the store reads as "lots of
+    // cards, huge variety". A soft wash + a white glow behind the fan keep the fan
+    // and text popping over the busy scatter.
     ctx.fillStyle = PROMO_BG; ctx.fillRect(0, 0, W, H);
-    const glowCx = W / 2, glowCy = H * 0.52, glowR = Math.max(W, H) * 0.6;
-    const glow = ctx.createRadialGradient(glowCx, glowCy, glowR * 0.1, glowCx, glowCy, glowR);
-    glow.addColorStop(0, "rgba(255,255,255,0.95)");
-    glow.addColorStop(0.55, "rgba(255,255,255,0.72)");
-    glow.addColorStop(0.82, "rgba(255,255,255,0.22)");
+    if (bgLoaded.length) {
+      const scW = Math.round(W * 0.155);
+      const scH = Math.round(scW * CARD_RATIO);
+      const cellW = scW * 1.30, cellH = scH * 1.16;   // generous spacing between cards
+      const cols = Math.ceil(W / cellW) + 1;          // +1 row/col each way so the grid
+      const rows = Math.ceil(H / cellH) + 1;          // bleeds off the edges
+      const offX = (W - cols * cellW) / 2;
+      const offY = (H - rows * cellH) / 2;
+      const rnd = seededRandom(cols * rows * 97 + bgLoaded.length * 13 + 5);
+      let bi = 0;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const e = bgLoaded[bi % bgLoaded.length]; bi++;
+          const cx = offX + c * cellW + cellW / 2 + (rnd() - 0.5) * cellW * 0.34;
+          const cy = offY + r * cellH + cellH / 2 + (rnd() - 0.5) * cellH * 0.28;
+          const rot = (rnd() - 0.5) * 0.28;
+          drawCardTrimmedRotated(ctx, e.img, cx - scW / 2, cy - scH / 2, scW, scH, 9 * sK, 3, rot);
+        }
+      }
+    }
+    // Soft brand-pink wash to unify the scatter and calm the busyness.
+    ctx.fillStyle = "rgba(197,70,138,0.12)"; ctx.fillRect(0, 0, W, H);
+    // White glow behind the fan so it lifts off the scatter.
+    const glowCx = W / 2, glowCy = H * 0.55, glowR = W * 0.5;
+    const glow = ctx.createRadialGradient(glowCx, glowCy, glowR * 0.08, glowCx, glowCy, glowR);
+    glow.addColorStop(0, "rgba(255,255,255,0.88)");
+    glow.addColorStop(0.5, "rgba(255,255,255,0.44)");
     glow.addColorStop(1, "rgba(255,255,255,0)");
     ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
-    const spk = seededRandom(1337);
-    for (let i = 0; i < 54; i++) {
-      const x = spk() * W, yy = spk() * H;
-      if (Math.hypot(x - glowCx, yy - glowCy) / glowR < 0.72) continue;
-      ctx.beginPath();
-      ctx.fillStyle = `rgba(255,255,255,${0.4 + spk() * 0.5})`;
-      ctx.arc(x, yy, (2 + spk() * 4) * sK, 0, Math.PI * 2); ctx.fill();
-    }
+    // Top + bottom scrims keep the header and footer readable over the scatter.
+    const topBand = (logoImg ? 118 * sK : 0) + 185 * sK;
+    const tScrim = ctx.createLinearGradient(0, 0, 0, topBand);
+    tScrim.addColorStop(0, "rgba(248,211,226,0.99)");
+    tScrim.addColorStop(0.58, "rgba(248,211,226,0.92)");
+    tScrim.addColorStop(0.82, "rgba(248,211,226,0.55)");
+    tScrim.addColorStop(1, "rgba(248,211,226,0)");
+    ctx.fillStyle = tScrim; ctx.fillRect(0, 0, W, topBand);
+    const botBand = 150 * sK;
+    const bScrim = ctx.createLinearGradient(0, H - botBand, 0, H);
+    bScrim.addColorStop(0, "rgba(248,211,226,0)");
+    bScrim.addColorStop(0.5, "rgba(248,211,226,0.82)");
+    bScrim.addColorStop(1, "rgba(248,211,226,0.97)");
+    ctx.fillStyle = bScrim; ctx.fillRect(0, H - botBand, W, botBand);
 
     // Header: logo, title, tagline, source pill.
     let y = 40 * sK;
@@ -3478,61 +3547,45 @@ document.getElementById("coverBuildButton").onclick = async () => {
 
     ctx.textAlign = "center";
     ctx.fillStyle = PROMO_INK;
-    ctx.shadowColor = "rgba(255,255,255,0.6)"; ctx.shadowBlur = 10 * sK;
+    ctx.shadowColor = "rgba(255,255,255,0.95)"; ctx.shadowBlur = 16 * sK;
     ctx.font = `800 ${Math.round(60 * sK)}px Poppins, Arial, sans-serif`;
+    // Two passes so the white halo is strong enough to lift the title off the scatter.
+    ctx.fillText("FALLACY'S MINI STORE", W / 2, y + 52 * sK);
     ctx.fillText("FALLACY'S MINI STORE", W / 2, y + 52 * sK);
     ctx.shadowColor = "transparent";
     y += 76 * sK;
     if (tagline) {
-      ctx.font = `${Math.round(27 * sK)}px Poppins, Arial, sans-serif`;
-      ctx.fillStyle = "rgba(168,48,95,0.72)";
+      ctx.font = `600 ${Math.round(27 * sK)}px Poppins, Arial, sans-serif`;
+      ctx.shadowColor = "rgba(255,255,255,0.9)"; ctx.shadowBlur = 8 * sK;
+      ctx.fillStyle = "rgba(150,35,85,0.92)";
       ctx.fillText(tagline, W / 2, y + 22 * sK);
-      y += 44 * sK;
+      ctx.shadowColor = "transparent";
     }
-    coverPill(ctx, W / 2, y + 22 * sK, label,
-      `bold ${Math.round(24 * sK)}px Poppins, Arial, sans-serif`, 22 * sK, 44 * sK,
-      "rgba(168,48,95,0.92)", "#fff");
-    y += 44 * sK + 22 * sK;
     ctx.textAlign = "left";
 
-    const footerH = 128 * sK;
-    const stripH = stripLoaded.length ? 150 * sK : 0;
-    const stripGap = stripLoaded.length ? 24 * sK : 0;
+    const footerH = 150 * sK;
 
-    // Hero fan, centred in the space between the header and the strip/footer.
-    const heroTop = y + 6 * sK;
-    const heroBottom = H - footerH - stripH - stripGap;
-    const heroAreaH = Math.max(heroBottom - heroTop, 200 * sK);
-    const n = heroLoaded.length;
-    let cardH = Math.min(heroAreaH * 0.88, W * 0.42);
-    let cardW = cardH / CARD_RATIO;
-    // Desired spacing, then capped so the whole fan fits the width with a margin.
-    const margin = 46 * sK;
-    let step = cardW * (n > 4 ? 0.56 : n > 2 ? 0.66 : 0.82);
-    if (n > 1) {
-      const maxStep = (W / 2 - margin - cardW / 2) / ((n - 1) / 2);
-      step = Math.min(step, Math.max(maxStep, cardW * 0.30));
-    }
-    const arc = cardH * 0.10, maxAngle = 0.22;
-    const heroCx = W / 2, heroCy = heroTop + heroAreaH / 2;
-
-    // Draw outermost first so the centre card lands on top.
-    const drawOrder = heroLoaded.map((e, i) => ({ e, i }))
-      .sort((a, b) => Math.abs(b.i - (n - 1) / 2) - Math.abs(a.i - (n - 1) / 2));
-    drawOrder.forEach(({ e, i }) => {
-      const t = n > 1 ? (i - (n - 1) / 2) / ((n - 1) / 2) : 0;
-      const cx = heroCx + (i - (n - 1) / 2) * step;
-      const cy = heroCy + Math.abs(t) * arc;
-      drawCardTrimmedRotated(ctx, e.img, cx - cardW / 2, cy - cardH / 2, cardW, cardH, 16 * sK, 3, t * maxAngle);
-    });
-
-    // Supporting strip of a few more cards, neat and centred.
-    if (stripLoaded.length) {
-      const sH = stripH, sW = sH / CARD_RATIO, sGap = 12 * sK;
-      const totalW = stripLoaded.length * sW + (stripLoaded.length - 1) * sGap;
-      let sx = (W - totalW) / 2;
-      const sy = heroBottom + stripGap;
-      stripLoaded.forEach(e => { drawCardTrimmed(ctx, e.img, sx, sy, sW, sH, 10 * sK, 3); sx += sW + sGap; });
+    // Fan of the popular / big cards, heavily overlapping and centred over the
+    // scatter — the piece that pulls the eye, like the auction image.
+    const n = fanLoaded.length;
+    if (n) {
+      const cardH = Math.min(W * 0.46, H * 0.40);
+      const cardW = cardH / CARD_RATIO;
+      const overlap = cardW * 0.46;                 // heavy overlap reads as a held hand
+      const spanW = cardW + (n - 1) * overlap;
+      const startX = (W - spanW) / 2;
+      const centreY = H * 0.55;
+      const maxTilt = (15 * Math.PI) / 180;
+      const arc = cardH * 0.09;
+      // Outermost first so the centre card lands on top.
+      fanLoaded.map((e, i) => ({ e, i }))
+        .sort((a, b) => Math.abs(b.i - (n - 1) / 2) - Math.abs(a.i - (n - 1) / 2))
+        .forEach(({ e, i }) => {
+          const t = n > 1 ? i / (n - 1) - 0.5 : 0;
+          const x = startX + i * overlap;
+          const cy = centreY - cardH / 2 + Math.abs(t) * arc;
+          drawCardTrimmedRotated(ctx, e.img, x, cy, cardW, cardH, 14 * sK, 3, t * 2 * maxTilt);
+        });
     }
 
     // Footer: shop CTA + handle.
@@ -3585,11 +3638,11 @@ document.getElementById("coverBuildButton").onclick = async () => {
     actions.appendChild(shareBtn); actions.appendChild(copyBtn); actions.appendChild(openBtn);
     slot.appendChild(actions);
 
-    const shown = heroLoaded.length + stripLoaded.length;
-    const failed = (heroCards.length + stripCards.length) - shown;
-    resultEl.textContent = `Built a ${format} cover from ${shown} card(s)` + (failed > 0 ? ` — ${failed} image(s) failed to load.` : ".");
-    resultEl.className = failed > 0 ? "error" : "success";
+    const uniqueBg = new Set(bgLoaded.map(e => e.card.cardId || e.card.photo)).size;
+    resultEl.textContent = `Built a ${format} cover — ${fanLoaded.length} featured over ${uniqueBg} more card(s).`;
+    resultEl.className = "success";
   } catch (err) {
+    console.error("cover build failed:", err);
     resultEl.textContent = "Couldn't build the cover — please try again.";
     resultEl.className = "error";
   }
