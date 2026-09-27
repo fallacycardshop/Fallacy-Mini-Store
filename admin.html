@@ -1237,7 +1237,7 @@
     Logo URL (leave as-is once your logo is in the repo &mdash; blank for no logo)
   </label>
   <input type="text" id="coverLogo"
-    value="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ministore-logo.jpg">
+    value="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ministore-logo.png">
   <button id="coverBuildButton">Build Cover Photo</button>
   <p id="coverResultText"></p>
   <div id="coverSlot" class="card-image-slot"></div>
@@ -3338,9 +3338,12 @@ function coverCenterOut(items) {
 
 // A JPEG/PNG logo feathered into the pink (compact version of the promo mask),
 // centred horizontally on cx at top y.
-function coverDrawLogo(ctx, logoImg, cx, ty, logoH) {
+function coverDrawLogo(ctx, logoImg, cx, ty, logoH, feather = true) {
   const logoW = Math.round(logoH * (logoImg.width / logoImg.height));
   const lx = Math.round(cx - logoW / 2);
+  // A transparent PNG needs no feathering — its own alpha blends it into the
+  // background. Feathering (for an opaque JPG) would just eat the artwork's edges.
+  if (!feather) { ctx.drawImage(logoImg, lx, ty, logoW, logoH); return; }
   const mask = document.createElement("canvas");
   mask.width = logoW; mask.height = logoH;
   const m = mask.getContext("2d");
@@ -3469,7 +3472,7 @@ document.getElementById("coverBuildButton").onclick = async () => {
     const fanKeys = new Set(ranked.slice(0, fanN).map(c => c.cardId || c.photo));
     // Background keeps the source order (daily-shuffled for the mix), minus the
     // fan, capped so the file stays a sensible size.
-    const bgCards = cards.filter(c => !fanKeys.has(c.cardId || c.photo)).slice(0, 60);
+    const bgCards = cards.filter(c => !fanKeys.has(c.cardId || c.photo)).slice(0, 120);
 
     resultEl.textContent = "Loading card images…";
     const [bgRaw, fanRaw] = await Promise.all([
@@ -3491,19 +3494,23 @@ document.getElementById("coverBuildButton").onclick = async () => {
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext("2d");
 
-    // Background: the soft pink gradient look, with uniform ROWS of cards behind
+    // Background: a soft pink vertical GRADIENT, with uniform ROWS of cards behind
     // the fan. The rows are vertically centred in the space between the header and
     // footer — so they never clip top or bottom — and run wider than the canvas so
     // they bleed off the LEFT and RIGHT edges only — a tidy wall of stock.
-    ctx.fillStyle = PROMO_BG; ctx.fillRect(0, 0, W, H);
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+    bgGrad.addColorStop(0, "#fce7f1");   // light at the top
+    bgGrad.addColorStop(0.5, "#f8d3e2"); // brand pink through the middle
+    bgGrad.addColorStop(1, "#eeb6cd");   // deeper at the bottom
+    ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, W, H);
 
     const headerClear = (logoImg ? 130 * sK : 20 * sK) + 175 * sK;
     const footerClear = 150 * sK;
 
     if (bgLoaded.length) {
-      const rowCardW = Math.round(W * 0.15);
+      const rowCardW = Math.round(W * 0.108);
       const rowCardH = Math.round(rowCardW * CARD_RATIO);
-      const colGap = 10 * sK, rowGap = 12 * sK;
+      const colGap = 8 * sK, rowGap = 10 * sK;
       const rowStep = rowCardH + rowGap;
       const bandTop = headerClear, bandBottom = H - footerClear;
       const bandH = bandBottom - bandTop;
@@ -3542,21 +3549,23 @@ document.getElementById("coverBuildButton").onclick = async () => {
       ctx.arc(x, yy, (2 + spk() * 4) * sK, 0, Math.PI * 2); ctx.fill();
     }
 
-    // Gentle pink scrims keep the header and footer crisp where the rows approach.
+    // Gentle scrims (matched to the gradient's ends) keep the header and footer
+    // crisp where the rows approach, without flattening the gradient.
     const tScrim = ctx.createLinearGradient(0, 0, 0, headerClear);
-    tScrim.addColorStop(0, "rgba(248,211,226,0.98)");
-    tScrim.addColorStop(0.7, "rgba(248,211,226,0.80)");
-    tScrim.addColorStop(1, "rgba(248,211,226,0)");
+    tScrim.addColorStop(0, "rgba(252,231,241,0.98)");
+    tScrim.addColorStop(0.7, "rgba(252,231,241,0.78)");
+    tScrim.addColorStop(1, "rgba(252,231,241,0)");
     ctx.fillStyle = tScrim; ctx.fillRect(0, 0, W, headerClear);
     const bScrim = ctx.createLinearGradient(0, H - footerClear, 0, H);
-    bScrim.addColorStop(0, "rgba(248,211,226,0)");
-    bScrim.addColorStop(0.5, "rgba(248,211,226,0.82)");
-    bScrim.addColorStop(1, "rgba(248,211,226,0.97)");
+    bScrim.addColorStop(0, "rgba(238,182,205,0)");
+    bScrim.addColorStop(0.5, "rgba(238,182,205,0.82)");
+    bScrim.addColorStop(1, "rgba(238,182,205,0.97)");
     ctx.fillStyle = bScrim; ctx.fillRect(0, H - footerClear, W, footerClear);
 
-    // Header: logo, title, tagline, source pill.
+    // Header: logo, title, tagline.
+    const logoTransparent = /\.png(\?|$)/i.test(logoUrl);
     let y = 40 * sK;
-    if (logoImg) { coverDrawLogo(ctx, logoImg, W / 2, y, Math.round(118 * sK)); y += 118 * sK + 12 * sK; }
+    if (logoImg) { coverDrawLogo(ctx, logoImg, W / 2, y, Math.round(118 * sK), !logoTransparent); y += 118 * sK + 12 * sK; }
     else y += 8 * sK;
 
     ctx.textAlign = "center";
@@ -3580,12 +3589,16 @@ document.getElementById("coverBuildButton").onclick = async () => {
     const footerH = 150 * sK;
 
     // Fan of the popular / big cards, heavily overlapping and centred over the
-    // scatter — the piece that pulls the eye, like the auction image.
+    // rows — the piece that pulls the eye, like the auction image. Sized so the
+    // whole fan spans ~60% of the width rather than the full canvas.
     const n = fanLoaded.length;
     if (n) {
-      const cardH = Math.min(W * 0.46, H * 0.40);
-      const cardW = cardH / CARD_RATIO;
-      const overlap = cardW * 0.46;                 // heavy overlap reads as a held hand
+      const stepFrac = 0.46;                          // overlap step as a fraction of card width
+      const targetSpan = W * 0.62;
+      let cardW = targetSpan / (1 + (n - 1) * stepFrac);
+      let cardH = cardW * CARD_RATIO;
+      if (cardH > H * 0.40) { cardH = H * 0.40; cardW = cardH / CARD_RATIO; } // don't get too tall
+      const overlap = cardW * stepFrac;               // step between cards
       const spanW = cardW + (n - 1) * overlap;
       const startX = (W - spanW) / 2;
       const centreY = H * 0.55;
