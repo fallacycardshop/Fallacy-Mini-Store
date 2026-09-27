@@ -752,9 +752,24 @@
   .spend-table td::before { content: attr(data-label); font-weight: 600; color: #9a8f95; font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; flex: 0 0 auto; text-align: left; }
   .spend-table td.acts { justify-content: flex-start; gap: 8px; flex-wrap: wrap; padding-top: 8px; }
   .spend-table td.acts::before { content: none; }
-  .spend-table td.acts .price-cur { font-weight: 600; color: #666; align-self: center; }
-  .spend-table td.acts .price-input { width: 90px; font-size: 13px; padding: 5px 8px; border: 1px solid #ccc; border-radius: 6px; font-variant-numeric: tabular-nums; }
-  .spend-table td.acts .price-save, .spend-table td.acts .price-reset { font-size: 11px; padding: 5px 11px; }
+  /* Card Prices — compact photo list */
+  .price-list { display: flex; flex-direction: column; gap: 7px; margin-top: 10px; }
+  .price-card { display: flex; gap: 10px; align-items: center; border: 1px solid #eee; border-radius: 12px; padding: 8px 10px; background: #fff; }
+  .price-card.pc-custom { border-color: #ecc0d7; background: #fdf5f9; }
+  .pc-img { width: 44px; height: 61px; object-fit: cover; border-radius: 6px; flex: 0 0 auto; background: #f3eef1; }
+  .pc-noimg { display: flex; align-items: center; justify-content: center; font-size: 8px; line-height: 1.1; color: #b7abb2; text-align: center; }
+  .pc-main { flex: 1 1 auto; min-width: 0; }
+  .pc-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .pc-name { font-size: 13.5px; font-weight: 700; color: #1e1e20; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pc-cond { font-weight: 600; font-size: 11.5px; color: #b5468a; }
+  .pc-stock { flex: 0 0 auto; font-size: 10.5px; color: #9a8f95; white-space: nowrap; }
+  .pc-meta { font-size: 10.5px; color: #9a8f95; margin: 1px 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pc-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .pc-cur { font-weight: 700; color: #666; }
+  .pc-controls .price-input { width: 74px; font-size: 13px; padding: 5px 7px; border: 1px solid #ccc; border-radius: 7px; font-variant-numeric: tabular-nums; }
+  .pc-controls .price-save, .pc-controls .price-reset { font-size: 11px; padding: 5px 12px; margin: 0; width: auto; }
+  .pc-foot { font-size: 10.5px; color: #9a8f95; margin-top: 5px; }
+  .pc-foot .pc-age { color: #b5468a; }
   .spend-table .num { text-align: right; font-variant-numeric: tabular-nums; }
   .spend-table .cust-key { text-align: right; }
   .spend-flag-banner { font-size: 12px; color: #8a2b1a; background: #fdeae4; border: 1px solid #f0b9a8; border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
@@ -1488,10 +1503,11 @@
   <h1>Card Prices</h1>
   <p>
     Adjust the price of any card that's still in stock &mdash; changes go live
-    within a minute, no CSV edit or redeploy. Your inventory CSV stays the base:
-    an edited card keeps its new price until you tap <strong>Reset</strong>, which
-    returns it to the CSV price. Past orders are never affected. Each condition
-    (Near Mint, Lightly Played&hellip;) is priced separately.
+    within a minute, no CSV edit or redeploy. Your inventory CSV stays the base
+    (shown under each card): an edited card keeps its new price, tagged with when
+    you last set it, until you tap <strong>Reset</strong> to return it to the CSV
+    price. Past orders are never affected. Each condition (Near Mint, Lightly
+    Played&hellip;) is priced separately.
   </p>
   <input type="password" id="pricesPassphrase" placeholder="Enter admin passphrase" autocomplete="off">
   <div class="date-row">
@@ -5902,6 +5918,28 @@ async function callPricesApi(action, extra = {}) {
   return data;
 }
 
+// Compact relative age, e.g. "3 days ago", for how long ago a price was set.
+function timeAgo(ms) {
+  ms = Number(ms) || 0;
+  if (!ms) return "";
+  const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (s < 60) return "just now";
+  // minutes → hours → days → months → years
+  const steps = [60, 24, 30, 12];
+  const names = ["min", "hr", "day", "month", "year"];
+  let val = Math.floor(s / 60), idx = 0;
+  while (idx < steps.length && val >= steps[idx]) { val = Math.floor(val / steps[idx]); idx++; }
+  return `${val} ${names[idx]}${val === 1 ? "" : "s"} ago`;
+}
+
+// Thumbnail with a fallback to the full-size image (same scheme as the drip picker).
+function priceThumbHtml(photo, name) {
+  if (!photo) return '<div class="pc-img pc-noimg">no<br>image</div>';
+  const thumb = photo.replace("/images/", "/images/thumbs/");
+  return `<img class="pc-img" src="${escapeHtml(thumb)}" loading="lazy" alt="${escapeHtml(name || "")}"
+    onerror="this.onerror=null;this.src='${jsAttrUrl(photo)}';">`;
+}
+
 function renderPrices() {
   if (!pricesData.length) { pricesReportEl.innerHTML = ""; return; }
   const q = (pricesSearchEl.value || "").trim().toLowerCase();
@@ -5917,29 +5955,33 @@ function renderPrices() {
     return;
   }
   const body = rows.map(r => {
-    const csvNote = r.overridden
-      ? `<span class="muted">CSV $${Number(r.csvPrice).toFixed(2)}</span>`
-      : `<span class="muted">—</span>`;
-    return `<tr class="price-row${r.overridden ? " spend-flagged" : ""}" data-key="${escapeHtml(r.groupKey)}">
-      <td data-label="Card">${escapeHtml(r.name || "—")}${r.cardId ? `<div class="cust-key">${escapeHtml(r.cardId)}</div>` : ""}</td>
-      <td data-label="Condition">${escapeHtml(r.condition || "—")}</td>
-      <td class="num" data-label="Set">${escapeHtml(r.set || "—")}</td>
-      <td class="num" data-label="In stock">${r.stock}</td>
-      <td class="num" data-label="CSV price">${csvNote}</td>
-      <td class="acts">
-        <span class="price-cur">$</span>
-        <input type="number" class="price-input" step="0.1" min="0" inputmode="decimal" aria-label="New price" value="${Number(r.price).toFixed(2)}">
-        <button class="price-save">Save</button>
-        <button class="price-reset btn-neutral"${r.overridden ? "" : " disabled"}>Reset</button>
-      </td>
-    </tr>`;
+    const age = r.overridden && r.updatedAt
+      ? ` · <span class="pc-age" title="${escapeHtml(fmtSpendDate(r.updatedAt))}">edited ${timeAgo(r.updatedAt)}</span>`
+      : "";
+    return `<div class="price-card${r.overridden ? " pc-custom" : ""}" data-key="${escapeHtml(r.groupKey)}">
+      ${priceThumbHtml(r.photo, r.name)}
+      <div class="pc-main">
+        <div class="pc-top">
+          <span class="pc-name">${escapeHtml(r.name || "—")}${r.condition ? ` <span class="pc-cond">${escapeHtml(r.condition)}</span>` : ""}</span>
+          <span class="pc-stock">${r.stock} in stock</span>
+        </div>
+        <div class="pc-meta">${escapeHtml(r.set || "")}${r.cardId ? ` · ${escapeHtml(r.cardId)}` : ""}</div>
+        <div class="pc-controls">
+          <span class="pc-cur">$</span>
+          <input type="number" class="price-input" step="0.1" min="0" inputmode="decimal" aria-label="New price for ${escapeHtml(r.name || "")}" value="${Number(r.price).toFixed(2)}">
+          <button class="price-save">Save</button>
+          <button class="price-reset btn-neutral"${r.overridden ? "" : " disabled"}>Reset</button>
+        </div>
+        <div class="pc-foot">CSV ${fmtMoney(r.csvPrice)}${age}</div>
+      </div>
+    </div>`;
   }).join("");
-  pricesReportEl.innerHTML = head + `<div class="spend-table-wrap"><table class="spend-table"><tbody>${body}</tbody></table></div>`;
-  pricesReportEl.querySelectorAll(".price-row").forEach(tr => {
-    const key = tr.dataset.key;
-    const input = tr.querySelector(".price-input");
-    tr.querySelector(".price-save").onclick = () => savePrice(key, input.value);
-    tr.querySelector(".price-reset").onclick = () => resetPrice(key);
+  pricesReportEl.innerHTML = head + `<div class="price-list">${body}</div>`;
+  pricesReportEl.querySelectorAll(".price-card").forEach(card => {
+    const key = card.dataset.key;
+    const input = card.querySelector(".price-input");
+    card.querySelector(".price-save").onclick = () => savePrice(key, input.value);
+    card.querySelector(".price-reset").onclick = () => resetPrice(key);
   });
 }
 
@@ -5955,7 +5997,7 @@ async function savePrice(groupKey, value) {
   const data = await callPricesApi("setPrice", { groupKey, price });
   if (!data) return;
   const row = pricesData.find(r => r.groupKey === groupKey);
-  if (row) { row.price = data.price; row.overridden = true; }
+  if (row) { row.price = data.price; row.overridden = true; row.updatedAt = Number(data.updatedAt) || Date.now(); }
   pricesResultEl.textContent = `Saved — ${row ? row.name + " " : ""}now $${Number(data.price).toFixed(2)}. Live on the store within a minute.`;
   pricesResultEl.className = "success";
   renderPrices();
@@ -5967,7 +6009,7 @@ async function resetPrice(groupKey) {
   const data = await callPricesApi("resetPrice", { groupKey });
   if (!data) return;
   const row = pricesData.find(r => r.groupKey === groupKey);
-  if (row) { row.price = row.csvPrice; row.overridden = false; }
+  if (row) { row.price = row.csvPrice; row.overridden = false; row.updatedAt = 0; }
   pricesResultEl.textContent = "Reset to the CSV price.";
   pricesResultEl.className = "success";
   renderPrices();
@@ -5997,7 +6039,7 @@ document.getElementById("pricesClearButton").onclick = async () => {
   try {
     const data = await callPricesApi("clearPrices");
     if (!data) return;
-    pricesData.forEach(r => { r.price = r.csvPrice; r.overridden = false; });
+    pricesData.forEach(r => { r.price = r.csvPrice; r.overridden = false; r.updatedAt = 0; });
     pricesResultEl.textContent = "All prices reset to the CSV.";
     pricesResultEl.className = "success";
     renderPrices();
