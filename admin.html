@@ -1210,8 +1210,8 @@
   <p>
     A polished cover to promote the store &mdash; a branded hero with a few
     showcase cards, ready to forward on Telegram or post daily. Reads the same
-    public catalogue shoppers see, so no passphrase is needed. The
-    <strong>Daily store mix</strong> changes each day, so you can post a fresh one.
+    public catalogue shoppers see, so no passphrase is needed. Every time you tap
+    <strong>Build</strong> you get a fresh, different image (no repeated cards).
   </p>
   <div class="field-row">
     <div>
@@ -1237,7 +1237,7 @@
     Logo URL (leave as-is once your logo is in the repo &mdash; blank for no logo)
   </label>
   <input type="text" id="coverLogo"
-    value="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ministore-logo.jpg">
+    value="https://raw.githubusercontent.com/fallacycardshop/Fallacy-Mini-Store/main/images/ministore-logo.png">
   <button id="coverBuildButton">Build Cover Photo</button>
   <p id="coverResultText"></p>
   <div id="coverSlot" class="card-image-slot"></div>
@@ -3307,13 +3307,6 @@ const COVER_SIZES = {
   square:   { w: 1080, h: 1080 },
 };
 
-// SGT day number, so the "daily mix" is stable through the trading day and
-// changes overnight.
-function coverDailySeed() {
-  const d = new Date(Date.now() + 8 * 3600000);
-  return Number(`${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`);
-}
-
 function coverShuffle(arr, seed) {
   const rnd = seededRandom(seed || 1);
   const a = arr.slice();
@@ -3338,9 +3331,12 @@ function coverCenterOut(items) {
 
 // A JPEG/PNG logo feathered into the pink (compact version of the promo mask),
 // centred horizontally on cx at top y.
-function coverDrawLogo(ctx, logoImg, cx, ty, logoH) {
+function coverDrawLogo(ctx, logoImg, cx, ty, logoH, feather = true) {
   const logoW = Math.round(logoH * (logoImg.width / logoImg.height));
   const lx = Math.round(cx - logoW / 2);
+  // A transparent PNG needs no feathering — its own alpha blends it into the
+  // background. Feathering (for an opaque JPG) would just eat the artwork's edges.
+  if (!feather) { ctx.drawImage(logoImg, lx, ty, logoW, logoH); return; }
   const mask = document.createElement("canvas");
   mask.width = logoW; mask.height = logoH;
   const m = mask.getContext("2d");
@@ -3381,6 +3377,79 @@ function coverPill(ctx, cx, cy, text, font, padX, h, bg, fg) {
   ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
 }
 
+// Recognisable / collectable Pokémon that pull the eye in the fan: starters (all
+// generations), the Eeveelutions, the Pikachu line, popular legendaries and
+// perennial favourites. Matched as a substring of the card name, so a Tag Team
+// ("Pikachu & Zekrom") matches on either name.
+const COVER_POPULAR = [
+  "charizard","charmander","charmeleon","pikachu","raichu","pichu","eevee","umbreon",
+  "espeon","sylveon","vaporeon","jolteon","flareon","leafeon","glaceon","mewtwo","mew",
+  "gengar","lucario","greninja","froakie","frogadier","gardevoir","dragonite","snorlax",
+  "gyarados","blastoise","squirtle","wartortle","venusaur","bulbasaur","ivysaur","rayquaza",
+  "lugia","ho-oh","giratina","dialga","palkia","darkrai","arceus","zekrom","reshiram",
+  "kyurem","necrozma","zacian","zamazenta","calyrex","koraidon","miraidon","garchomp",
+  "tyranitar","absol","zoroark","mimikyu","cinderace","scorbunny","sobble","grookey",
+  "sprigatito","fuecoco","quaxly","cyndaquil","totodile","chikorita","treecko","torchic",
+  "mudkip","turtwig","chimchar","piplup","snivy","tepig","oshawott","chespin","fennekin",
+  "rowlet","litten","popplio","lapras","ninetales","metagross","salamence","gholdengo",
+];
+function coverPopularity(name) {
+  const n = String(name || "").toLowerCase();
+  let score = 0;
+  for (const p of COVER_POPULAR) if (n.includes(p)) score++;
+  return score;
+}
+// Fan ranking: recognisable Pokémon dominate, with a card's price as a strong
+// secondary pull so big-ticket cards still make the cut. Popular cards always
+// outrank non-popular ones; price only decides within each group and lets an
+// expensive non-popular card in when there aren't enough popular ones.
+function coverFanScore(c) {
+  return coverPopularity(c.name) * 250 + Math.min(Number(c.price) || 0, 250);
+}
+
+// Coarse "era / series" from the set code — the leading letters of the first set
+// token (e.g. "SM12A"→"SM", "SV2D"→"SV", "S12A"→"S", "BAS"→"BAS"). Used to keep
+// cards of the same era from clustering in the background wall.
+function coverEra(c) {
+  const code = String(c.set || "").trim().split(/\s+/)[0].toUpperCase();
+  const m = code.match(/^[A-Z]+/);
+  return m ? m[0] : (code || "?");
+}
+
+// Interleave cards so neighbours differ in era + rarity: bucket by era|rarity,
+// (both daily-shuffled), then round-robin across buckets. Same-bucket cards end
+// up spaced apart across the collage rather than sitting together.
+function coverSpread(cards, seed) {
+  const buckets = new Map();
+  for (const c of cards) {
+    const k = coverEra(c) + "|" + (c.category || c.rarity || "");
+    if (!buckets.has(k)) buckets.set(k, []);
+    buckets.get(k).push(c);
+  }
+  const lists = coverShuffle([...buckets.values()], (seed || 1) + 7)
+    .map((l, i) => coverShuffle(l, (seed || 1) + i * 101 + 3));
+  const out = [];
+  let any = true;
+  while (any) { any = false; for (const l of lists) { if (l.length) { out.push(l.shift()); any = true; } } }
+  return out;
+}
+
+// Background grid geometry — shared so the card lists can be laid out per source
+// before drawing. Small, uniform cards centred vertically between header/footer.
+function coverGeometry(W, H, sK, headerClear, footerClear) {
+  const rowCardW = Math.round(W * 0.108);
+  const rowCardH = Math.round(rowCardW * CARD_RATIO);
+  const colGap = 8 * sK, rowGap = 10 * sK;
+  const rowStep = rowCardH + rowGap;
+  const bandH = (H - footerClear) - headerClear;
+  const nRows = Math.max(1, Math.floor((bandH + rowGap) / rowStep));
+  const gridH = nRows * rowCardH + (nRows - 1) * rowGap;
+  const startY = headerClear + (bandH - gridH) / 2;          // centred → no top/bottom clip
+  const perRow = Math.ceil(W / (rowCardW + colGap)) + 1;     // +1 so both ends bleed off
+  const startX = (W - (perRow * rowCardW + (perRow - 1) * colGap)) / 2;
+  return { rowCardW, rowCardH, colGap, rowStep, nRows, perRow, startX, startY };
+}
+
 document.getElementById("coverBuildButton").onclick = async () => {
   const resultEl = document.getElementById("coverResultText");
   const slot = document.getElementById("coverSlot");
@@ -3407,142 +3476,215 @@ document.getElementById("coverBuildButton").onclick = async () => {
       const prev = byCard.get(key);
       if (!prev || (Number(p.price) || 0) > (Number(prev.price) || 0)) byCard.set(key, p);
     }
-    let cards = [...byCard.values()];
-    let label;
+    const all = [...byCard.values()];
+    // A fresh random seed each press, so every generate gives a different result.
+    const seed = Math.floor(Math.random() * 1e9);
+    const price = c => Number(c.price) || 0;
+    const keyOf = c => c.cardId || c.photo;
+    const isPopular = c => coverPopularity(c.name) > 0;
+    // Every card is placed AT MOST ONCE across the whole image (fan + all rows).
+    const used = new Set();
+    // Take up to n unique cards from arr (skipping any already used), marking used.
+    const take = (arr, n) => {
+      const out = [];
+      for (const c of arr) { if (out.length >= n) break; const k = keyOf(c); if (!used.has(k)) { used.add(k); out.push(c); } }
+      return out;
+    };
+    // Fill exactly n slots from a sequence of pools, each card used at most once.
+    // If the pools run dry, the remaining slots are left EMPTY rather than repeating
+    // a card (the gradient shows through) — so no photo ever appears twice.
+    const fillN = (n, ...pools) => {
+      const out = [];
+      for (const pool of pools) {
+        for (const c of pool) { if (out.length >= n) break; const k = keyOf(c); if (!used.has(k)) { used.add(k); out.push(c); } }
+        if (out.length >= n) break;
+      }
+      while (out.length < n) out.push(null);
+      return out;
+    };
+
+    // Geometry first, so the background can be laid out row-by-row per source.
+    const { w: W, h: H } = COVER_SIZES[format] || COVER_SIZES.portrait;
+    const sK = W / 1080;
+    const logoImg = logoUrl ? await loadImage(logoUrl) : null;
+    const headerClear = (logoImg ? 130 * sK : 20 * sK) + 175 * sK;
+    const footerClear = 150 * sK;
+    const geo = coverGeometry(W, H, sK, headerClear, footerClear);
+    const per = geo.perRow, rows = geo.nRows, slots = rows * per;
+
+    let fanCards = [], bgOrder = [], label = "";
+
     if (source === "new") {
-      cards = cards.filter(p => p.isNew);
       label = "NEW IN STOCK";
+      const news = all.filter(c => c.isNew);
+      if (!news.length) { resultEl.textContent = "Nothing is in the Newly in stock row right now."; resultEl.className = "error"; return; }
+      // Fan = the 5 most valuable newly-in-stock cards.
+      fanCards = take(news.slice().sort((a, b) => price(b) - price(a)), 5);
+      // Remaining new cards fill the TOP and BOTTOM rows; if they run out, those
+      // rows continue with general variety (same spread logic). The middle rows are
+      // general variety. Nothing repeats — fillN pulls each card only once.
+      const newRest = coverSpread(news.filter(c => !used.has(keyOf(c))), seed);
+      const variety = coverSpread(all.filter(c => !c.isNew), seed);
+      // Split the leftover new cards across BOTH rows; any excess joins the middle.
+      const topNew = newRest.slice(0, Math.min(per, Math.ceil(newRest.length / 2)));
+      const botNew = newRest.slice(topNew.length, topNew.length + per);
+      const leftoverNew = newRest.slice(topNew.length + botNew.length);
+      const topRow = fillN(per, topNew, variety);
+      const bottomRow = fillN(per, botNew, variety);
+      const mid = fillN(Math.max(rows - 2, 0) * per, leftoverNew, variety);
+      bgOrder = rows >= 2 ? [...topRow, ...mid, ...bottomRow] : topRow;
     } else if (source === "chase") {
-      cards = cards.filter(p => (Number(p.price) || 0) >= 49.9)
-                   .sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0));
       label = "THE TOP CHASES";
+      const pool = all.filter(c => price(c) >= 49.9).sort((a, b) => price(b) - price(a));
+      if (!pool.length) { resultEl.textContent = "No in-stock cards are $49.90 or above right now."; resultEl.className = "error"; return; }
+      fanCards = take(pool, 5);
+      // Rest of the chase cards first, then everything else in stock — spread, unique.
+      bgOrder = fillN(slots, coverSpread(pool, seed), coverSpread(all, seed));
     } else {
-      cards = coverShuffle(cards, coverDailySeed());
       label = "IN THE STORE TODAY";
+      if (!all.length) { resultEl.textContent = "No in-stock cards to show right now."; resultEl.className = "error"; return; }
+      // Fan = 5 random popular Pokémon priced over $20. Top up if fewer than 5 qualify.
+      fanCards = take(coverShuffle(all.filter(c => isPopular(c) && price(c) > 20), seed), 5);
+      if (fanCards.length < 5) fanCards.push(...take(coverShuffle(all.filter(isPopular), seed + 1), 5 - fanCards.length));
+      if (fanCards.length < 5) fanCards.push(...take(coverShuffle(all.filter(c => price(c) > 20), seed + 2), 5 - fanCards.length));
+      if (fanCards.length < 5) fanCards.push(...take(coverShuffle(all, seed + 3), 5 - fanCards.length));
+      // Background = everything else, spread so eras/rarities don't cluster.
+      bgOrder = fillN(slots, coverSpread(all, seed));
     }
 
-    if (!cards.length) {
-      resultEl.textContent = source === "new"
-        ? "Nothing is in the Newly in stock row right now."
-        : source === "chase"
-          ? "No in-stock cards are $49.90 or above right now."
-          : "No in-stock cards to show right now.";
-      resultEl.className = "error";
-      return;
-    }
-
-    const heroCards = coverCenterOut(cards.slice(0, Math.min(5, cards.length)));
-    const stripCards = cards.slice(Math.min(5, cards.length), Math.min(5, cards.length) + 7);
+    bgOrder = bgOrder.slice(0, slots);
+    fanCards = coverCenterOut(fanCards);
 
     resultEl.textContent = "Loading card images…";
-    const heroLoaded = (await Promise.all(heroCards.map(c => loadImage(c.photo))))
-      .map((img, i) => ({ img, card: heroCards[i] })).filter(x => x.img);
-    const stripLoaded = (await Promise.all(stripCards.map(c => loadImage(c.photo))))
-      .map((img, i) => ({ img, card: stripCards[i] })).filter(x => x.img);
-    if (!heroLoaded.length) {
+    const [bgRaw, fanRaw] = await Promise.all([
+      Promise.all(bgOrder.map(c => c ? loadImage(c.photo) : null)),
+      Promise.all(fanCards.map(c => loadImage(c.photo))),
+    ]);
+    const bgSlots = bgRaw.map((img, i) => img ? { img, card: bgOrder[i] } : null); // keep slot positions
+    const fanLoaded = fanRaw.map((img, i) => ({ img, card: fanCards[i] })).filter(x => x.img);
+    if (!fanLoaded.length && !bgSlots.some(Boolean)) {
       resultEl.textContent = "None of those card images could be loaded.";
       resultEl.className = "error";
       return;
     }
-    const logoImg = logoUrl ? await loadImage(logoUrl) : null;
 
-    const { w: W, h: H } = COVER_SIZES[format] || COVER_SIZES.portrait;
-    const sK = W / 1080;
     const canvas = document.createElement("canvas");
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext("2d");
 
-    // Background: brand pink, a soft white glow behind the hero, and sparkles in
-    // the pink margins.
-    ctx.fillStyle = PROMO_BG; ctx.fillRect(0, 0, W, H);
-    const glowCx = W / 2, glowCy = H * 0.52, glowR = Math.max(W, H) * 0.6;
-    const glow = ctx.createRadialGradient(glowCx, glowCy, glowR * 0.1, glowCx, glowCy, glowR);
-    glow.addColorStop(0, "rgba(255,255,255,0.95)");
-    glow.addColorStop(0.55, "rgba(255,255,255,0.72)");
-    glow.addColorStop(0.82, "rgba(255,255,255,0.22)");
+    // Background: a soft pink vertical GRADIENT, then the uniform card rows.
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+    bgGrad.addColorStop(0, "#fce7f1");   // light at the top
+    bgGrad.addColorStop(0.5, "#f8d3e2"); // brand pink through the middle
+    bgGrad.addColorStop(1, "#eeb6cd");   // deeper at the bottom
+    ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, W, H);
+
+    {
+      const { rowCardW, rowCardH, colGap, rowStep, nRows, perRow, startX, startY } = geo;
+      for (let r = 0; r < nRows; r++) {
+        const ry = startY + r * rowStep;
+        for (let c = 0; c < perRow; c++) {
+          const e = bgSlots[r * perRow + c];
+          if (e && e.img) drawCardTrimmed(ctx, e.img, startX + c * (rowCardW + colGap), ry, rowCardW, rowCardH, 9 * sK, 3);
+        }
+      }
+    }
+
+    // Soft white glow over the middle so the fan lifts off the rows — keeps the
+    // airy gradient feel, no heavy tint.
+    const glowCx = W / 2, glowCy = H * 0.55, glowR = Math.max(W, H) * 0.55;
+    const glow = ctx.createRadialGradient(glowCx, glowCy, glowR * 0.12, glowCx, glowCy, glowR);
+    glow.addColorStop(0, "rgba(255,255,255,0.78)");
+    glow.addColorStop(0.5, "rgba(255,255,255,0.34)");
     glow.addColorStop(1, "rgba(255,255,255,0)");
     ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+
+    // Sparkles, only in the clear pink margins above and below the rows.
     const spk = seededRandom(1337);
-    for (let i = 0; i < 54; i++) {
+    for (let i = 0; i < 40; i++) {
       const x = spk() * W, yy = spk() * H;
-      if (Math.hypot(x - glowCx, yy - glowCy) / glowR < 0.72) continue;
+      if (yy > headerClear - 30 * sK && yy < H - footerClear + 30 * sK) continue;
       ctx.beginPath();
       ctx.fillStyle = `rgba(255,255,255,${0.4 + spk() * 0.5})`;
       ctx.arc(x, yy, (2 + spk() * 4) * sK, 0, Math.PI * 2); ctx.fill();
     }
 
-    // Header: logo, title, tagline, source pill.
-    let y = 40 * sK;
-    if (logoImg) { coverDrawLogo(ctx, logoImg, W / 2, y, Math.round(118 * sK)); y += 118 * sK + 12 * sK; }
-    else y += 8 * sK;
+    // Gentle scrims (matched to the gradient's ends) keep the header and footer
+    // crisp where the rows approach, without flattening the gradient.
+    const tScrim = ctx.createLinearGradient(0, 0, 0, headerClear);
+    tScrim.addColorStop(0, "rgba(252,231,241,0.98)");
+    tScrim.addColorStop(0.7, "rgba(252,231,241,0.78)");
+    tScrim.addColorStop(1, "rgba(252,231,241,0)");
+    ctx.fillStyle = tScrim; ctx.fillRect(0, 0, W, headerClear);
+    const bScrim = ctx.createLinearGradient(0, H - footerClear, 0, H);
+    bScrim.addColorStop(0, "rgba(238,182,205,0)");
+    bScrim.addColorStop(0.5, "rgba(238,182,205,0.82)");
+    bScrim.addColorStop(1, "rgba(238,182,205,0.97)");
+    ctx.fillStyle = bScrim; ctx.fillRect(0, H - footerClear, W, footerClear);
+
+    // Header: title + tagline first, then the logo drawn LAST so it always sits
+    // ON TOP of the words (and its reserved height keeps them from overlapping).
+    const logoTransparent = /\.png(\?|$)/i.test(logoUrl);
+    const logoH = logoImg ? Math.round(118 * sK) : 0;
+    const logoTop = 34 * sK;
+    let y = logoTop + logoH + (logoImg ? 20 * sK : 8 * sK);
 
     ctx.textAlign = "center";
     ctx.fillStyle = PROMO_INK;
-    ctx.shadowColor = "rgba(255,255,255,0.6)"; ctx.shadowBlur = 10 * sK;
+    ctx.shadowColor = "rgba(255,255,255,0.95)"; ctx.shadowBlur = 16 * sK;
     ctx.font = `800 ${Math.round(60 * sK)}px Poppins, Arial, sans-serif`;
+    // Two passes so the white halo is strong enough to lift the title off the rows.
+    ctx.fillText("FALLACY'S MINI STORE", W / 2, y + 52 * sK);
     ctx.fillText("FALLACY'S MINI STORE", W / 2, y + 52 * sK);
     ctx.shadowColor = "transparent";
     y += 76 * sK;
     if (tagline) {
-      ctx.font = `${Math.round(27 * sK)}px Poppins, Arial, sans-serif`;
-      ctx.fillStyle = "rgba(168,48,95,0.72)";
+      ctx.font = `600 ${Math.round(27 * sK)}px Poppins, Arial, sans-serif`;
+      ctx.shadowColor = "rgba(255,255,255,0.9)"; ctx.shadowBlur = 8 * sK;
+      ctx.fillStyle = "rgba(150,35,85,0.92)";
       ctx.fillText(tagline, W / 2, y + 22 * sK);
-      y += 44 * sK;
+      ctx.shadowColor = "transparent";
     }
-    coverPill(ctx, W / 2, y + 22 * sK, label,
-      `bold ${Math.round(24 * sK)}px Poppins, Arial, sans-serif`, 22 * sK, 44 * sK,
-      "rgba(168,48,95,0.92)", "#fff");
-    y += 44 * sK + 22 * sK;
+    if (logoImg) coverDrawLogo(ctx, logoImg, W / 2, logoTop, logoH, !logoTransparent);
     ctx.textAlign = "left";
 
-    const footerH = 128 * sK;
-    const stripH = stripLoaded.length ? 150 * sK : 0;
-    const stripGap = stripLoaded.length ? 24 * sK : 0;
+    const footerH = 150 * sK;
 
-    // Hero fan, centred in the space between the header and the strip/footer.
-    const heroTop = y + 6 * sK;
-    const heroBottom = H - footerH - stripH - stripGap;
-    const heroAreaH = Math.max(heroBottom - heroTop, 200 * sK);
-    const n = heroLoaded.length;
-    let cardH = Math.min(heroAreaH * 0.88, W * 0.42);
-    let cardW = cardH / CARD_RATIO;
-    // Desired spacing, then capped so the whole fan fits the width with a margin.
-    const margin = 46 * sK;
-    let step = cardW * (n > 4 ? 0.56 : n > 2 ? 0.66 : 0.82);
-    if (n > 1) {
-      const maxStep = (W / 2 - margin - cardW / 2) / ((n - 1) / 2);
-      step = Math.min(step, Math.max(maxStep, cardW * 0.30));
-    }
-    const arc = cardH * 0.10, maxAngle = 0.22;
-    const heroCx = W / 2, heroCy = heroTop + heroAreaH / 2;
-
-    // Draw outermost first so the centre card lands on top.
-    const drawOrder = heroLoaded.map((e, i) => ({ e, i }))
-      .sort((a, b) => Math.abs(b.i - (n - 1) / 2) - Math.abs(a.i - (n - 1) / 2));
-    drawOrder.forEach(({ e, i }) => {
-      const t = n > 1 ? (i - (n - 1) / 2) / ((n - 1) / 2) : 0;
-      const cx = heroCx + (i - (n - 1) / 2) * step;
-      const cy = heroCy + Math.abs(t) * arc;
-      drawCardTrimmedRotated(ctx, e.img, cx - cardW / 2, cy - cardH / 2, cardW, cardH, 16 * sK, 3, t * maxAngle);
-    });
-
-    // Supporting strip of a few more cards, neat and centred.
-    if (stripLoaded.length) {
-      const sH = stripH, sW = sH / CARD_RATIO, sGap = 12 * sK;
-      const totalW = stripLoaded.length * sW + (stripLoaded.length - 1) * sGap;
-      let sx = (W - totalW) / 2;
-      const sy = heroBottom + stripGap;
-      stripLoaded.forEach(e => { drawCardTrimmed(ctx, e.img, sx, sy, sW, sH, 10 * sK, 3); sx += sW + sGap; });
+    // Fan of the popular / big cards, heavily overlapping and centred over the
+    // rows — the piece that pulls the eye, like the auction image. Sized so the
+    // whole fan spans ~60% of the width rather than the full canvas.
+    const n = fanLoaded.length;
+    if (n) {
+      const stepFrac = 0.66;                          // higher = less overlap, more spread
+      const targetSpan = W * 0.66;
+      let cardW = targetSpan / (1 + (n - 1) * stepFrac);
+      let cardH = cardW * CARD_RATIO;
+      if (cardH > H * 0.40) { cardH = H * 0.40; cardW = cardH / CARD_RATIO; } // don't get too tall
+      const overlap = cardW * stepFrac;               // step between cards
+      const spanW = cardW + (n - 1) * overlap;
+      const startX = (W - spanW) / 2;
+      const centreY = H * 0.55;
+      const maxTilt = (15 * Math.PI) / 180;
+      const arc = cardH * 0.09;
+      // Outermost first so the centre card lands on top.
+      fanLoaded.map((e, i) => ({ e, i }))
+        .sort((a, b) => Math.abs(b.i - (n - 1) / 2) - Math.abs(a.i - (n - 1) / 2))
+        .forEach(({ e, i }) => {
+          const t = n > 1 ? i / (n - 1) - 0.5 : 0;
+          const x = startX + i * overlap;
+          const cy = centreY - cardH / 2 + Math.abs(t) * arc;
+          drawCardTrimmedRotated(ctx, e.img, x, cy, cardW, cardH, 14 * sK, 3, t * 2 * maxTilt);
+        });
     }
 
-    // Footer: shop CTA + handle.
-    coverPill(ctx, W / 2, H - footerH + 40 * sK, "SHOP NOW  ·  OPEN THE MINI STORE",
+    // Footer: shop bot in a pill, community channel below.
+    coverPill(ctx, W / 2, H - footerH + 42 * sK, "Shop Now:  @fallacyministore_bot",
       `bold ${Math.round(25 * sK)}px Poppins, Arial, sans-serif`, 26 * sK, 52 * sK,
       PROMO_INK, "#fff");
     ctx.textAlign = "center";
-    ctx.font = `${Math.round(23 * sK)}px Poppins, Arial, sans-serif`;
-    ctx.fillStyle = "rgba(168,48,95,0.75)";
-    ctx.fillText("@fallacyministore_bot   ·   t.me/fallacytcg", W / 2, H - footerH + 90 * sK);
+    ctx.font = `600 ${Math.round(24 * sK)}px Poppins, Arial, sans-serif`;
+    ctx.fillStyle = "rgba(150,35,85,0.85)";
+    ctx.fillText("Join our Community:  @fallacycardshop", W / 2, H - footerH + 98 * sK);
     ctx.textAlign = "left";
 
     // Preview (as an <img> so iOS offers "Add to Photos") + share/copy/open.
@@ -3585,11 +3727,11 @@ document.getElementById("coverBuildButton").onclick = async () => {
     actions.appendChild(shareBtn); actions.appendChild(copyBtn); actions.appendChild(openBtn);
     slot.appendChild(actions);
 
-    const shown = heroLoaded.length + stripLoaded.length;
-    const failed = (heroCards.length + stripCards.length) - shown;
-    resultEl.textContent = `Built a ${format} cover from ${shown} card(s)` + (failed > 0 ? ` — ${failed} image(s) failed to load.` : ".");
-    resultEl.className = failed > 0 ? "error" : "success";
+    const uniqueBg = new Set(bgSlots.filter(Boolean).map(e => e.card.cardId || e.card.photo)).size;
+    resultEl.textContent = `Built a ${format} cover — ${fanLoaded.length} featured over ${uniqueBg} more card(s).`;
+    resultEl.className = "success";
   } catch (err) {
+    console.error("cover build failed:", err);
     resultEl.textContent = "Couldn't build the cover — please try again.";
     resultEl.className = "error";
   }
