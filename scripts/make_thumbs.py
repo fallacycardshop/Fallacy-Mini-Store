@@ -12,10 +12,18 @@ file in `images/thumbs/`, it produces a thumbnail matching the store's spec:
     (PNG sources are kept as PNG so the derived thumbnail URL still matches).
 
 Existing thumbnails are left untouched, so it is safe to run repeatedly and
-cheap on a large catalogue. Pass --force to regenerate every thumbnail.
+cheap on a large catalogue.
 
-Usage:
-    python scripts/make_thumbs.py [--force]
+Modes:
+    python scripts/make_thumbs.py                 # only generate MISSING thumbnails
+    python scripts/make_thumbs.py --force         # (re)generate EVERY thumbnail
+    python scripts/make_thumbs.py images/A.jpg …  # (re)generate just these, even if
+                                                  # the thumbnail already exists
+
+The last form is what keeps a REPLACED image's thumbnail in step: a replacement
+keeps the same filename, so the thumbnail already exists and the default run skips
+it — pass the changed file(s) explicitly (the workflow does this automatically for
+every image touched in a push) to force those thumbnails to be rebuilt.
 """
 import os
 import sys
@@ -29,42 +37,58 @@ JPEG_QUALITY = 80
 EXTS = (".jpg", ".jpeg", ".png")
 
 
+def render(name):
+    """Build one thumbnail from images/<name>; return True if written."""
+    src = os.path.join(IMAGES_DIR, name)
+    if not os.path.isfile(src) or not name.lower().endswith(EXTS):
+        return False
+    dst = os.path.join(THUMBS_DIR, name)
+    try:
+        im = Image.open(src).convert("RGB")
+    except Exception as e:
+        print(f"  skip (unreadable): {name} -> {e}")
+        return False
+    w, h = im.size
+    new_h = round(h * THUMB_WIDTH / w)
+    thumb = im.resize((THUMB_WIDTH, new_h), Image.LANCZOS)
+    if name.lower().endswith(".png"):
+        thumb.save(dst, "PNG", optimize=True)
+    else:
+        thumb.save(dst, "JPEG", quality=JPEG_QUALITY, optimize=True)
+    print(f"  thumb: {name} ({w}x{h} -> {THUMB_WIDTH}x{new_h})")
+    return True
+
+
 def main():
-    force = "--force" in sys.argv[1:]
     os.makedirs(THUMBS_DIR, exist_ok=True)
+    args = sys.argv[1:]
+    force = "--force" in args
+    # Explicit files (any arg that isn't a flag) are always (re)generated, so a
+    # replaced image's stale thumbnail gets rebuilt even though it already exists.
+    explicit = [a for a in args if not a.startswith("--")]
+
+    if explicit:
+        # Accept "images/Foo.jpg", "thumbs/Foo.jpg" or a bare "Foo.jpg".
+        names = []
+        for a in explicit:
+            base = os.path.basename(a.replace("\\", "/"))
+            if base:
+                names.append(base)
+        made = sum(1 for n in sorted(set(names)) if render(n))
+        print(f"Done. (Re)generated {made} thumbnail(s) from {len(set(names))} requested.")
+        return
 
     made = skipped = 0
     for name in sorted(os.listdir(IMAGES_DIR)):
         src = os.path.join(IMAGES_DIR, name)
-        # Only full images sit directly in images/; skip the thumbs/ subfolder
-        # and anything that isn't an image.
-        if not os.path.isfile(src):
+        if not os.path.isfile(src) or not name.lower().endswith(EXTS):
             continue
-        if not name.lower().endswith(EXTS):
+        if os.path.exists(os.path.join(THUMBS_DIR, name)) and not force:
             continue
-
-        dst = os.path.join(THUMBS_DIR, name)
-        if os.path.exists(dst) and not force:
-            continue
-
-        try:
-            im = Image.open(src).convert("RGB")
-        except Exception as e:
-            print(f"  skip (unreadable): {name} -> {e}")
-            skipped += 1
-            continue
-
-        w, h = im.size
-        new_h = round(h * THUMB_WIDTH / w)
-        thumb = im.resize((THUMB_WIDTH, new_h), Image.LANCZOS)
-
-        if name.lower().endswith(".png"):
-            thumb.save(dst, "PNG", optimize=True)
+        if render(name):
+            made += 1
         else:
-            thumb.save(dst, "JPEG", quality=JPEG_QUALITY, optimize=True)
-
-        made += 1
-        print(f"  thumb: {name} ({w}x{h} -> {THUMB_WIDTH}x{new_h})")
+            skipped += 1
 
     print(f"Done. Generated {made} thumbnail(s); {skipped} skipped.")
 
