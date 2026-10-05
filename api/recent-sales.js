@@ -610,7 +610,11 @@ export default async function handler(req, res) {
       })
       // No age filtering — ltrim caps the list at 20 on write, so it
       // self-limits without ever emptying during a quiet spell.
-      .filter(Boolean);
+      .filter(Boolean)
+      // Only what the ticker shows. The stored entries also carry the order id
+      // (deleteOrder needs it to pull a deleted order's cards), but this
+      // endpoint is public and an order id must never be readable from it.
+      .map(s => ({ key: s.key, name: s.name, set: s.set, timestamp: s.timestamp }));
 
     if (!wantFull) {
       // Unchanged shape for the ticker, so nothing else needs updating.

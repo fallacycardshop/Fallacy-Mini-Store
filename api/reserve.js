@@ -7,8 +7,13 @@ import {
   getEffectiveStock,
   normaliseCardId,
 } from "./_inventory.js";
+import { clientIp, rateLimit } from "./_site.js";
 
 const redis = Redis.fromEnv();
+
+// Holds per address per 10 minutes. A real checkout uses one or two; this only
+// stops a script from parking the whole catalogue in reservations.
+const RESERVE_LIMIT = 60;
 
 // Reservations expire automatically after this many seconds — a safety net
 // that works even if the buyer closes the app, loses connection, or the
@@ -26,6 +31,11 @@ export default async function handler(req, res) {
 
     if (!reservationId || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: "Missing reservationId or items" });
+    }
+
+    const limited = await rateLimit(redis, "reserve", clientIp(req), RESERVE_LIMIT);
+    if (!limited.ok) {
+      return res.status(429).json({ error: "Too many attempts — please wait a few minutes and try again." });
     }
 
     const groups = loadInventoryGroups();

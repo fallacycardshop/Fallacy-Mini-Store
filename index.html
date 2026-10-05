@@ -846,6 +846,7 @@ function openCart(ret){
       else if(d.reason==="minimum_not_met"){appliedDiscount=null;promoMsg=`Minimum spend $${d.minimumRequired} to use a code.`}
       else if(d.reason==="expired"){appliedDiscount=null;promoMsg="This promotion has ended."}
       else if(d.reason==="used"){appliedDiscount=null;promoMsg="This reward code has already been used."}
+      else if(d.reason==="rate_limited"){appliedDiscount=null;promoMsg="Too many tries — please wait a few minutes."}
       else{appliedDiscount=null;promoMsg="This code isn’t valid."}
     }catch(e){appliedDiscount=null;promoMsg="Couldn’t check that code — try again."}
     openCart();
