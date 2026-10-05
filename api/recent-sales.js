@@ -345,9 +345,13 @@ async function badgeCollection(userId) {
 
 async function handleTelegram(req, res) {
   // Telegram echoes the secret back on every call; anything else is not from
-  // Telegram and is ignored.
+  // Telegram and is refused. The secret is MANDATORY: with it unset, anyone
+  // could post a forged update naming another customer's id and have that
+  // customer's voucher codes sent to their own chat. An unset secret therefore
+  // refuses every update rather than accepting all of them.
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
-  if (secret && req.headers["x-telegram-bot-api-secret-token"] !== secret) {
+  if (!secret || req.headers["x-telegram-bot-api-secret-token"] !== secret) {
+    if (!secret) console.error("TELEGRAM_WEBHOOK_SECRET is not set — refusing bot update");
     return res.status(401).json({ ok: false });
   }
 
@@ -579,13 +583,14 @@ export default async function handler(req, res) {
 
     // Daily loyalty cron. Vercel Cron (or any scheduler) GETs this path; guarded
     // by CRON_SECRET, which Vercel sends back as "Authorization: Bearer <secret>"
-    // when the env var is set. Enforced when set; if unset the job still runs but
-    // is fully idempotent (reminder flags + badge snapshot), so a stray trigger
-    // can't double-send. Set CRON_SECRET in production to lock it down.
+    // when the env var is set. The secret is MANDATORY: this job messages
+    // customers, so it must not be triggerable by anyone who knows the URL. With
+    // CRON_SECRET unset the job refuses to run.
     if (req.query && (req.query.cron === "1" || req.query.cron === "true")) {
       const secret = process.env.CRON_SECRET;
       const auth = req.headers && (req.headers.authorization || req.headers.Authorization);
-      if (secret && auth !== `Bearer ${secret}`) {
+      if (!secret || auth !== `Bearer ${secret}`) {
+        if (!secret) console.error("CRON_SECRET is not set — refusing to run the loyalty cron");
         return res.status(401).json({ ok: false, error: "unauthorized" });
       }
       const result = await runLoyaltyCron();
