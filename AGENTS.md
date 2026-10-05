@@ -24,8 +24,14 @@ Rough budget:
 | Endpoint | Commands | Notes |
 |---|---|---|
 | `GET /api/products` | ~3 | SCAN reservations, MGET reservations, MGET sold counters |
-| `POST /api/reserve` | ~3 | SCAN + MGET + one SET, regardless of cart size |
+| `POST /api/reserve` | ~4 | rate-limit HINCRBY + SCAN + MGET + one SET, regardless of cart size |
 | `POST /api/confirm-order` | 2 + lines | one INCRBY per line, plus GET and DEL |
+
+`POST /api/reserve` and `POST /api/validate-discount` each spend one extra
+`HINCRBY` on the rate limiter (`rateLimit` in `api/_site.js`). `confirm-order`
+is deliberately **not** rate limited: the buyer has already paid by the time it
+is called, so a refused confirm would mean a paid order with no record. A
+confirm needs a live reservation, so the reserve limit bounds it anyway.
 
 ## 2. Batch reads — never loop
 
@@ -94,8 +100,16 @@ runtime:
 - `hidden:cards` — one JSON object: all auction-hidden CardIDs + expiry
 - `store:settings` — one JSON object: editable row headings
 - `drip:schedule` — one JSON object: drip config + groupKey → releaseAt
-- `recent_sales` — capped list for the footer ticker
-- `orders` — capped list: authoritative order backups (300)
+- `price:overrides` — one JSON object: groupKey → `{ price, at }`, the admin's
+  live price edits. Read in the same MGET as the three keys above.
+- `recent_sales` — capped list for the footer ticker. Entries carry the order
+  id (so `deleteOrder` can pull a deleted order's cards); the public GET strips
+  it and returns only `key`, `name`, `set`, `timestamp`.
+- `orders` — capped list: authoritative order backups (5000)
+- `rl:<10-minute window>` — one rolling hash for rate limiting, field
+  `<bucket>|<ip>`, expiring after 15 minutes. One hash per window, never a key
+  per visitor: `scanKeys` walks the whole keyspace on every page load, so
+  per-visitor keys would make every load dearer.
 - `funnel:counts` — hash: per-day funnel events and blocked-checkout reasons
 - `stats:lifetime` — hash: hand-entered shopfront proof figures
 - `restock:counts` — hash: how many times each listing has been restocked
@@ -108,10 +122,10 @@ runtime:
 - `customer:vouchers:<key>` / `customer:badges:<key>` — per-customer sets: the
   codes a customer holds, and the badge numbers ever issued (once-per-badge lock).
 - `loyalty:badgeSnapshot` — hash: customerKey → last badge tier we notified them
-  about. The daily loyalty cron DMs a lapse notice only when the live badge has
-  dropped below this, then updates it. The cron (`/api/recent-sales?cron=1`,
-  registered under `crons` in vercel.json, guarded by `CRON_SECRET`) also sends
-  voucher expiry reminders. Both jobs are gated like issuance — pre-launch only
+  about. The daily loyalty cron (`/api/recent-sales?cron=1`, registered under
+  `crons` in vercel.json, guarded by `CRON_SECRET`) sends voucher expiry
+  reminders only. There is deliberately no "your tier dropped" notice — badges
+  are lifetime. The cron is gated like issuance — pre-launch only
   `LOYALTY_TEST_IDS` receive a DM.
 
 Note that each multi-item feature uses **one** key holding a JSON object, not
@@ -136,11 +150,13 @@ This is why `api/recent-sales.js` already does triple duty:
 
 - `GET` — the recent-sales ticker
 - `POST` — funnel analytics counters, and the shopfront proof figures
-- Telegram bot webhook (`/start`, `/faq`)
+- Telegram bot webhook (`/start`, My Badges, My Collection, How badges work)
+- the daily loyalty cron (`?cron=1`)
 
 Before adding a function, say out loud that this ceiling exists and propose
-which existing file it should join. `api/orders.js` is currently read-only and
-is a reasonable host for order-related writes.
+which existing file it should join. `api/orders.js` hosts every order-related
+admin action (list, mark paid, delete, spend, vouchers, welcome reward), all
+behind `ADMIN_RESET_KEY`.
 
 ## 10. Derive a number in ONE place
 

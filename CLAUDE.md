@@ -60,7 +60,10 @@ environment variable.
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | every function, via `Redis.fromEnv()` |
 | `ADMIN_RESET_KEY` | every admin action — the single shared admin password |
 | `DISCOUNT_CODES` | `api/validate-discount.js`; format `CODE:type:value[:expiry];...`, expiry in SGT as `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM` |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` | `api/recent-sales.js` webhook half |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` | `api/recent-sales.js` webhook half; the token also sends loyalty DMs from `api/orders.js` |
+| `LOYALTY_BOT_LIVE` | `1` shows badges, vouchers and loyalty DMs to everyone; unset keeps them to test ids |
+| `LOYALTY_TEST_IDS` | comma-separated Telegram ids that see loyalty before launch |
+| `CRON_SECRET` | bearer token Vercel sends to the daily loyalty cron (`/api/recent-sales?cron=1`) |
 
 There is no local `.env`. Without these, functions cannot run locally — see
 "How to verify a change" below.
@@ -83,7 +86,12 @@ There is no local `.env`. Without these, functions cannot run locally — see
   titles, plus promo text.
 - **Discount codes** (`api/validate-discount.js`) — percent or fixed, optional
   SGT expiry, minimum spend $10.
-- **Orders** (`api/orders.js`) — reads back the server-side order backup.
+- **Orders** (`api/orders.js`) — the admin's order list plus every order-related
+  write: mark paid (credits loyalty spend, issues vouchers, sends DMs), delete
+  with stock restore, spend and voucher reports, welcome-reward settings.
+- **Rate limiting** (`api/_site.js`) — `rateLimit()` caps reserve and
+  discount-code checks per address; fails open, and never applied to
+  `confirm-order`.
 - **Recent sales ticker** — footer, left of the cart button; shows card name and
   set. Set name is captured at sale time in `confirm-order.js`.
 - **Section rendering** — `renderSection(headingText, matches, { soldOutVisible })`.

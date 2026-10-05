@@ -3,8 +3,15 @@ import {
   VOUCHERS_KEY, voucherStatus,
   WELCOME_CONFIG_KEY, WELCOME_GRANTED_KEY, parseWelcomeConfig,
 } from "./_inventory.js";
+import { clientIp, rateLimit } from "./_site.js";
 
 const redis = Redis.fromEnv();
+
+// Per address per 10 minutes. Code checks are capped so promo and voucher codes
+// can't be guessed in bulk; the welcome check runs once per shopper visit, so it
+// gets a much higher ceiling.
+const VALIDATE_LIMIT = 40;
+const WELCOME_LIMIT = 120;
 
 // Welcome-reward eligibility for the Mini App cart. A one-time perk open to EVERY
 // customer (new and existing) — eligible until they've actually CLAIMED it once
@@ -133,12 +140,19 @@ export default async function handler(req, res) {
     // Welcome-reward eligibility check shares this endpoint (no room for a 13th
     // function). Distinguished by action, not a code.
     if (req.body && req.body.action === "welcome") {
+      const limited = await rateLimit(redis, "welcome", clientIp(req), WELCOME_LIMIT);
+      if (!limited.ok) return res.status(429).json({ enabled: false, eligible: false });
       return await handleWelcome(req, res);
     }
 
     const { code, subtotal } = req.body || {};
     if (!code || !code.trim()) {
       return res.status(200).json({ valid: false });
+    }
+
+    const limited = await rateLimit(redis, "validate", clientIp(req), VALIDATE_LIMIT);
+    if (!limited.ok) {
+      return res.status(429).json({ valid: false, reason: "rate_limited", error: "Too many attempts — please wait a few minutes." });
     }
 
     const codes = parseDiscountCodes(process.env.DISCOUNT_CODES);
