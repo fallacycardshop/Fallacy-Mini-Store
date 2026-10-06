@@ -113,7 +113,9 @@ runtime:
 - `funnel:counts` — hash: per-day funnel events and blocked-checkout reasons
 - `stats:lifetime` — hash: hand-entered shopfront proof figures
 - `restock:counts` — hash: how many times each listing has been restocked
-- `audit:adjustments` — hash: manual audit corrections, with a reason
+- `audit:adjustments` — hash: manual audit corrections, with a reason.
+  A correction only explains a gap; `applyAuditAdjust` in `api/drip.js` moves
+  it into the `sold:` counter and keeps the entry as a record with `delta: 0`
 - `customer:aliases` — hash: secondary customer key → canonical primary, so the
   same person's two identities (numeric Telegram id + browser `@handle`) fold
   into one badge/spend/voucher row. Resolve every customer key through

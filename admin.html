@@ -605,6 +605,7 @@
     background: #7d94a8;
     border-radius: 7px;
   }
+  .audit-apply { background: #1e6b4a; margin-right: 6px; }
 
   .audit-warn {
     background: #fdeceb;
@@ -2244,6 +2245,10 @@ function buildSalesHistory(orders, listings) {
     // a test order, a written-off card, a CSV fixed by hand.
     const adjustment = l.adjustment || null;
     const adjustDelta = adjustment ? Number(adjustment.delta) || 0 : 0;
+    // A correction that has been applied to the sold counter is kept as a
+    // record with delta 0, so it explains the counter without being counted
+    // a second time.
+    const appliedDelta = adjustment ? Number(adjustment.applied) || 0 : 0;
 
     return {
       ...c,
@@ -2271,6 +2276,7 @@ function buildSalesHistory(orders, listings) {
       // left over is genuinely unaccounted for.
       adjustment,
       adjustDelta,
+      appliedDelta,
       rawGap: soldCounter + onSale + offSale - csvStock,
       stockGap: soldCounter + onSale + offSale + adjustDelta - csvStock,
       revenue: c.sales.reduce((s, x) => s + x.price, 0),
@@ -2435,17 +2441,26 @@ function renderSalesHistory() {
                       ${Math.abs(c.counterGap)} sale(s) before order records began — counted, not stored.
                     </div>` : ""}
                     ${c.adjustment ? `<div class="audit-note">
-                      Corrected by ${c.adjustDelta > 0 ? "+" : ""}${c.adjustDelta}:
+                      ${c.adjustDelta !== 0
+                        ? `Corrected by ${c.adjustDelta > 0 ? "+" : ""}${c.adjustDelta}:`
+                        : `Sold counter changed by ${c.appliedDelta > 0 ? "+" : ""}${c.appliedDelta}${
+                            c.adjustment.appliedAt ? " on " + fmtSpendDate(c.adjustment.appliedAt) : ""}:`}
                       ${escapeHtml(c.adjustment.reason)}
                     </div>` : ""}
                     ${bad ? `<div class="audit-warn">
                       ${c.stockGap !== 0 ? `Stock is out by ${c.stockGap > 0 ? "+" : ""}${c.stockGap}. ` : ""}
                       ${countedGap !== 0 ? `${Math.abs(countedGap)} sale(s) ${countedGap > 0 ? "recorded in orders but not counted" : "counted but missing from orders"}.` : ""}
                     </div>` : ""}
-                    ${(bad || c.adjustment) ? `
+                    ${c.adjustDelta !== 0 ? `
+                      <button type="button" class="audit-fix audit-apply" data-apply-key="${escapeHtml(c.groupKey)}"
+                        data-apply-name="${escapeHtml(c.name)}" data-apply-delta="${c.adjustDelta}"
+                        data-apply-sold="${c.soldCounter}">
+                        Apply to sold counter
+                      </button>` : ""}
+                    ${(bad || c.adjustDelta !== 0) ? `
                       <button type="button" class="audit-fix" data-fix-key="${escapeHtml(c.groupKey)}"
                         data-fix-gap="${c.rawGap}" data-fix-name="${escapeHtml(c.name)}">
-                        ${c.adjustment ? "Edit correction" : "Record a correction"}
+                        ${c.adjustDelta !== 0 ? "Edit correction" : "Record a correction"}
                       </button>` : ""}
                     ${c.sales.length ? `<div class="hist-sales">
                       ${c.sales.slice(0, 6).map(sale => `
@@ -2536,6 +2551,51 @@ function renderSalesHistory() {
         document.getElementById("historyLoadButton").click();
       } catch (e) {
         alert("Network error — please try again.");
+      }
+    };
+  });
+
+  // Applying a correction moves it into the sold counter itself, so the store
+  // stops treating those copies as sold. The amount is the stored correction —
+  // the server reads it, this only confirms it.
+  report.querySelectorAll("[data-apply-key]").forEach(btn => {
+    btn.onclick = async () => {
+      const delta = Number(btn.dataset.applyDelta) || 0;
+      const sold = Number(btn.dataset.applySold) || 0;
+      if (sold + delta < 0) {
+        alert(`That correction (${delta}) is larger than the sold counter (${sold}). Edit the correction first.`);
+        return;
+      }
+      if (!confirm(
+        `Apply the correction to ${btn.dataset.applyName}?
+
+` +
+        `Sold counter: ${sold} → ${sold + delta}
+
+` +
+        (delta < 0
+          ? "Any copies this frees up go back on sale straight away."
+          : "This takes copies off sale straight away.")
+      )) return;
+
+      const passKey = document.getElementById("historyPassphrase").value.trim();
+      btn.disabled = true;
+      try {
+        const res = await fetch("/api/drip", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: passKey, action: "applyAuditAdjust", groupKey: btn.dataset.applyKey }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          alert(data.error || `Couldn't apply (HTTP ${res.status}).`);
+          btn.disabled = false;
+          return;
+        }
+        document.getElementById("historyLoadButton").click();
+      } catch (e) {
+        alert("Network error — please try again.");
+        btn.disabled = false;
       }
     };
   });

@@ -18,7 +18,9 @@ const redis = Redis.fromEnv();
 // One hash: groupKey -> how many times that listing has been restocked.
 const RESTOCK_COUNTS_KEY = "restock:counts";
 
-// Manual audit corrections: one hash, groupKey -> { delta, reason, at, by }.
+// Manual audit corrections: one hash, groupKey -> { delta, reason, at }.
+// Once applied to the sold counter (applyAuditAdjust) the entry stays as a
+// record: { delta: 0, applied, reason, at, appliedAt }.
 // A test order, a card written off, a CSV fixed by hand — anything that makes
 // the arithmetic legitimately not balance. Stored with a reason so a
 // discrepancy is explained rather than silently zeroed out.
@@ -563,6 +565,60 @@ export default async function handler(req, res) {
       });
 
       return res.status(200).json({ ok: true, groupKey, delta: n });
+    }
+
+    // ---------------------------------------------------- applyAuditAdjust --
+    // A recorded correction only EXPLAINS a gap in the audit; the sold counter
+    // itself is untouched, so the storefront keeps treating those copies as
+    // sold. That is fine while the listing stays sold out, but it swallows any
+    // later restock: 3 test orders + 1 real sale on a 1-copy listing left the
+    // counter at 4, and a second copy added to the CSV showed as sold out.
+    //
+    // This moves the correction INTO the counter. The amount comes from the
+    // stored correction, never from the request, so the figure the audit shows
+    // and the figure applied cannot differ.
+    if (action === "applyAuditAdjust") {
+      const { groupKey } = req.body || {};
+      if (!groupKey || !groups.has(groupKey)) {
+        return res.status(404).json({ error: "No listing found for that card." });
+      }
+
+      const raw = await redis.hget(AUDIT_ADJUST_KEY, groupKey);
+      let adjustment = null;
+      try {
+        adjustment = typeof raw === "string" ? JSON.parse(raw) : raw;
+      } catch (e) {
+        adjustment = null;
+      }
+      const delta = adjustment ? Number(adjustment.delta) || 0 : 0;
+      if (delta === 0) {
+        return res.status(400).json({ error: "There is no correction recorded for this card to apply." });
+      }
+
+      // INCRBY is atomic, so a sale landing at the same moment is not lost the
+      // way it would be with a read-then-SET.
+      const soldKey = `sold:${groupKey}`;
+      const sold = Number(await redis.incrby(soldKey, delta)) || 0;
+      if (sold < 0) {
+        await redis.incrby(soldKey, -delta);
+        return res.status(400).json({
+          error: `That correction (${delta}) is larger than the sold counter. Nothing was changed.`,
+        });
+      }
+
+      // Kept as a record with delta 0: the counter now carries the correction,
+      // so counting it in the audit as well would apply it twice.
+      await redis.hset(AUDIT_ADJUST_KEY, {
+        [groupKey]: JSON.stringify({
+          delta: 0,
+          applied: delta,
+          reason: String(adjustment.reason || "").slice(0, 200),
+          at: adjustment.at || null,
+          appliedAt: Date.now(),
+        }),
+      });
+
+      return res.status(200).json({ ok: true, groupKey, applied: delta, sold });
     }
 
     if (action === "restockReport") {
