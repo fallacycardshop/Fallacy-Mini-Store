@@ -1,15 +1,25 @@
-name: Generate thumbnails
+name: Clean photos and generate thumbnails
 
 # Whenever full-size card images are added OR replaced in images/ (including via
-# GitHub's "Add files via upload" button), rebuild the matching thumbnails and
-# commit them back. The store serves thumbnails from raw.githubusercontent.com/
-# main, so they must physically live in the repo — this keeps them in step with
-# the full scans without anyone running a script by hand.
+# GitHub's "Add files via upload" button):
+#
+#   1. each new photo is cleaned — straightened, cropped to the card with the
+#      same margin, and colour-corrected against the white surface it was shot
+#      on (scripts/normalise_photos.py; it never retouches the card itself, and
+#      leaves any photo it cannot read confidently exactly as uploaded);
+#   2. the matching thumbnails are rebuilt;
+#   3. both are committed back.
+#
+# The store serves photos and thumbnails from raw.githubusercontent.com/main, so
+# they must physically live in the repo — this keeps them consistent and in step
+# without anyone running a script by hand.
 #
 # A REPLACED image keeps its filename, so its thumbnail already exists; the job
 # therefore force-rebuilds the thumbnail of every image CHANGED in the push (not
 # just the missing ones), which is what fixes "the store still shows the old
 # picture after I replaced it".
+#
+# The run's summary page lists every photo that was left as uploaded, and why.
 on:
   push:
     branches: [main]
@@ -22,14 +32,18 @@ on:
         description: "Rebuild ALL thumbnails (not just changed/missing)"
         type: boolean
         default: false
+      clean_all:
+        description: "Clean EVERY card photo not cleaned yet (crop, straighten, colour)"
+        type: boolean
+        default: false
 
-# Never let two runs race on pushing thumbnails back to the same branch.
+# Never let two runs race on pushing back to the same branch.
 concurrency:
   group: thumbnails-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
-  contents: write # needed to commit the generated thumbnails back to main
+  contents: write # needed to commit the cleaned photos and thumbnails back
 
 jobs:
   thumbs:
@@ -43,8 +57,36 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Pillow
-        run: pip install Pillow
+      - name: Install image libraries
+        run: pip install Pillow numpy opencv-python-headless
+
+      - name: List photos changed in this push
+        run: |
+          # Added or modified full images (deletions are skipped — nothing to do).
+          # quotepath=false keeps names like "Pokémon δ" readable instead of
+          # octal-escaped, which the scripts could not match to a file.
+          LIST="$RUNNER_TEMP/changed.txt"
+          : > "$LIST"
+          BEFORE="${{ github.event.before }}"
+          if [ -n "$BEFORE" ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            git -c core.quotepath=false diff --name-only --diff-filter=d "$BEFORE" "${{ github.sha }}" -- images \
+              | grep -viE '^images/thumbs/' | grep -iE '\.(jpe?g|png)$' > "$LIST" || true
+          fi
+          echo "Changed images in this push: $(wc -l < "$LIST")"
+          cat "$LIST"
+
+      - name: Clean card photos
+        run: |
+          set -e
+          LIST="$RUNNER_TEMP/changed.txt"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.clean_all }}" = "true" ]; then
+            echo "Manual clean of every card photo."
+            python scripts/normalise_photos.py --all --summary "$GITHUB_STEP_SUMMARY"
+          elif [ -s "$LIST" ]; then
+            xargs -d '\n' -a "$LIST" python scripts/normalise_photos.py --summary "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No new photos to clean."
+          fi
 
       - name: Rebuild thumbnails
         run: |
@@ -53,33 +95,34 @@ jobs:
             echo "Manual full rebuild of every thumbnail."
             python scripts/make_thumbs.py --force
           else
-            # Force-rebuild the thumbnail of every full image changed in this push
-            # (added or modified; deletions are skipped — there's nothing to thumb).
-            BEFORE="${{ github.event.before }}"
-            CHANGED=""
-            if [ -n "$BEFORE" ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
-              CHANGED=$(git diff --name-only --diff-filter=d "$BEFORE" "${{ github.sha }}" -- images \
-                        | grep -viE '^images/thumbs/' | grep -iE '\.(jpe?g|png)$' || true)
-            fi
-            if [ -n "$CHANGED" ]; then
-              echo "Changed images in this push:"
-              echo "$CHANGED"
-              echo "$CHANGED" | xargs -d '\n' python scripts/make_thumbs.py
+            # Every image changed in this push, plus every photo the cleaning
+            # step just rewrote — a cleaned photo has a new shape, so its old
+            # thumbnail no longer matches it.
+            LIST="$RUNNER_TEMP/rethumb.txt"
+            { cat "$RUNNER_TEMP/changed.txt"; \
+              git -c core.quotepath=false diff --name-only -- images | grep -viE '^images/thumbs/' || true; } \
+              | grep -iE '\.(jpe?g|png)$' | sort -u > "$LIST" || true
+            if [ -s "$LIST" ]; then
+              echo "Rebuilding $(wc -l < "$LIST") thumbnail(s)."
+              xargs -d '\n' -a "$LIST" python scripts/make_thumbs.py
             else
-              echo "No changed full images detected in this push."
+              echo "No changed full images detected."
             fi
             # Always also fill in any genuinely missing thumbnails.
             python scripts/make_thumbs.py
           fi
 
-      - name: Commit updated thumbnails
+      - name: Commit cleaned photos and thumbnails
         run: |
-          if [ -z "$(git status --porcelain images/thumbs)" ]; then
-            echo "No thumbnail changes to commit."
+          if [ -z "$(git status --porcelain images)" ]; then
+            echo "Nothing to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add images/thumbs
-          git commit -m "Auto-generate/refresh card thumbnails"
+          git add images
+          git commit -m "Auto-clean card photos and refresh thumbnails"
+          # Uploads often arrive as several quick commits (photos, then the CSV);
+          # replay this one on top of whatever landed while the job was running.
+          git pull --rebase origin "${GITHUB_REF_NAME}"
           git push
