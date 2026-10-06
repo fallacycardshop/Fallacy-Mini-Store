@@ -55,6 +55,11 @@ OUT_W, OUT_H = CARD_W + 2 * MARGIN, CARD_H + 2 * MARGIN
 JPEG_QUALITY = 80
 WHITE = 246            # what the surface around the card is corrected to
 
+# Files in images/ that are not card photos and must never be touched. The
+# PayNow QR is what buyers scan to pay: reshaping or recolouring it could stop
+# it scanning.
+NOT_CARDS = ("logo", "paynow")
+
 MIN_AREA = 0.30                 # card must cover at least this much of the photo
 RATIO_MIN, RATIO_MAX = 0.67, 0.77   # width / height of the outline (a card is 0.716)
 OUTER_EDGE_MAX = 7.0            # see outer_edge_strength()
@@ -227,7 +232,7 @@ def normalise(path, out_path):
 
 def is_card_photo(name):
     low = name.lower()
-    return low.endswith(EXTS) and "logo" not in low
+    return low.endswith(EXTS) and not any(word in low for word in NOT_CARDS)
 
 
 def main():
