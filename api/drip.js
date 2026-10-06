@@ -26,6 +26,15 @@ const RESTOCK_COUNTS_KEY = "restock:counts";
 // discrepancy is explained rather than silently zeroed out.
 const AUDIT_ADJUST_KEY = "audit:adjustments";
 
+function parseAdjustment(raw) {
+  if (!raw) return null;
+  try {
+    return typeof raw === "string" ? JSON.parse(raw) : raw;
+  } catch (e) {
+    return null;
+  }
+}
+
 // Actions:
 //   status     — config + what's live, new, and pending
 //   initialize — mark everything currently in the CSV as already released
@@ -546,9 +555,23 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Adjustment must be a whole number." });
       }
 
-      // A zero adjustment clears the note entirely.
+      // What has already been moved into the sold counter stays on the record,
+      // so a second correction on the same card doesn't erase the first.
+      const prev = parseAdjustment(await redis.hget(AUDIT_ADJUST_KEY, groupKey));
+      const carried = prev && Number(prev.applied)
+        ? { applied: Number(prev.applied), appliedAt: prev.appliedAt || null }
+        : null;
+
+      // A zero adjustment clears the pending correction. The note goes entirely
+      // unless it still has an applied change to explain.
       if (n === 0) {
-        await redis.hdel(AUDIT_ADJUST_KEY, groupKey);
+        if (carried) {
+          await redis.hset(AUDIT_ADJUST_KEY, {
+            [groupKey]: JSON.stringify({ delta: 0, reason: prev.reason || "", at: prev.at || null, ...carried }),
+          });
+        } else {
+          await redis.hdel(AUDIT_ADJUST_KEY, groupKey);
+        }
         return res.status(200).json({ ok: true, cleared: true });
       }
 
@@ -561,6 +584,7 @@ export default async function handler(req, res) {
           delta: n,
           reason: String(reason).trim().slice(0, 200),
           at: Date.now(),
+          ...(carried || {}),
         }),
       });
 
@@ -583,13 +607,7 @@ export default async function handler(req, res) {
         return res.status(404).json({ error: "No listing found for that card." });
       }
 
-      const raw = await redis.hget(AUDIT_ADJUST_KEY, groupKey);
-      let adjustment = null;
-      try {
-        adjustment = typeof raw === "string" ? JSON.parse(raw) : raw;
-      } catch (e) {
-        adjustment = null;
-      }
+      const adjustment = parseAdjustment(await redis.hget(AUDIT_ADJUST_KEY, groupKey));
       const delta = adjustment ? Number(adjustment.delta) || 0 : 0;
       if (delta === 0) {
         return res.status(400).json({ error: "There is no correction recorded for this card to apply." });
@@ -611,7 +629,8 @@ export default async function handler(req, res) {
       await redis.hset(AUDIT_ADJUST_KEY, {
         [groupKey]: JSON.stringify({
           delta: 0,
-          applied: delta,
+          // Running total of everything applied to this card's counter.
+          applied: (Number(adjustment.applied) || 0) + delta,
           reason: String(adjustment.reason || "").slice(0, 200),
           at: adjustment.at || null,
           appliedAt: Date.now(),
@@ -658,15 +677,7 @@ export default async function handler(req, res) {
           // Why a listing isn't currently buyable, so an audit can account for
           // it rather than flagging it as missing stock:
           hidden: hiddenIds.has(normaliseCardId(group.cardId)),
-          adjustment: (() => {
-            const raw = adjustRaw[groupKey];
-            if (!raw) return null;
-            try {
-              return typeof raw === "string" ? JSON.parse(raw) : raw;
-            } catch (e) {
-              return null;
-            }
-          })(),
+          adjustment: parseAdjustment(adjustRaw[groupKey]),
           // Stock held back by the drip.
           //
           // Two distinct cases, and the second was being missed: a pending

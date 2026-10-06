@@ -2440,12 +2440,14 @@ function renderSalesHistory() {
                     ${preTracking ? `<div class="audit-note audit-pre">
                       ${Math.abs(c.counterGap)} sale(s) before order records began — counted, not stored.
                     </div>` : ""}
-                    ${c.adjustment ? `<div class="audit-note">
-                      ${c.adjustDelta !== 0
-                        ? `Corrected by ${c.adjustDelta > 0 ? "+" : ""}${c.adjustDelta}:`
-                        : `Sold counter changed by ${c.appliedDelta > 0 ? "+" : ""}${c.appliedDelta}${
-                            c.adjustment.appliedAt ? " on " + fmtSpendDate(c.adjustment.appliedAt) : ""}:`}
+                    ${c.adjustDelta !== 0 ? `<div class="audit-note">
+                      Corrected by ${c.adjustDelta > 0 ? "+" : ""}${c.adjustDelta}:
                       ${escapeHtml(c.adjustment.reason)}
+                    </div>` : ""}
+                    ${c.appliedDelta !== 0 ? `<div class="audit-note">
+                      Sold counter changed by ${c.appliedDelta > 0 ? "+" : ""}${c.appliedDelta}${
+                        c.adjustment.appliedAt ? " on " + fmtSpendDate(c.adjustment.appliedAt) : ""}${
+                        c.adjustDelta === 0 ? ": " + escapeHtml(c.adjustment.reason) : "."}
                     </div>` : ""}
                     ${bad ? `<div class="audit-warn">
                       ${c.stockGap !== 0 ? `Stock is out by ${c.stockGap > 0 ? "+" : ""}${c.stockGap}. ` : ""}
@@ -2457,11 +2459,11 @@ function renderSalesHistory() {
                         data-apply-sold="${c.soldCounter}">
                         Apply to sold counter
                       </button>` : ""}
-                    ${(bad || c.adjustDelta !== 0) ? `
-                      <button type="button" class="audit-fix" data-fix-key="${escapeHtml(c.groupKey)}"
-                        data-fix-gap="${c.rawGap}" data-fix-name="${escapeHtml(c.name)}">
-                        ${c.adjustDelta !== 0 ? "Edit correction" : "Record a correction"}
-                      </button>` : ""}
+                    <button type="button" class="audit-fix" data-fix-key="${escapeHtml(c.groupKey)}"
+                      data-fix-gap="${c.rawGap}" data-fix-name="${escapeHtml(c.name)}"
+                      data-fix-pending="${c.adjustDelta}">
+                      ${c.adjustDelta !== 0 ? "Edit correction" : "Record a correction"}
+                    </button>
                     ${c.sales.length ? `<div class="hist-sales">
                       ${c.sales.slice(0, 6).map(sale => `
                         <div class="hist-sale">
@@ -2506,12 +2508,19 @@ function renderSalesHistory() {
     btn.onclick = async () => {
       const key = btn.dataset.fixKey;
       const gap = Number(btn.dataset.fixGap) || 0;
-      const suggested = -gap;
+      const pending = Number(btn.dataset.fixPending) || 0;
+      // Out of balance: suggest whatever closes the gap. Balanced: the numbers
+      // add up but the counter itself can still be wrong (a test order on a
+      // one-copy card leaves it "sold out" with the card still in hand), so
+      // there is nothing to suggest.
+      const suggested = gap !== 0 ? -gap : pending;
 
       const deltaStr = prompt(
         `Correction for ${btn.dataset.fixName}\n\n` +
-        `The count is out by ${gap > 0 ? "+" : ""}${gap}. ` +
-        `Enter the adjustment to balance it (0 removes an existing correction):`,
+        (gap !== 0
+          ? `The count is out by ${gap > 0 ? "+" : ""}${gap}. Enter the adjustment to balance it`
+          : `The count balances. Enter a change to the sold count, e.g. -1 if one counted sale never happened`) +
+        ` (0 removes a correction that hasn't been applied):`,
         String(suggested)
       );
       if (deltaStr === null) return;
