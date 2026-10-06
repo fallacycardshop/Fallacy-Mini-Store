@@ -36,6 +36,10 @@ on:
         description: "Clean EVERY card photo not cleaned yet (crop, straighten, colour)"
         type: boolean
         default: false
+      redo_all:
+        description: "After changing the cleaning rules: re-clean every cleaned photo from its original upload"
+        type: boolean
+        default: false
 
 # Never let two runs race on pushing back to the same branch.
 concurrency:
@@ -79,7 +83,10 @@ jobs:
         run: |
           set -e
           LIST="$RUNNER_TEMP/changed.txt"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.clean_all }}" = "true" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.redo_all }}" = "true" ]; then
+            echo "Re-cleaning every cleaned photo from the upload in git history."
+            python scripts/normalise_photos.py --all --redo --summary "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.clean_all }}" = "true" ]; then
             echo "Manual clean of every card photo."
             python scripts/normalise_photos.py --all --summary "$GITHUB_STEP_SUMMARY"
           elif [ -s "$LIST" ]; then

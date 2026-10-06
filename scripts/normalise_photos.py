@@ -7,8 +7,9 @@ had that day. For each photo this script:
 
   1. finds the card's outline against the background,
   2. straightens it and crops to the card with the same thin margin every time,
-  3. corrects colour and brightness so the white surface around the card comes
-     out as the same neutral white in every photo.
+  3. removes the colour cast, using the white surface around the card as the
+     reference for neutral. Brightness is left as shot unless the card clearly
+     has room to be brightened without losing its highlights.
 
 It deliberately does NOTHING else. No sharpening, smoothing or retouching:
 buyers judge a card's condition from these photos, so only the framing and the
@@ -33,9 +34,14 @@ Usage:
     python scripts/normalise_photos.py --all                       # every photo
     python scripts/normalise_photos.py --all --out /tmp/cleaned    # write copies,
                                                                    # leave originals
+    python scripts/normalise_photos.py --all --redo                # after the rules
+                                                                   # change: re-clean each
+                                                                   # cleaned photo from its
+                                                                   # upload in git history
     ... --summary FILE    append a Markdown report (GitHub step summary)
 """
 import os
+import subprocess
 import sys
 
 import cv2
@@ -53,7 +59,13 @@ OUT_W, OUT_H = CARD_W + 2 * MARGIN, CARD_H + 2 * MARGIN
 # higher quality only makes bigger files, not better ones, and every replaced
 # photo stays in the repo's history for good.
 JPEG_QUALITY = 80
-WHITE = 246            # what the surface around the card is corrected to
+WHITE = 246            # the surface is never brightened past this
+HIGHLIGHT_MAX = 250    # nor the card's own highlights past this (see correct_colour)
+
+# Files in images/ that are not card photos and must never be touched. The
+# PayNow QR is what buyers scan to pay: reshaping or recolouring it could stop
+# it scanning.
+NOT_CARDS = ("logo", "paynow")
 
 MIN_AREA = 0.30                 # card must cover at least this much of the photo
 RATIO_MIN, RATIO_MAX = 0.67, 0.77   # width / height of the outline (a card is 0.716)
@@ -168,43 +180,76 @@ def background_colour(img, src):
     return ref, None
 
 
-def correct_colour(img, ref):
-    """Scale each channel, in linear light, so the surface becomes WHITE."""
-    target = srgb_to_linear(np.float64(WHITE))
+def correct_colour(img, ref, src):
+    """Remove the colour cast; brighten only as far as the card allows.
+
+    Returns the corrected photo and the (neutral) level the surface ends up at.
+
+    The surface around the card is the COLOUR reference: whatever tint the light
+    gave it is taken out of the whole photo, by turning DOWN the stronger
+    channels, so removing a cast can never push anything to white.
+
+    It is not a BRIGHTNESS reference. A card's silver border and foil reflect
+    more light than the paper it sits on, so in a correctly exposed photo they
+    are already brighter than the surface. Scaling each photo until the surface
+    was white (which the first version of this script did) blew those areas out
+    and left the card looking washed. So a photo is brightened only while the
+    brightest 1% of the CARD stays below HIGHLIGHT_MAX, and never past the
+    point where the surface reaches WHITE. Most photos have no such room and
+    keep the exposure they were shot with.
+    """
+    ref_lin = srgb_to_linear(ref.astype(np.float64))
+    low = max(float(ref_lin.min()), 1e-4)
+    balance = low / np.maximum(ref_lin, 1e-4)           # 1 or less on every channel
+
+    h, w = img.shape[:2]
+    mask = np.zeros((h, w), np.uint8)
+    cv2.fillConvexPoly(mask, src.astype(np.int32), 255)
+    card = img[::4, ::4][mask[::4, ::4] > 0].astype(np.float64)
+    peak = float(np.percentile((srgb_to_linear(card) * balance).max(axis=1), 99)) if len(card) else 1.0
+
+    wanted = float(srgb_to_linear(np.float64(WHITE))) / low
+    room = float(srgb_to_linear(np.float64(HIGHLIGHT_MAX))) / max(peak, 1e-4)
+    scale = min(wanted, max(1.0, room))
+
     out = np.empty_like(img)
     levels = np.arange(256, dtype=np.float64)
     for ch in range(3):
-        gain = np.clip(target / max(srgb_to_linear(np.float64(ref[ch])), 1e-4), GAIN_MIN, GAIN_MAX)
+        gain = np.clip(balance[ch] * scale, GAIN_MIN, GAIN_MAX)
         lut = np.clip(np.round(linear_to_srgb(srgb_to_linear(levels) * gain)), 0, 255).astype(np.uint8)
         out[:, :, ch] = cv2.LUT(img[:, :, ch], lut)
-    return out
+    surface = int(np.clip(np.round(linear_to_srgb(np.float64(low * scale))), 0, 255))
+    return out, surface
 
 
-def normalise(path, out_path):
-    """Clean one photo. Returns (status, note); status is cleaned/kept/skipped/already."""
+def decode(data):
     try:
-        img = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
+        return cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
     except Exception:
-        img = None
+        return None
+
+
+def clean(img):
+    """Clean one decoded photo. Returns (status, note, jpeg bytes or None)."""
     if img is None:
-        return "kept", "could not be read as an image"
+        return "kept", "could not be read as an image", None
     h, w = img.shape[:2]
     if (w, h) == (OUT_W, OUT_H):
-        return "already", ""
+        return "already", "", None
     if w >= h or h < 500:
-        return "kept", "not a card photo (landscape or very small)"
+        return "kept", "not a card photo (landscape or very small)", None
 
     rect, why = find_card(img)
     if rect is None:
-        return "kept", why
+        return "kept", why, None
     src = corners(rect)
     if outer_edge_strength(img, src) > OUTER_EDGE_MAX:
-        return "kept", "another edge outside the outline (pale-bordered card?)"
+        return "kept", "another edge outside the outline (pale-bordered card?)", None
 
     ref, colour_note = background_colour(img, src)
     if ref is not None:
-        img = correct_colour(img, ref)
-        fill = (WHITE, WHITE, WHITE)
+        img, surface = correct_colour(img, ref, src)
+        fill = (surface, surface, surface)
     else:
         b = max(6, w // 80)
         frame = np.concatenate([img[:b].reshape(-1, 3), img[-b:].reshape(-1, 3),
@@ -219,15 +264,76 @@ def normalise(path, out_path):
     ok, buf = cv2.imencode(".jpg", out, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY,
                                           cv2.IMWRITE_JPEG_OPTIMIZE, 1])
     if not ok:
-        return "kept", "could not be saved"
-    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-    buf.tofile(out_path)
-    return "cleaned", ("colour left as shot: " + colour_note) if colour_note else ""
+        return "kept", "could not be saved", None
+    return "cleaned", ("colour left as shot: " + colour_note) if colour_note else "", buf
+
+
+def read_file(path):
+    try:
+        return decode(np.fromfile(path, dtype=np.uint8))
+    except Exception:
+        return None
+
+
+def write_file(path, buf):
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    buf.tofile(path)
+
+
+def normalise(path, out_path):
+    """Clean one photo file. Returns (status, note)."""
+    status, note, buf = clean(read_file(path))
+    if buf is not None:
+        write_file(out_path, buf)
+    return status, note
+
+
+def last_upload(name):
+    """The most recent version of this photo that was uploaded, not cleaned.
+
+    Cleaning replaces a photo in place, so the upload itself only survives in
+    git history. Walking back from the newest commit to the first version that
+    is not at the cleaned size finds it, including a later retake.
+    """
+    path = f"{IMAGES_DIR}/{name}"
+    # :(literal) because card filenames contain [ ] ( ), which git would
+    # otherwise read as a pattern.
+    log = subprocess.run(["git", "log", "--format=%H", "-n", "12", "--", f":(literal){path}"],
+                         capture_output=True, text=True)
+    for sha in log.stdout.split():
+        img = decode(subprocess.run(["git", "show", f"{sha}:{path}"], capture_output=True).stdout)
+        if img is not None and (img.shape[1], img.shape[0]) != (OUT_W, OUT_H):
+            return img
+    return None
+
+
+def redo(path, out_path):
+    """Re-clean an already-cleaned photo from the upload it was made from.
+
+    For use after the cleaning rules change. Starting again from the upload
+    (rather than the cleaned copy) means no quality is lost to a second round
+    of JPEG compression. A photo whose result would not visibly differ is left
+    untouched, so a re-run only rewrites what actually changed.
+    """
+    current = read_file(path)
+    if current is None or (current.shape[1], current.shape[0]) != (OUT_W, OUT_H):
+        return "skipped", ""                        # never cleaned: nothing to redo
+    upload = last_upload(os.path.basename(path))
+    if upload is None:
+        return "skipped", "no uploaded version found in history"
+    status, note, buf = clean(upload)
+    if buf is None:
+        return "skipped", note
+    fresh = decode(buf)
+    if np.abs(fresh.astype(np.int16) - current.astype(np.int16)).mean() < 1.0:
+        return "same", ""
+    write_file(out_path, buf)
+    return "cleaned", note
 
 
 def is_card_photo(name):
     low = name.lower()
-    return low.endswith(EXTS) and "logo" not in low
+    return low.endswith(EXTS) and not any(word in low for word in NOT_CARDS)
 
 
 def main():
@@ -237,12 +343,14 @@ def main():
     args = sys.argv[1:]
     out_dir = summary = None
     names = []
-    do_all = False
+    do_all = do_redo = False
     i = 0
     while i < len(args):
         a = args[i]
         if a == "--all":
             do_all = True
+        elif a == "--redo":
+            do_redo = True
         elif a == "--out":
             i += 1
             out_dir = args[i]
@@ -259,13 +367,13 @@ def main():
         names = [n for n in os.listdir(IMAGES_DIR) if os.path.isfile(os.path.join(IMAGES_DIR, n))]
     names = sorted({n for n in names if is_card_photo(n)})
 
-    counts = {"cleaned": 0, "already": 0, "kept": 0}
+    counts = {"cleaned": 0, "already": 0, "kept": 0, "same": 0, "skipped": 0}
     kept, colour = [], []
     for name in names:
         src = os.path.join(IMAGES_DIR, name)
         if not os.path.isfile(src):
             continue
-        status, note = normalise(src, os.path.join(out_dir or IMAGES_DIR, name))
+        status, note = (redo if do_redo else normalise)(src, os.path.join(out_dir or IMAGES_DIR, name))
         counts[status] += 1
         if status == "kept":
             kept.append((name, note))
@@ -275,12 +383,20 @@ def main():
                 colour.append((name, note))
             print(f"  cleaned: {name}" + (f" ({note})" if note else ""))
 
-    print(f"Done. Cleaned {counts['cleaned']}, already clean {counts['already']}, "
-          f"left as they are {counts['kept']}.")
+    if do_redo:
+        print(f"Done. Re-cleaned {counts['cleaned']}, no visible change {counts['same']}, "
+              f"skipped (never cleaned) {counts['skipped']}.")
+    else:
+        print(f"Done. Cleaned {counts['cleaned']}, already clean {counts['already']}, "
+              f"left as they are {counts['kept']}.")
     if summary and (counts["cleaned"] or kept):
         with open(summary, "a", encoding="utf-8") as f:
-            f.write(f"### Card photos\n\nCleaned {counts['cleaned']} · already clean "
-                    f"{counts['already']} · left as they are {counts['kept']}\n\n")
+            if do_redo:
+                f.write(f"### Card photos re-cleaned from their uploads\n\nRe-cleaned "
+                        f"{counts['cleaned']} · no visible change {counts['same']}\n\n")
+            else:
+                f.write(f"### Card photos\n\nCleaned {counts['cleaned']} · already clean "
+                        f"{counts['already']} · left as they are {counts['kept']}\n\n")
             if kept:
                 f.write("**Left exactly as uploaded** (retake, or leave):\n\n")
                 f.writelines(f"- `{n}`: {why}\n" for n, why in kept)

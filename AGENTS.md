@@ -255,12 +255,17 @@ still exists and an existence check passes.
 
 **Card photos are cleaned automatically.** The same GitHub Action that builds
 thumbnails first runs `scripts/normalise_photos.py` on every uploaded photo:
-straighten, crop to the card with a fixed margin, and colour-correct against the
-white surface around it. A cleaned photo is always 860x1182 — that size is how an
+straighten, crop to the card with a fixed margin, and remove the colour cast
+using the white surface around it as the reference. Brightness is left as shot:
+foil and silver borders are brighter than paper, so scaling a photo until the
+paper is white blows the card out (the first version did exactly that).
+`PayNowQR.jpg` and the logos are never touched. A cleaned photo is always 860x1182 — that size is how an
 already-cleaned photo is recognised, so don't resize one by hand. It never
 retouches the card (buyers judge condition from the photo), and a photo it can't
 read confidently — sleeved, graded, sealed product, or a card cut off by the
-frame — is left exactly as uploaded and listed on the run's summary page.
+frame — is left exactly as uploaded and listed on the run's summary page. After
+changing the cleaning rules, run the workflow with `redo_all`: it re-cleans each
+photo from its original upload in git history, not from the cleaned copy.
 
 **`raw.githubusercontent.com` is not a CDN.** It rate-limits, and the store
 depends on it for every card image. This is a known ceiling, not a bug to
